@@ -11,6 +11,10 @@ import FeedbackLoopTracker from './components/FeedbackLoopTracker';
 import StrategicSessionPlanner from './components/StrategicSessionPlanner';
 import KnowledgeGraphVisualizer from './components/KnowledgeGraphVisualizer';
 import DecisionJournal from './components/DecisionJournal';
+import MarketIntelligenceEngine from './components/MarketIntelligenceEngine';
+import AIAgentOrchestrator from './components/AIAgentOrchestrator';
+import PredictiveAnalytics from './components/PredictiveAnalytics';
+import BusinessIntelligenceHub from './components/BusinessIntelligenceHub';
 import { useLanguage } from './contexts/LanguageContext';
 import { 
   TrendingUp, 
@@ -123,9 +127,7 @@ function DashboardContent() {
 
   const handleAnalyzeKnowledge = async () => {
     try {
-      // This would trigger a comprehensive analysis
       alert('Starting comprehensive knowledge graph analysis...');
-      // In a real implementation, this would call the API
     } catch (error) {
       console.error('Failed to analyze knowledge:', error);
     }
@@ -133,9 +135,7 @@ function DashboardContent() {
 
   const handleGenerateStrategy = async () => {
     try {
-      // This would generate a strategy report
       alert('Generating strategic report based on current insights...');
-      // In a real implementation, this would call the API
     } catch (error) {
       console.error('Failed to generate strategy:', error);
     }
@@ -143,9 +143,7 @@ function DashboardContent() {
 
   const handleScheduleReview = async () => {
     try {
-      // This would schedule an AI review
       alert('Scheduling AI review session for next week...');
-      // In a real implementation, this would integrate with calendar
     } catch (error) {
       console.error('Failed to schedule review:', error);
     }
@@ -173,6 +171,26 @@ function DashboardContent() {
               <MetricCard key={index} {...metric} />
             ))}
           </div>
+        </section>
+
+        {/* Business Intelligence Hub */}
+        <section className="mb-8">
+          <BusinessIntelligenceHub />
+        </section>
+
+        {/* Market Intelligence Engine */}
+        <section className="mb-8">
+          <MarketIntelligenceEngine />
+        </section>
+
+        {/* Predictive Analytics */}
+        <section className="mb-8">
+          <PredictiveAnalytics />
+        </section>
+
+        {/* AI Agent Orchestrator */}
+        <section className="mb-8">
+          <AIAgentOrchestrator />
         </section>
 
         {/* Knowledge Graph Visualizer */}
