@@ -14,9 +14,12 @@ import {
   Brain,
   Link2,
   Calendar,
-  Users
+  Users,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useInsights, useObsidian, useProjects } from '../hooks/useAPI';
 
 interface AIInsightProps {
   title: string;
@@ -28,6 +31,7 @@ interface AIInsightProps {
   connectedNotes?: string[];
   suggestedActions?: string[];
   relatedProjects?: string[];
+  id?: string;
 }
 
 const EnhancedAIInsightCard: React.FC<AIInsightProps> = ({
@@ -39,11 +43,20 @@ const EnhancedAIInsightCard: React.FC<AIInsightProps> = ({
   timestamp,
   connectedNotes = [],
   suggestedActions = [],
-  relatedProjects = []
+  relatedProjects = [],
+  id
 }) => {
   const { t } = useLanguage();
+  const { createActionPlan } = useInsights();
+  const { createNote } = useObsidian();
+  const { projects } = useProjects();
+  
   const [isExpanded, setIsExpanded] = useState(false);
   const [showActionPlan, setShowActionPlan] = useState(false);
+  const [showConnectedNotes, setShowConnectedNotes] = useState(false);
+  const [showQuestionPremise, setShowQuestionPremise] = useState(false);
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  
   const [actionPlan, setActionPlan] = useState({
     title: '',
     tasks: [''],
@@ -51,6 +64,8 @@ const EnhancedAIInsightCard: React.FC<AIInsightProps> = ({
     priority: 'medium' as 'high' | 'medium' | 'low',
     deadline: ''
   });
+
+  const [questionText, setQuestionText] = useState('');
 
   const priorityColors = {
     high: 'bg-red-500/10 border-red-500/30 text-red-400',
@@ -66,6 +81,14 @@ const EnhancedAIInsightCard: React.FC<AIInsightProps> = ({
 
   const PriorityIcon = priorityIcons[priority];
 
+  const handleExpandAnalysis = () => {
+    setIsExpanded(!isExpanded);
+  };
+
+  const handleShowConnectedNotes = () => {
+    setShowConnectedNotes(!showConnectedNotes);
+  };
+
   const handleCreateActionPlan = () => {
     setActionPlan({
       ...actionPlan,
@@ -74,11 +97,25 @@ const EnhancedAIInsightCard: React.FC<AIInsightProps> = ({
     setShowActionPlan(true);
   };
 
+  const handleQuestionPremise = () => {
+    setShowQuestionPremise(!showQuestionPremise);
+  };
+
   const handleAddTask = () => {
     setActionPlan({
       ...actionPlan,
       tasks: [...actionPlan.tasks, '']
     });
+  };
+
+  const handleRemoveTask = (index: number) => {
+    if (actionPlan.tasks.length > 1) {
+      const newTasks = actionPlan.tasks.filter((_, i) => i !== index);
+      setActionPlan({
+        ...actionPlan,
+        tasks: newTasks
+      });
+    }
   };
 
   const handleTaskChange = (index: number, value: string) => {
@@ -91,16 +128,23 @@ const EnhancedAIInsightCard: React.FC<AIInsightProps> = ({
   };
 
   const handleSubmitActionPlan = async () => {
-    // This would integrate with the project management system
-    console.log('Creating action plan:', actionPlan);
+    if (!actionPlan.title || !actionPlan.assignedProject || actionPlan.tasks.some(task => !task.trim())) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    setIsCreatingPlan(true);
     
-    // Simulate API call to create project tasks
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Create feedback note in Obsidian
-    const feedbackNote = {
-      title: `Decision Log - ${title}`,
-      content: `# Decision Log: ${title}
+    try {
+      // Create action plan via API
+      if (id) {
+        await createActionPlan(id, actionPlan);
+      }
+
+      // Create feedback note in Obsidian
+      const feedbackNote = {
+        title: `Decision Log - ${title}`,
+        content: `# Decision Log: ${title}
 
 ## Original Insight
 ${insight}
@@ -124,14 +168,69 @@ ${actionPlan.tasks.map((task, i) => `${i + 1}. ${task}`).join('\n')}
 [[${actionPlan.assignedProject}]]
 ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
 `,
-      timestamp: new Date().toISOString()
-    };
+        folder: 'Decision Logs'
+      };
 
-    console.log('Creating feedback note:', feedbackNote);
-    setShowActionPlan(false);
-    
-    // Show success feedback
-    alert('Action plan created and decision logged to Second Brain!');
+      await createNote(feedbackNote.title, feedbackNote.content, feedbackNote.folder);
+      
+      setShowActionPlan(false);
+      alert('Action plan created and decision logged to Second Brain!');
+    } catch (error) {
+      console.error('Failed to create action plan:', error);
+      alert('Failed to create action plan. Please try again.');
+    } finally {
+      setIsCreatingPlan(false);
+    }
+  };
+
+  const handleSubmitQuestion = async () => {
+    if (!questionText.trim()) {
+      alert('Please enter your question');
+      return;
+    }
+
+    try {
+      // Create question note in Obsidian
+      const questionNote = {
+        title: `Question - ${title}`,
+        content: `# Question About: ${title}
+
+## Original Insight
+${insight}
+
+## Question/Challenge
+${questionText}
+
+## Context
+- Confidence Level: ${confidence}%
+- Priority: ${priority}
+- Date: ${new Date().toISOString().split('T')[0]}
+- Source: AI Dashboard Insight
+
+## Tags
+#question #ai-insight #premise-challenge
+
+## Next Steps
+- [ ] Research alternative perspectives
+- [ ] Gather additional data
+- [ ] Consult domain experts
+- [ ] Re-evaluate assumptions
+
+## Links
+${connectedNotes.map(note => `[[${note}]]`).join('\n')}
+`,
+        folder: 'Questions'
+      };
+
+      await createNote(questionNote.title, questionNote.content, questionNote.folder);
+      
+      setShowQuestionPremise(false);
+      setQuestionText('');
+      alert('Question logged to Second Brain for further investigation!');
+    } catch (error) {
+      console.error('Failed to create question note:', error);
+      alert('Failed to log question. Please try again.');
+    }
   };
 
   if (showActionPlan) {
@@ -141,7 +240,7 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
           <h3 className="text-lg font-semibold text-white">Create Action Plan</h3>
           <button 
             onClick={() => setShowActionPlan(false)}
-            className="text-slate-400 hover:text-white"
+            className="text-slate-400 hover:text-white transition-colors"
           >
             ×
           </button>
@@ -154,27 +253,37 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
               type="text"
               value={actionPlan.title}
               onChange={(e) => setActionPlan({...actionPlan, title: e.target.value})}
-              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white"
+              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">Tasks</label>
             {actionPlan.tasks.map((task, index) => (
-              <input
-                key={index}
-                type="text"
-                value={task}
-                onChange={(e) => handleTaskChange(index, e.target.value)}
-                placeholder={`Task ${index + 1}`}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white mb-2"
-              />
+              <div key={index} className="flex items-center space-x-2 mb-2">
+                <input
+                  type="text"
+                  value={task}
+                  onChange={(e) => handleTaskChange(index, e.target.value)}
+                  placeholder={`Task ${index + 1}`}
+                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                />
+                {actionPlan.tasks.length > 1 && (
+                  <button
+                    onClick={() => handleRemoveTask(index)}
+                    className="p-2 text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             ))}
             <button
               onClick={handleAddTask}
-              className="text-blue-400 hover:text-blue-300 text-sm"
+              className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 text-sm transition-colors"
             >
-              + Add Task
+              <Plus className="h-3 w-3" />
+              <span>Add Task</span>
             </button>
           </div>
 
@@ -184,12 +293,12 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
               <select
                 value={actionPlan.assignedProject}
                 onChange={(e) => setActionPlan({...actionPlan, assignedProject: e.target.value})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white"
+                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               >
                 <option value="">Select Project</option>
-                <option value="AI Product Launch">AI Product Launch</option>
-                <option value="Market Expansion">Market Expansion</option>
-                <option value="Infrastructure Upgrade">Infrastructure Upgrade</option>
+                {projects.map(project => (
+                  <option key={project.id} value={project.name}>{project.name}</option>
+                ))}
               </select>
             </div>
 
@@ -199,7 +308,7 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
                 type="date"
                 value={actionPlan.deadline}
                 onChange={(e) => setActionPlan({...actionPlan, deadline: e.target.value})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white"
+                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               />
             </div>
           </div>
@@ -207,12 +316,61 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
           <div className="flex space-x-3 pt-4">
             <button
               onClick={handleSubmitActionPlan}
-              className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
+              disabled={isCreatingPlan}
+              className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
             >
-              Create & Log Decision
+              {isCreatingPlan ? 'Creating...' : 'Create & Log Decision'}
             </button>
             <button
               onClick={() => setShowActionPlan(false)}
+              className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (showQuestionPremise) {
+    return (
+      <div className="bg-slate-800/40 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Question Premise</h3>
+          <button 
+            onClick={() => setShowQuestionPremise(false)}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Your Question or Challenge</label>
+            <textarea
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
+              placeholder="What assumptions would you like to challenge? What alternative perspectives should be considered?"
+              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white h-24 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+
+          <div className="bg-slate-700/30 rounded-lg p-3">
+            <h4 className="text-sm font-medium text-slate-300 mb-2">Original Insight</h4>
+            <p className="text-sm text-slate-400">{insight}</p>
+          </div>
+
+          <div className="flex space-x-3 pt-4">
+            <button
+              onClick={handleSubmitQuestion}
+              className="flex-1 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
+            >
+              Log Question to Second Brain
+            </button>
+            <button
+              onClick={() => setShowQuestionPremise(false)}
               className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
             >
               Cancel
@@ -270,7 +428,7 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-2 mb-4">
             <button
-              onClick={() => setIsExpanded(!isExpanded)}
+              onClick={handleExpandAnalysis}
               className="flex items-center space-x-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded-lg text-sm transition-colors"
             >
               <Brain className="h-3 w-3" />
@@ -278,7 +436,10 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
               {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             </button>
 
-            <button className="flex items-center space-x-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 px-3 py-1 rounded-lg text-sm transition-colors">
+            <button
+              onClick={handleShowConnectedNotes}
+              className="flex items-center space-x-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 px-3 py-1 rounded-lg text-sm transition-colors"
+            >
               <Link2 className="h-3 w-3" />
               <span>Connected Notes ({connectedNotes.length})</span>
             </button>
@@ -291,7 +452,10 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
               <span>Create Action Plan</span>
             </button>
 
-            <button className="flex items-center space-x-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 px-3 py-1 rounded-lg text-sm transition-colors">
+            <button
+              onClick={handleQuestionPremise}
+              className="flex items-center space-x-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 px-3 py-1 rounded-lg text-sm transition-colors"
+            >
               <MessageSquare className="h-3 w-3" />
               <span>Question Premise</span>
             </button>
@@ -339,6 +503,34 @@ ${connectedNotes.map(note => `[[${note}]]`).join('\n')}
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Connected Notes Modal */}
+          {showConnectedNotes && (
+            <div className="border-t border-slate-700/50 pt-4">
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-slate-300">Connected Notes</h4>
+                  <button
+                    onClick={() => setShowConnectedNotes(false)}
+                    className="text-slate-400 hover:text-white transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {connectedNotes.map((note, index) => (
+                    <div key={index} className="flex items-center space-x-2 p-2 bg-slate-600/30 rounded">
+                      <FileText className="h-3 w-3 text-slate-400" />
+                      <span className="text-sm text-slate-300">{note}</span>
+                      <button className="ml-auto text-blue-400 hover:text-blue-300 text-xs">
+                        Open
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

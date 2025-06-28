@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -10,109 +10,48 @@ import {
   FileText,
   Zap,
   CheckCircle,
-  ArrowRight
+  ArrowRight,
+  Edit,
+  Trash2,
+  CalendarPlus
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAPI } from '../hooks/useAPI';
 
 interface StrategicSession {
   id: string;
   title: string;
   type: 'synergy_exploration' | 'gap_analysis' | 'pattern_validation' | 'strategic_alignment';
   description: string;
-  suggestedDuration: number;
+  suggested_duration: number;
   participants: string[];
-  preparationNotes: string[];
-  expectedOutcomes: string[];
+  preparation_notes: string[];
+  expected_outcomes: string[];
   priority: 'high' | 'medium' | 'low';
-  triggerInsight?: string;
-  scheduledDate?: string;
+  trigger_insight?: string;
+  scheduled_date?: string;
   status: 'suggested' | 'scheduled' | 'completed';
 }
 
 const StrategicSessionPlanner: React.FC = () => {
   const { t } = useLanguage();
-  const [sessions, setSessions] = useState<StrategicSession[]>([
-    {
-      id: '1',
-      title: 'Cross-Domain Innovation Workshop',
-      type: 'synergy_exploration',
-      description: 'Explore the synergy between trading algorithms and agricultural optimization identified by the AI system.',
-      suggestedDuration: 120,
-      participants: ['CTO', 'Head of AI', 'AgTech Consultant', 'Risk Management Lead'],
-      preparationNotes: [
-        'Trading Algorithms.md',
-        'AgTech Research.md', 
-        'Risk Management Framework.md',
-        'Monte Carlo Applications.md'
-      ],
-      expectedOutcomes: [
-        'Validate cross-domain applicability',
-        'Identify pilot project opportunities',
-        'Define technical requirements',
-        'Estimate market potential'
-      ],
-      priority: 'high',
-      triggerInsight: 'Cross-Domain Pattern Discovery',
-      status: 'suggested'
-    },
-    {
-      id: '2',
-      title: 'Competitive Intelligence Alignment',
-      type: 'gap_analysis',
-      description: 'Bridge the gap between competitive analysis and product roadmap planning.',
-      suggestedDuration: 90,
-      participants: ['Product Manager', 'Market Intelligence Lead', 'Strategy Director'],
-      preparationNotes: [
-        'Competitor Analysis/',
-        'Product Roadmap 2024.md',
-        'Market Intelligence/',
-        'Feature Comparison Matrix.md'
-      ],
-      expectedOutcomes: [
-        'Link competitive insights to product features',
-        'Update roadmap priorities',
-        'Create competitive response framework',
-        'Establish regular sync process'
-      ],
-      priority: 'medium',
-      triggerInsight: 'Strategic Alignment Gap Detected',
-      status: 'suggested'
-    },
-    {
-      id: '3',
-      title: 'First Principles Application Session',
-      type: 'pattern_validation',
-      description: 'Apply proven first-principles methodology to AI Healthcare project.',
-      suggestedDuration: 180,
-      participants: ['Project Lead', 'Technical Architect', 'Domain Expert'],
-      preparationNotes: [
-        'First Principles Thinking.md',
-        'AI Healthcare Project.md',
-        'Project Success Archive/',
-        'Healthcare Domain Research.md'
-      ],
-      expectedOutcomes: [
-        'Fundamental problem decomposition',
-        'Assumption validation',
-        'Alternative approach identification',
-        'Risk mitigation strategies'
-      ],
-      priority: 'high',
-      triggerInsight: 'First Principles Success Pattern',
-      status: 'scheduled',
-      scheduledDate: '2024-01-25'
-    }
-  ]);
-
+  const { apiClient } = useAPI();
+  
+  const [sessions, setSessions] = useState<StrategicSession[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingSession, setEditingSession] = useState<string | null>(null);
+  const [schedulingSession, setSchedulingSession] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState('');
+
   const [newSession, setNewSession] = useState<Partial<StrategicSession>>({
     title: '',
     type: 'synergy_exploration',
     description: '',
-    suggestedDuration: 90,
+    suggested_duration: 90,
     participants: [''],
-    preparationNotes: [''],
-    expectedOutcomes: [''],
+    preparation_notes: [''],
+    expected_outcomes: [''],
     priority: 'medium'
   });
 
@@ -153,33 +92,149 @@ const StrategicSessionPlanner: React.FC = () => {
     completed: { color: 'text-green-400', label: 'Completed' }
   };
 
-  const handleScheduleSession = (sessionId: string) => {
-    setSessions(sessions.map(session => 
-      session.id === sessionId 
-        ? { ...session, status: 'scheduled' as const, scheduledDate: '2024-01-26' }
-        : session
-    ));
+  useEffect(() => {
+    fetchSessions();
+  }, []);
+
+  const fetchSessions = async () => {
+    try {
+      setLoading(true);
+      const data = await apiClient.request('/api/sessions');
+      setSessions(data);
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreateSession = () => {
-    const session: StrategicSession = {
-      id: Date.now().toString(),
-      ...newSession as StrategicSession,
-      status: 'suggested'
-    };
-    setSessions([...sessions, session]);
-    setShowCreateForm(false);
+  const handleScheduleSession = async (sessionId: string) => {
+    if (!scheduleDate) {
+      alert('Please select a date');
+      return;
+    }
+
+    try {
+      await apiClient.request(`/api/sessions/${sessionId}/schedule`, {
+        method: 'POST',
+        body: { date: scheduleDate }
+      });
+      
+      await fetchSessions();
+      setSchedulingSession(null);
+      setScheduleDate('');
+      alert('Session scheduled successfully!');
+    } catch (error) {
+      console.error('Failed to schedule session:', error);
+      alert('Failed to schedule session. Please try again.');
+    }
+  };
+
+  const handleCreateSession = async () => {
+    if (!newSession.title || !newSession.description) {
+      alert('Please fill in title and description');
+      return;
+    }
+
+    try {
+      await apiClient.request('/api/sessions', {
+        method: 'POST',
+        body: newSession
+      });
+      
+      await fetchSessions();
+      setShowCreateForm(false);
+      resetNewSession();
+      alert('Session created successfully!');
+    } catch (error) {
+      console.error('Failed to create session:', error);
+      alert('Failed to create session. Please try again.');
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!confirm('Are you sure you want to delete this session?')) {
+      return;
+    }
+
+    try {
+      await apiClient.request(`/api/sessions/${sessionId}`, {
+        method: 'DELETE'
+      });
+      
+      await fetchSessions();
+      alert('Session deleted successfully!');
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      alert('Failed to delete session. Please try again.');
+    }
+  };
+
+  const handleGenerateAISessions = async () => {
+    try {
+      const insights = await apiClient.request('/api/insights');
+      await apiClient.request('/api/sessions/generate', {
+        method: 'POST',
+        body: { insights: insights.slice(0, 3) }
+      });
+      
+      await fetchSessions();
+      alert('AI sessions generated successfully!');
+    } catch (error) {
+      console.error('Failed to generate AI sessions:', error);
+      alert('Failed to generate AI sessions. Please try again.');
+    }
+  };
+
+  const resetNewSession = () => {
     setNewSession({
       title: '',
       type: 'synergy_exploration',
       description: '',
-      suggestedDuration: 90,
+      suggested_duration: 90,
       participants: [''],
-      preparationNotes: [''],
-      expectedOutcomes: [''],
+      preparation_notes: [''],
+      expected_outcomes: [''],
       priority: 'medium'
     });
   };
+
+  const addArrayItem = (field: 'participants' | 'preparation_notes' | 'expected_outcomes') => {
+    setNewSession({
+      ...newSession,
+      [field]: [...(newSession[field] || []), '']
+    });
+  };
+
+  const updateArrayItem = (field: 'participants' | 'preparation_notes' | 'expected_outcomes', index: number, value: string) => {
+    const array = [...(newSession[field] || [])];
+    array[index] = value;
+    setNewSession({
+      ...newSession,
+      [field]: array
+    });
+  };
+
+  const removeArrayItem = (field: 'participants' | 'preparation_notes' | 'expected_outcomes', index: number) => {
+    const array = [...(newSession[field] || [])];
+    if (array.length > 1) {
+      array.splice(index, 1);
+      setNewSession({
+        ...newSession,
+        [field]: array
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
+        <div className="flex items-center justify-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (showCreateForm) {
     return (
@@ -187,8 +242,11 @@ const StrategicSessionPlanner: React.FC = () => {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white">Create Strategic Session</h2>
           <button 
-            onClick={() => setShowCreateForm(false)}
-            className="text-slate-400 hover:text-white"
+            onClick={() => {
+              setShowCreateForm(false);
+              resetNewSession();
+            }}
+            className="text-slate-400 hover:text-white transition-colors"
           >
             ×
           </button>
@@ -201,7 +259,7 @@ const StrategicSessionPlanner: React.FC = () => {
               type="text"
               value={newSession.title}
               onChange={(e) => setNewSession({...newSession, title: e.target.value})}
-              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white"
+              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               placeholder="Enter session title..."
             />
           </div>
@@ -212,7 +270,7 @@ const StrategicSessionPlanner: React.FC = () => {
               <select
                 value={newSession.type}
                 onChange={(e) => setNewSession({...newSession, type: e.target.value as any})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white"
+                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               >
                 <option value="synergy_exploration">Synergy Exploration</option>
                 <option value="gap_analysis">Gap Analysis</option>
@@ -225,9 +283,9 @@ const StrategicSessionPlanner: React.FC = () => {
               <label className="block text-sm font-medium text-slate-300 mb-2">Duration (minutes)</label>
               <input
                 type="number"
-                value={newSession.suggestedDuration}
-                onChange={(e) => setNewSession({...newSession, suggestedDuration: parseInt(e.target.value)})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white"
+                value={newSession.suggested_duration}
+                onChange={(e) => setNewSession({...newSession, suggested_duration: parseInt(e.target.value)})}
+                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               />
             </div>
           </div>
@@ -237,9 +295,39 @@ const StrategicSessionPlanner: React.FC = () => {
             <textarea
               value={newSession.description}
               onChange={(e) => setNewSession({...newSession, description: e.target.value})}
-              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white h-20"
+              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white h-20 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               placeholder="Describe the session objectives..."
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Participants</label>
+            {newSession.participants?.map((participant, index) => (
+              <div key={index} className="flex items-center space-x-2 mb-2">
+                <input
+                  type="text"
+                  value={participant}
+                  onChange={(e) => updateArrayItem('participants', index, e.target.value)}
+                  placeholder={`Participant ${index + 1}`}
+                  className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                />
+                {(newSession.participants?.length || 0) > 1 && (
+                  <button
+                    onClick={() => removeArrayItem('participants', index)}
+                    className="p-2 text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              onClick={() => addArrayItem('participants')}
+              className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 text-sm transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              <span>Add Participant</span>
+            </button>
           </div>
 
           <div className="flex space-x-3 pt-4">
@@ -250,7 +338,10 @@ const StrategicSessionPlanner: React.FC = () => {
               Create Session
             </button>
             <button
-              onClick={() => setShowCreateForm(false)}
+              onClick={() => {
+                setShowCreateForm(false);
+                resetNewSession();
+              }}
               className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
             >
               Cancel
@@ -274,13 +365,23 @@ const StrategicSessionPlanner: React.FC = () => {
           </div>
         </div>
         
-        <button
-          onClick={() => setShowCreateForm(true)}
-          className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Create Session</span>
-        </button>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleGenerateAISessions}
+            className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
+          >
+            <Brain className="h-4 w-4" />
+            <span>Generate AI Sessions</span>
+          </button>
+          
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Create Session</span>
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -305,26 +406,43 @@ const StrategicSessionPlanner: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="flex items-center space-x-1 text-slate-400 mb-1">
-                    <Clock className="h-3 w-3" />
-                    <span className="text-xs">{session.suggestedDuration} min</span>
+                <div className="flex items-center space-x-2">
+                  <div className="text-right">
+                    <div className="flex items-center space-x-1 text-slate-400 mb-1">
+                      <Clock className="h-3 w-3" />
+                      <span className="text-xs">{session.suggested_duration} min</span>
+                    </div>
+                    {session.scheduled_date && (
+                      <div className="text-xs text-blue-400">{session.scheduled_date}</div>
+                    )}
                   </div>
-                  {session.scheduledDate && (
-                    <div className="text-xs text-blue-400">{session.scheduledDate}</div>
-                  )}
+                  
+                  <div className="flex space-x-1">
+                    <button
+                      onClick={() => setEditingSession(session.id)}
+                      className="p-1 text-slate-400 hover:text-blue-400 transition-colors"
+                    >
+                      <Edit className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSession(session.id)}
+                      className="p-1 text-slate-400 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <p className="text-slate-300 text-sm mb-4">{session.description}</p>
 
-              {session.triggerInsight && (
+              {session.trigger_insight && (
                 <div className="mb-4 p-3 bg-slate-700/30 rounded-lg">
                   <div className="flex items-center space-x-2 mb-1">
                     <Zap className="h-3 w-3 text-yellow-400" />
                     <span className="text-xs text-yellow-400">Triggered by AI Insight</span>
                   </div>
-                  <span className="text-sm text-slate-300">{session.triggerInsight}</span>
+                  <span className="text-sm text-slate-300">{session.trigger_insight}</span>
                 </div>
               )}
 
@@ -332,26 +450,29 @@ const StrategicSessionPlanner: React.FC = () => {
                 <div>
                   <h4 className="text-xs text-slate-400 mb-2">Participants</h4>
                   <div className="space-y-1">
-                    {session.participants.map((participant, index) => (
+                    {session.participants.slice(0, 3).map((participant, index) => (
                       <div key={index} className="flex items-center space-x-1">
                         <Users className="h-3 w-3 text-slate-400" />
                         <span className="text-xs text-slate-300">{participant}</span>
                       </div>
                     ))}
+                    {session.participants.length > 3 && (
+                      <span className="text-xs text-slate-400">+{session.participants.length - 3} more</span>
+                    )}
                   </div>
                 </div>
 
                 <div>
                   <h4 className="text-xs text-slate-400 mb-2">Preparation Notes</h4>
                   <div className="space-y-1">
-                    {session.preparationNotes.slice(0, 3).map((note, index) => (
+                    {session.preparation_notes.slice(0, 3).map((note, index) => (
                       <div key={index} className="flex items-center space-x-1">
                         <FileText className="h-3 w-3 text-slate-400" />
                         <span className="text-xs text-slate-300">{note}</span>
                       </div>
                     ))}
-                    {session.preparationNotes.length > 3 && (
-                      <span className="text-xs text-slate-400">+{session.preparationNotes.length - 3} more</span>
+                    {session.preparation_notes.length > 3 && (
+                      <span className="text-xs text-slate-400">+{session.preparation_notes.length - 3} more</span>
                     )}
                   </div>
                 </div>
@@ -359,14 +480,14 @@ const StrategicSessionPlanner: React.FC = () => {
                 <div>
                   <h4 className="text-xs text-slate-400 mb-2">Expected Outcomes</h4>
                   <div className="space-y-1">
-                    {session.expectedOutcomes.slice(0, 2).map((outcome, index) => (
+                    {session.expected_outcomes.slice(0, 2).map((outcome, index) => (
                       <div key={index} className="flex items-center space-x-1">
                         <Target className="h-3 w-3 text-slate-400" />
                         <span className="text-xs text-slate-300">{outcome}</span>
                       </div>
                     ))}
-                    {session.expectedOutcomes.length > 2 && (
-                      <span className="text-xs text-slate-400">+{session.expectedOutcomes.length - 2} more</span>
+                    {session.expected_outcomes.length > 2 && (
+                      <span className="text-xs text-slate-400">+{session.expected_outcomes.length - 2} more</span>
                     )}
                   </div>
                 </div>
@@ -385,13 +506,38 @@ const StrategicSessionPlanner: React.FC = () => {
 
                 <div className="flex space-x-2">
                   {session.status === 'suggested' && (
-                    <button
-                      onClick={() => handleScheduleSession(session.id)}
-                      className="flex items-center space-x-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded-lg text-sm transition-colors"
-                    >
-                      <Calendar className="h-3 w-3" />
-                      <span>Schedule</span>
-                    </button>
+                    <>
+                      {schedulingSession === session.id ? (
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="date"
+                            value={scheduleDate}
+                            onChange={(e) => setScheduleDate(e.target.value)}
+                            className="bg-slate-700/50 border border-slate-600/50 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                          />
+                          <button
+                            onClick={() => handleScheduleSession(session.id)}
+                            className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-2 py-1 rounded text-sm transition-colors"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setSchedulingSession(null)}
+                            className="bg-slate-600/20 hover:bg-slate-600/30 text-slate-400 px-2 py-1 rounded text-sm transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSchedulingSession(session.id)}
+                          className="flex items-center space-x-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded-lg text-sm transition-colors"
+                        >
+                          <CalendarPlus className="h-3 w-3" />
+                          <span>Schedule</span>
+                        </button>
+                      )}
+                    </>
                   )}
                   
                   <button className="flex items-center space-x-1 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-1 rounded-lg text-sm transition-colors">
@@ -412,10 +558,6 @@ const StrategicSessionPlanner: React.FC = () => {
             {sessions.filter(s => s.status === 'scheduled').length} scheduled • 
             {sessions.filter(s => s.status === 'completed').length} completed
           </div>
-          <button className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 hover:scale-105">
-            <Brain className="h-4 w-4" />
-            <span>Generate More Sessions</span>
-          </button>
         </div>
       </div>
     </div>
