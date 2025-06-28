@@ -8,6 +8,9 @@ import ProjectOverview from './components/ProjectOverview';
 import MCPIntegration from './components/MCPIntegration';
 import ProactiveSynergyPanel from './components/ProactiveSynergyPanel';
 import FeedbackLoopTracker from './components/FeedbackLoopTracker';
+import StrategicSessionPlanner from './components/StrategicSessionPlanner';
+import KnowledgeGraphVisualizer from './components/KnowledgeGraphVisualizer';
+import DecisionJournal from './components/DecisionJournal';
 import { useLanguage } from './contexts/LanguageContext';
 import { 
   TrendingUp, 
@@ -137,7 +140,12 @@ function DashboardContent() {
           </div>
         </section>
 
-        {/* Proactive Synergy Panel - New Component */}
+        {/* Knowledge Graph Visualizer - New Component */}
+        <section className="mb-8">
+          <KnowledgeGraphVisualizer />
+        </section>
+
+        {/* Proactive Synergy Panel */}
         <section className="mb-8">
           <ProactiveSynergyPanel />
         </section>
@@ -168,7 +176,17 @@ function DashboardContent() {
           </div>
         </section>
 
-        {/* Feedback Loop Tracker - New Component */}
+        {/* Strategic Session Planner - New Component */}
+        <section className="mb-8">
+          <StrategicSessionPlanner />
+        </section>
+
+        {/* Decision Journal - New Component */}
+        <section className="mb-8">
+          <DecisionJournal />
+        </section>
+
+        {/* Feedback Loop Tracker */}
         <section className="mb-8">
           <FeedbackLoopTracker />
         </section>
