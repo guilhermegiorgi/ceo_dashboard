@@ -1,55 +1,95 @@
-import React, { useState } from 'react';
-import { MessageSquare, Cpu, Zap, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  MessageSquare, 
+  Cpu, 
+  Zap, 
+  CheckCircle, 
+  AlertCircle, 
+  Clock,
+  Send,
+  RefreshCw,
+  Settings,
+  BarChart3,
+  Activity,
+  Search,
+  Filter
+} from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useMCP } from '../hooks/useAPI';
 
 const MCPIntegration: React.FC = () => {
   const { t } = useLanguage();
-  const [activeAgents, setActiveAgents] = useState(3);
+  const { services, loading, queryService, queryAllServices } = useMCP();
   
-  const mcpServices = [
-    {
-      id: 1,
-      name: 'Strategic Analyzer',
-      status: 'active',
-      lastResponse: '2 min ago',
-      queries: 247,
-      successRate: 98.5,
-      description: 'Analyzes business strategy and market trends'
-    },
-    {
-      id: 2,
-      name: 'Financial Insights',
-      status: 'active',
-      lastResponse: '5 min ago',
-      queries: 189,
-      successRate: 97.2,
-      description: 'Provides financial analysis and forecasting'
-    },
-    {
-      id: 3,
-      name: 'Team Performance',
-      status: 'idle',
-      lastResponse: '15 min ago',
-      queries: 156,
-      successRate: 96.8,
-      description: 'Monitors team productivity and engagement'
-    },
-    {
-      id: 4,
-      name: 'Risk Assessment',
-      status: 'processing',
-      lastResponse: 'Now',
-      queries: 98,
-      successRate: 99.1,
-      description: 'Identifies potential risks and opportunities'
-    }
-  ];
+  const [query, setQuery] = useState('');
+  const [isQuerying, setIsQuerying] = useState(false);
+  const [queryResults, setQueryResults] = useState<any[]>([]);
+  const [selectedService, setSelectedService] = useState<string>('all');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const statusConfig = {
     active: { color: 'text-green-400', bg: 'bg-green-500/10', icon: CheckCircle },
     idle: { color: 'text-slate-400', bg: 'bg-slate-500/10', icon: Clock },
-    processing: { color: 'text-blue-400', bg: 'bg-blue-500/10', icon: Zap }
+    processing: { color: 'text-blue-400', bg: 'bg-blue-500/10', icon: Zap },
+    error: { color: 'text-red-400', bg: 'bg-red-500/10', icon: AlertCircle }
   };
+
+  const filteredServices = services.filter(service => {
+    return filterStatus === 'all' || service.status === filterStatus;
+  });
+
+  const handleQuery = async () => {
+    if (!query.trim()) {
+      alert('Please enter a query');
+      return;
+    }
+
+    setIsQuerying(true);
+    try {
+      let results;
+      if (selectedService === 'all') {
+        results = await queryAllServices(query);
+        setQueryResults(results.responses || []);
+      } else {
+        const result = await queryService(selectedService, query);
+        setQueryResults([{
+          serviceId: selectedService,
+          serviceName: services.find(s => s.id === selectedService)?.name || 'Unknown',
+          success: true,
+          response: result
+        }]);
+      }
+      
+      alert('Query completed successfully!');
+    } catch (error) {
+      console.error('Failed to query MCP services:', error);
+      alert('Failed to query MCP services. Please try again.');
+    } finally {
+      setIsQuerying(false);
+    }
+  };
+
+  const getServiceHealth = () => {
+    const total = services.length;
+    const active = services.filter(s => s.status === 'active').length;
+    const avgSuccessRate = services.reduce((acc, s) => acc + s.successRate, 0) / total;
+    const totalQueries = services.reduce((acc, s) => acc + s.queries, 0);
+
+    return { total, active, avgSuccessRate, totalQueries };
+  };
+
+  const health = getServiceHealth();
+
+  if (loading) {
+    return (
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
+        <div className="flex items-center justify-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
@@ -67,13 +107,151 @@ const MCPIntegration: React.FC = () => {
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-sm text-green-400">{activeAgents} {t('mcp.active')}</span>
+            <span className="text-sm text-green-400">{health.active}/{health.total} {t('mcp.active')}</span>
           </div>
+          
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <Settings className="h-4 w-4 text-slate-400" />
+          </button>
         </div>
       </div>
+
+      {/* Health Overview */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
+          <div className="flex items-center space-x-2 mb-1">
+            <Activity className="h-4 w-4 text-blue-400" />
+            <span className="text-sm text-slate-400">Services</span>
+          </div>
+          <div className="text-xl font-bold text-blue-400">{health.total}</div>
+        </div>
+
+        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
+          <div className="flex items-center space-x-2 mb-1">
+            <CheckCircle className="h-4 w-4 text-green-400" />
+            <span className="text-sm text-slate-400">Active</span>
+          </div>
+          <div className="text-xl font-bold text-green-400">{health.active}</div>
+        </div>
+
+        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
+          <div className="flex items-center space-x-2 mb-1">
+            <BarChart3 className="h-4 w-4 text-purple-400" />
+            <span className="text-sm text-slate-400">Success Rate</span>
+          </div>
+          <div className="text-xl font-bold text-purple-400">{health.avgSuccessRate.toFixed(1)}%</div>
+        </div>
+
+        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
+          <div className="flex items-center space-x-2 mb-1">
+            <MessageSquare className="h-4 w-4 text-cyan-400" />
+            <span className="text-sm text-slate-400">Total Queries</span>
+          </div>
+          <div className="text-xl font-bold text-cyan-400">{health.totalQueries}</div>
+        </div>
+      </div>
+
+      {/* Query Interface */}
+      <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4 mb-6">
+        <h3 className="text-white font-medium mb-4">Query MCP Services</h3>
+        
+        <div className="space-y-4">
+          <div className="flex space-x-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Enter your query for AI agents..."
+                className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                onKeyPress={(e) => e.key === 'Enter' && handleQuery()}
+              />
+            </div>
+            
+            <select
+              value={selectedService}
+              onChange={(e) => setSelectedService(e.target.value)}
+              className="bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+            >
+              <option value="all">All Services</option>
+              {services.map(service => (
+                <option key={service.id} value={service.id}>{service.name}</option>
+              ))}
+            </select>
+            
+            <button
+              onClick={handleQuery}
+              disabled={isQuerying}
+              className="flex items-center space-x-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
+            >
+              {isQuerying ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              <span>{isQuerying ? 'Querying...' : 'Query'}</span>
+            </button>
+          </div>
+
+          {/* Query Results */}
+          {queryResults.length > 0 && (
+            <div className="mt-4 space-y-3">
+              <h4 className="text-white font-medium">Query Results:</h4>
+              {queryResults.map((result, index) => (
+                <div key={index} className="bg-slate-600/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-cyan-400 font-medium">{result.serviceName}</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      result.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {result.success ? 'Success' : 'Error'}
+                    </span>
+                  </div>
+                  
+                  {result.success ? (
+                    <div className="text-sm text-slate-300">
+                      {typeof result.response === 'object' ? (
+                        <pre className="whitespace-pre-wrap">{JSON.stringify(result.response, null, 2)}</pre>
+                      ) : (
+                        <p>{result.response}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-400">{result.error}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Services Filter */}
+      <div className="flex items-center space-x-4 mb-4">
+        <div className="flex items-center space-x-2">
+          <Filter className="h-4 w-4 text-slate-400" />
+          <span className="text-sm text-slate-300">Filter by status:</span>
+        </div>
+        
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="idle">Idle</option>
+          <option value="processing">Processing</option>
+          <option value="error">Error</option>
+        </select>
+      </div>
       
+      {/* Services Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        {mcpServices.map((service) => {
+        {filteredServices.map((service) => {
           const config = statusConfig[service.status as keyof typeof statusConfig];
           const StatusIcon = config.icon;
           
@@ -96,7 +274,7 @@ const MCPIntegration: React.FC = () => {
                 </div>
               </div>
               
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-3 gap-4 text-center mb-3">
                 <div>
                   <p className="text-lg font-bold text-white">{service.queries}</p>
                   <p className="text-xs text-slate-400">{t('mcp.queries')}</p>
@@ -110,13 +288,29 @@ const MCPIntegration: React.FC = () => {
                   <p className="text-xs text-slate-400">{t('mcp.last_response')}</p>
                 </div>
               </div>
+
+              {showAdvanced && service.capabilities && (
+                <div className="border-t border-slate-600/30 pt-3">
+                  <h4 className="text-xs text-slate-400 mb-2">Capabilities:</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {service.capabilities.map((capability, index) => (
+                      <span key={index} className="px-2 py-1 bg-slate-600/50 text-slate-300 text-xs rounded">
+                        {capability}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
       
       <div className="pt-4 border-t border-slate-700/50">
-        <button className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 hover:scale-105">
+        <button 
+          onClick={() => queryAllServices('Generate strategic insights from current business context')}
+          className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 hover:scale-105"
+        >
           <MessageSquare className="h-4 w-4" />
           <span>{t('mcp.query_all')}</span>
         </button>
