@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, Settings, User, Bell, Menu, X } from 'lucide-react';
+import { Bell, Settings, User, Menu, X, Search } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from './LanguageToggle';
 import SettingsModal from './SettingsModal';
@@ -11,6 +11,7 @@ const Header: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const notifications = [
     {
@@ -67,18 +68,23 @@ const Header: React.FC = () => {
 
   return (
     <>
-      <header className="bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50 px-6 py-4 relative z-40">
+      <header className="bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50 px-6 py-4 relative z-30">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
-              <Brain className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">{t('header.title')}</h1>
-              <p className="text-sm text-slate-400">{t('header.subtitle')}</p>
+          {/* Search Bar */}
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search across all systems..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg pl-10 pr-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
+              />
             </div>
           </div>
           
+          {/* Right Side Actions */}
           <div className="flex items-center space-x-4">
             <LanguageToggle />
             
@@ -111,9 +117,15 @@ const Header: React.FC = () => {
             <div className="relative">
               <button 
                 onClick={handleUserClick}
-                className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                className="flex items-center space-x-2 p-2 hover:bg-slate-800 rounded-lg transition-colors"
               >
-                <User className="h-5 w-5 text-slate-400" />
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                  <User className="h-4 w-4 text-white" />
+                </div>
+                <div className="hidden md:block text-left">
+                  <div className="text-sm font-medium text-white">CEO Admin</div>
+                  <div className="text-xs text-slate-400">GG.AI Labs</div>
+                </div>
               </button>
             </div>
           </div>
@@ -143,7 +155,7 @@ const Header: React.FC = () => {
       {/* Backdrop */}
       {(showNotifications || showSettings || showUserMenu) && (
         <div 
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-20"
           onClick={closeAllModals}
         />
       )}
