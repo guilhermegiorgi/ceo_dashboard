@@ -2,10 +2,12 @@ import React from 'react';
 import { LanguageProvider } from './contexts/LanguageContext';
 import Header from './components/Header';
 import MetricCard from './components/MetricCard';
-import AIInsightCard from './components/AIInsightCard';
+import EnhancedAIInsightCard from './components/EnhancedAIInsightCard';
 import ObsidianIntegration from './components/ObsidianIntegration';
 import ProjectOverview from './components/ProjectOverview';
 import MCPIntegration from './components/MCPIntegration';
+import ProactiveSynergyPanel from './components/ProactiveSynergyPanel';
+import FeedbackLoopTracker from './components/FeedbackLoopTracker';
 import { useLanguage } from './contexts/LanguageContext';
 import { 
   TrendingUp, 
@@ -60,14 +62,22 @@ function DashboardContent() {
     }
   ];
 
-  const aiInsights = [
+  const enhancedInsights = [
     {
       title: 'Market Opportunity Detected',
       insight: 'Analysis of your Obsidian notes reveals a potential new market segment in AI healthcare tools. Cross-referencing with industry trends shows 340% growth potential.',
       confidence: 92,
       priority: 'high' as const,
       actionable: true,
-      timestamp: '5 minutes ago'
+      timestamp: '5 minutes ago',
+      connectedNotes: ['Healthcare AI Research.md', 'Market Analysis 2024.md', 'Competitive Intelligence.md'],
+      suggestedActions: [
+        'Conduct market size analysis',
+        'Identify key competitors',
+        'Develop MVP roadmap',
+        'Secure initial funding'
+      ],
+      relatedProjects: ['AI Product Launch', 'Market Expansion']
     },
     {
       title: 'Team Performance Optimization',
@@ -75,7 +85,15 @@ function DashboardContent() {
       confidence: 87,
       priority: 'medium' as const,
       actionable: true,
-      timestamp: '12 minutes ago'
+      timestamp: '12 minutes ago',
+      connectedNotes: ['Team Performance Metrics.md', 'Project Alpha Status.md', 'Resource Allocation.md'],
+      suggestedActions: [
+        'Review current sprint commitments',
+        'Analyze team capacity',
+        'Reallocate senior developers',
+        'Update project timelines'
+      ],
+      relatedProjects: ['Infrastructure Upgrade']
     },
     {
       title: 'Strategic Knowledge Gap',
@@ -83,7 +101,15 @@ function DashboardContent() {
       confidence: 78,
       priority: 'low' as const,
       actionable: true,
-      timestamp: '1 hour ago'
+      timestamp: '1 hour ago',
+      connectedNotes: ['Competitive Analysis/', 'Product Roadmap 2024.md', 'Strategic Planning.md'],
+      suggestedActions: [
+        'Schedule strategy alignment meeting',
+        'Create competitive feature matrix',
+        'Update roadmap priorities',
+        'Document strategic decisions'
+      ],
+      relatedProjects: ['AI Product Launch', 'Market Expansion']
     }
   ];
 
@@ -111,7 +137,12 @@ function DashboardContent() {
           </div>
         </section>
 
-        {/* AI Insights */}
+        {/* Proactive Synergy Panel - New Component */}
+        <section className="mb-8">
+          <ProactiveSynergyPanel />
+        </section>
+
+        {/* Enhanced AI Insights */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
@@ -131,10 +162,15 @@ function DashboardContent() {
           </div>
           
           <div className="space-y-6">
-            {aiInsights.map((insight, index) => (
-              <AIInsightCard key={index} {...insight} />
+            {enhancedInsights.map((insight, index) => (
+              <EnhancedAIInsightCard key={index} {...insight} />
             ))}
           </div>
+        </section>
+
+        {/* Feedback Loop Tracker - New Component */}
+        <section className="mb-8">
+          <FeedbackLoopTracker />
         </section>
 
         {/* Integration Panels */}
