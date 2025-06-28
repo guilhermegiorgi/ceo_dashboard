@@ -45,7 +45,7 @@ export function useInsights() {
   const fetchInsights = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiClient.getInsights();
+      const data = await apiClient.request('/api/insights');
       setInsights(data);
       setError(null);
     } catch (err) {
@@ -58,7 +58,10 @@ export function useInsights() {
 
   const generateInsights = useCallback(async (context) => {
     try {
-      const result = await apiClient.generateInsights(context);
+      const result = await apiClient.request('/api/insights/generate', {
+        method: 'POST',
+        body: { context }
+      });
       await fetchInsights(); // Refresh insights list
       return result;
     } catch (err) {
@@ -69,7 +72,10 @@ export function useInsights() {
 
   const createActionPlan = useCallback(async (insightId, actionPlan) => {
     try {
-      const result = await apiClient.createActionPlan(insightId, actionPlan);
+      const result = await apiClient.request(`/api/insights/${insightId}/action-plan`, {
+        method: 'POST',
+        body: actionPlan
+      });
       return result;
     } catch (err) {
       setError(err.message);
@@ -107,7 +113,7 @@ export function useObsidian() {
 
   const fetchVaultInfo = useCallback(async () => {
     try {
-      const data = await apiClient.getVaultInfo();
+      const data = await apiClient.request('/api/obsidian/vault');
       setVaultInfo(data);
       setError(null);
     } catch (err) {
@@ -118,7 +124,7 @@ export function useObsidian() {
 
   const fetchRecentNotes = useCallback(async (limit = 10) => {
     try {
-      const data = await apiClient.getRecentNotes(limit);
+      const data = await apiClient.request(`/api/obsidian/recent?limit=${limit}`);
       setRecentNotes(data);
       setError(null);
     } catch (err) {
@@ -129,7 +135,7 @@ export function useObsidian() {
 
   const searchNotes = useCallback(async (query, limit = 10) => {
     try {
-      return await apiClient.searchNotes(query, limit);
+      return await apiClient.request(`/api/obsidian/search?query=${encodeURIComponent(query)}&limit=${limit}`);
     } catch (err) {
       setError(err.message);
       throw err;
@@ -138,7 +144,10 @@ export function useObsidian() {
 
   const createNote = useCallback(async (title, content, folder = '') => {
     try {
-      const result = await apiClient.createNote(title, content, folder);
+      const result = await apiClient.request('/api/obsidian/note', {
+        method: 'POST',
+        body: { title, content, folder }
+      });
       await fetchRecentNotes(); // Refresh recent notes
       return result;
     } catch (err) {
@@ -179,7 +188,7 @@ export function useProjects() {
   const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiClient.getProjects();
+      const data = await apiClient.request('/api/projects');
       setProjects(data);
       setError(null);
     } catch (err) {
@@ -192,7 +201,10 @@ export function useProjects() {
 
   const createProject = useCallback(async (project) => {
     try {
-      const result = await apiClient.createProject(project);
+      const result = await apiClient.request('/api/projects', {
+        method: 'POST',
+        body: project
+      });
       await fetchProjects(); // Refresh projects list
       return result;
     } catch (err) {
@@ -203,7 +215,10 @@ export function useProjects() {
 
   const updateProject = useCallback(async (projectId, updates) => {
     try {
-      const result = await apiClient.updateProject(projectId, updates);
+      const result = await apiClient.request(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        body: updates
+      });
       await fetchProjects(); // Refresh projects list
       return result;
     } catch (err) {
@@ -246,7 +261,7 @@ export function useKnowledgeGraph() {
   const fetchNodes = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiClient.getKnowledgeNodes();
+      const data = await apiClient.request('/api/knowledge-graph/nodes');
       setNodes(data);
       setError(null);
     } catch (err) {
@@ -259,7 +274,9 @@ export function useKnowledgeGraph() {
 
   const analyzeGraph = useCallback(async () => {
     try {
-      const result = await apiClient.analyzeKnowledgeGraph();
+      const result = await apiClient.request('/api/knowledge-graph/analyze', {
+        method: 'POST'
+      });
       await fetchNodes(); // Refresh nodes after analysis
       return result;
     } catch (err) {
@@ -286,5 +303,221 @@ export function useKnowledgeGraph() {
     error,
     fetchNodes,
     analyzeGraph
+  };
+}
+
+export function useMCP() {
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchServices = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiClient.request('/api/mcp/services');
+      setServices(data);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+      console.error('Failed to fetch MCP services:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const queryService = useCallback(async (serviceId, query, context = {}) => {
+    try {
+      const result = await apiClient.request(`/api/mcp/services/${serviceId}/query`, {
+        method: 'POST',
+        body: { query, context }
+      });
+      await fetchServices(); // Refresh services to update stats
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [fetchServices]);
+
+  const queryAllServices = useCallback(async (query, context = {}) => {
+    try {
+      const result = await apiClient.request('/api/mcp/query-all', {
+        method: 'POST',
+        body: { query, context }
+      });
+      await fetchServices(); // Refresh services to update stats
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [fetchServices]);
+
+  useEffect(() => {
+    fetchServices();
+    
+    // Refresh services every 30 seconds
+    const interval = setInterval(fetchServices, 30000);
+    return () => clearInterval(interval);
+  }, [fetchServices]);
+
+  return {
+    services,
+    loading,
+    error,
+    fetchServices,
+    queryService,
+    queryAllServices
+  };
+}
+
+export function useDecisions() {
+  const [decisions, setDecisions] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchDecisions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiClient.request('/api/decisions');
+      setDecisions(data);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+      console.error('Failed to fetch decisions:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const data = await apiClient.request('/api/decisions/analytics');
+      setAnalytics(data);
+    } catch (err) {
+      console.error('Failed to fetch decision analytics:', err);
+    }
+  }, []);
+
+  const createDecision = useCallback(async (decision) => {
+    try {
+      const result = await apiClient.request('/api/decisions', {
+        method: 'POST',
+        body: decision
+      });
+      await fetchDecisions();
+      await fetchAnalytics();
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [fetchDecisions, fetchAnalytics]);
+
+  const updateDecision = useCallback(async (decisionId, updates) => {
+    try {
+      const result = await apiClient.request(`/api/decisions/${decisionId}`, {
+        method: 'PUT',
+        body: updates
+      });
+      await fetchDecisions();
+      await fetchAnalytics();
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [fetchDecisions, fetchAnalytics]);
+
+  useEffect(() => {
+    fetchDecisions();
+    fetchAnalytics();
+  }, [fetchDecisions, fetchAnalytics]);
+
+  return {
+    decisions,
+    analytics,
+    loading,
+    error,
+    fetchDecisions,
+    createDecision,
+    updateDecision
+  };
+}
+
+export function useSessions() {
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchSessions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiClient.request('/api/sessions');
+      setSessions(data);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+      console.error('Failed to fetch sessions:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const createSession = useCallback(async (session) => {
+    try {
+      const result = await apiClient.request('/api/sessions', {
+        method: 'POST',
+        body: session
+      });
+      await fetchSessions();
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [fetchSessions]);
+
+  const scheduleSession = useCallback(async (sessionId, date) => {
+    try {
+      const result = await apiClient.request(`/api/sessions/${sessionId}/schedule`, {
+        method: 'POST',
+        body: { date }
+      });
+      await fetchSessions();
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [fetchSessions]);
+
+  const generateAISessions = useCallback(async (insights) => {
+    try {
+      const result = await apiClient.request('/api/sessions/generate', {
+        method: 'POST',
+        body: { insights }
+      });
+      await fetchSessions();
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [fetchSessions]);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  return {
+    sessions,
+    loading,
+    error,
+    fetchSessions,
+    createSession,
+    scheduleSession,
+    generateAISessions
   };
 }

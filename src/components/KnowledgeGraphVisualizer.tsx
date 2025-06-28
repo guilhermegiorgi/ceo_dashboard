@@ -11,9 +11,17 @@ import {
   Link2,
   Tag,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  Settings,
+  Download,
+  Share,
+  Eye,
+  EyeOff,
+  Play,
+  Pause
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useKnowledgeGraph } from '../hooks/useAPI';
 
 interface KnowledgeNode {
   id: string;
@@ -28,113 +36,19 @@ interface KnowledgeNode {
   y?: number;
 }
 
-interface Connection {
-  from: string;
-  to: string;
-  strength: number;
-  type: 'reference' | 'similarity' | 'causal' | 'temporal';
-}
-
 const KnowledgeGraphVisualizer: React.FC = () => {
   const { t } = useLanguage();
+  const { nodes, loading, analyzeGraph } = useKnowledgeGraph();
+  
   const [isExpanded, setIsExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNode, setSelectedNode] = useState<KnowledgeNode | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-  const [nodes, setNodes] = useState<KnowledgeNode[]>([
-    {
-      id: '1',
-      title: 'AI Healthcare Strategy',
-      type: 'project',
-      content: 'Strategic initiative to develop AI-powered healthcare tools...',
-      connections: ['2', '3', '5'],
-      tags: ['healthcare', 'ai', 'strategy'],
-      lastModified: '2024-01-20',
-      importance: 95
-    },
-    {
-      id: '2',
-      title: 'Market Analysis 2024',
-      type: 'note',
-      content: 'Comprehensive analysis of healthcare AI market trends...',
-      connections: ['1', '4', '6'],
-      tags: ['market', 'analysis', 'healthcare'],
-      lastModified: '2024-01-19',
-      importance: 87
-    },
-    {
-      id: '3',
-      title: 'First Principles Thinking',
-      type: 'concept',
-      content: 'Fundamental approach to problem-solving by breaking down complex problems...',
-      connections: ['1', '7', '8'],
-      tags: ['methodology', 'thinking', 'strategy'],
-      lastModified: '2024-01-18',
-      importance: 92
-    },
-    {
-      id: '4',
-      title: 'Competitor X Analysis',
-      type: 'note',
-      content: 'Detailed competitive intelligence on major healthcare AI competitor...',
-      connections: ['2', '6'],
-      tags: ['competitor', 'intelligence', 'healthcare'],
-      lastModified: '2024-01-17',
-      importance: 78
-    },
-    {
-      id: '5',
-      title: 'Cross-Domain Innovation Opportunity',
-      type: 'insight',
-      content: 'AI-discovered synergy between trading algorithms and healthcare optimization...',
-      connections: ['1', '9'],
-      tags: ['innovation', 'cross-domain', 'ai-insight'],
-      lastModified: '2024-01-20',
-      importance: 89
-    },
-    {
-      id: '6',
-      title: 'Product Roadmap 2024',
-      type: 'project',
-      content: 'Strategic product development timeline and priorities...',
-      connections: ['2', '4'],
-      tags: ['product', 'roadmap', 'planning'],
-      lastModified: '2024-01-16',
-      importance: 85
-    },
-    {
-      id: '7',
-      title: 'Decision: Resource Reallocation',
-      type: 'decision',
-      content: 'Strategic decision to reallocate engineering resources based on AI insights...',
-      connections: ['3', '8'],
-      tags: ['decision', 'resources', 'engineering'],
-      lastModified: '2024-01-20',
-      importance: 82
-    },
-    {
-      id: '8',
-      title: 'Team Performance Metrics',
-      type: 'note',
-      content: 'Analysis of team productivity and performance indicators...',
-      connections: ['3', '7'],
-      tags: ['team', 'performance', 'metrics'],
-      lastModified: '2024-01-19',
-      importance: 75
-    },
-    {
-      id: '9',
-      title: 'Trading Algorithm Research',
-      type: 'note',
-      content: 'Research on algorithmic trading strategies and risk management...',
-      connections: ['5'],
-      tags: ['trading', 'algorithms', 'research'],
-      lastModified: '2024-01-15',
-      importance: 70
-    }
-  ]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(true);
+  const [viewMode, setViewMode] = useState<'network' | 'hierarchy' | 'timeline'>('network');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const typeConfig = {
     note: { color: 'bg-blue-500', textColor: 'text-blue-400', icon: FileText },
@@ -150,28 +64,69 @@ const KnowledgeGraphVisualizer: React.FC = () => {
                          node.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          node.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesFilter = filterType === 'all' || node.type === filterType;
-    return matchesSearch && matchesFilter;
+    const matchesTags = selectedTags.length === 0 || selectedTags.some(tag => node.tags.includes(tag));
+    return matchesSearch && matchesFilter && matchesTags;
   });
 
   const handleAnalyzeGraph = async () => {
     setIsAnalyzing(true);
-    // Simulate AI analysis
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Add new AI-discovered connections
-    const newInsight: KnowledgeNode = {
-      id: Date.now().toString(),
-      title: 'Pattern: Success Correlation with First Principles',
-      type: 'insight',
-      content: 'AI analysis reveals that projects tagged with #first-principles have 340% higher success rate...',
-      connections: ['1', '3', '7'],
-      tags: ['ai-insight', 'pattern', 'success'],
-      lastModified: new Date().toISOString().split('T')[0],
-      importance: 94
+    try {
+      await analyzeGraph();
+      alert('Knowledge graph analysis completed! New insights have been generated.');
+    } catch (error) {
+      console.error('Failed to analyze graph:', error);
+      alert('Failed to analyze knowledge graph. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleExportGraph = () => {
+    const exportData = {
+      nodes: filteredNodes,
+      metadata: {
+        exportDate: new Date().toISOString(),
+        totalNodes: nodes.length,
+        filteredNodes: filteredNodes.length,
+        filters: { type: filterType, search: searchQuery, tags: selectedTags }
+      }
     };
     
-    setNodes([...nodes, newInsight]);
-    setIsAnalyzing(false);
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `knowledge-graph-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleShareGraph = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Knowledge Graph Analysis',
+          text: `Knowledge graph with ${filteredNodes.length} nodes`,
+          url: window.location.href
+        });
+      } catch (error) {
+        console.log('Share cancelled');
+      }
+    } else {
+      // Fallback to clipboard
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link copied to clipboard!');
+    }
+  };
+
+  const getAllTags = () => {
+    const allTags = new Set<string>();
+    nodes.forEach(node => {
+      node.tags.forEach(tag => allTags.add(tag));
+    });
+    return Array.from(allTags).sort();
   };
 
   const getNodeSize = (importance: number) => {
@@ -180,15 +135,227 @@ const KnowledgeGraphVisualizer: React.FC = () => {
     return 'w-2 h-2';
   };
 
-  const getConnectionStrength = (nodeId: string, connectedId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
-    const connected = nodes.find(n => n.id === connectedId);
-    if (!node || !connected) return 0;
-    
-    // Calculate connection strength based on shared tags and content similarity
-    const sharedTags = node.tags.filter(tag => connected.tags.includes(tag)).length;
-    return Math.min(sharedTags * 20 + 10, 100);
+  const renderNetworkView = () => (
+    <div className={`bg-slate-900/50 border border-slate-700/50 rounded-lg relative overflow-hidden ${
+      isExpanded ? 'h-96' : 'h-80'
+    }`}>
+      <div className="absolute inset-0 p-4">
+        <svg className="w-full h-full">
+          {/* Render connections */}
+          {filteredNodes.map(node => 
+            node.connections.map(connId => {
+              const connectedNode = filteredNodes.find(n => n.id === connId);
+              if (!connectedNode) return null;
+              
+              const strength = Math.min(
+                node.tags.filter(tag => connectedNode.tags.includes(tag)).length * 20 + 10, 
+                100
+              );
+              const opacity = strength / 100;
+              
+              return (
+                <line
+                  key={`${node.id}-${connId}`}
+                  x1={`${(parseInt(node.id) * 73) % 80 + 10}%`}
+                  y1={`${(parseInt(node.id) * 47) % 70 + 15}%`}
+                  x2={`${(parseInt(connId) * 73) % 80 + 10}%`}
+                  y2={`${(parseInt(connId) * 47) % 70 + 15}%`}
+                  stroke="rgb(99, 102, 241)"
+                  strokeWidth="1"
+                  strokeOpacity={opacity}
+                  className={isAnimating ? 'animate-pulse' : ''}
+                />
+              );
+            })
+          )}
+          
+          {/* Render nodes */}
+          {filteredNodes.map(node => {
+            const config = typeConfig[node.type];
+            return (
+              <g key={node.id}>
+                <circle
+                  cx={`${(parseInt(node.id) * 73) % 80 + 10}%`}
+                  cy={`${(parseInt(node.id) * 47) % 70 + 15}%`}
+                  r={node.importance >= 90 ? "8" : node.importance >= 80 ? "6" : "4"}
+                  fill={config.color.replace('bg-', '').replace('-500', '')}
+                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => setSelectedNode(node)}
+                />
+                <text
+                  x={`${(parseInt(node.id) * 73) % 80 + 10}%`}
+                  y={`${(parseInt(node.id) * 47) % 70 + 25}%`}
+                  textAnchor="middle"
+                  className="text-xs fill-slate-300 cursor-pointer"
+                  onClick={() => setSelectedNode(node)}
+                >
+                  {node.title.length > 15 ? node.title.substring(0, 15) + '...' : node.title}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      
+      {/* Graph Controls */}
+      <div className="absolute top-4 right-4 flex space-x-2">
+        <button
+          onClick={() => setIsAnimating(!isAnimating)}
+          className="p-2 bg-slate-800/80 hover:bg-slate-700/80 rounded-lg transition-colors"
+          title={isAnimating ? 'Pause Animation' : 'Play Animation'}
+        >
+          {isAnimating ? <Pause className="h-4 w-4 text-slate-400" /> : <Play className="h-4 w-4 text-slate-400" />}
+        </button>
+        
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className="p-2 bg-slate-800/80 hover:bg-slate-700/80 rounded-lg transition-colors"
+        >
+          <Settings className="h-4 w-4 text-slate-400" />
+        </button>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="absolute top-16 right-4 bg-slate-800 border border-slate-700 rounded-lg p-4 w-64 z-10">
+          <h4 className="text-white font-medium mb-3">Graph Settings</h4>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm text-slate-300 mb-1">View Mode</label>
+              <select
+                value={viewMode}
+                onChange={(e) => setViewMode(e.target.value as any)}
+                className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm"
+              >
+                <option value="network">Network</option>
+                <option value="hierarchy">Hierarchy</option>
+                <option value="timeline">Timeline</option>
+              </select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-300">Show Labels</span>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" defaultChecked className="sr-only peer" />
+                <div className="w-9 h-5 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-300">Physics Simulation</span>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" defaultChecked className="sr-only peer" />
+                <div className="w-9 h-5 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderNodeDetails = () => {
+    if (!selectedNode) {
+      return (
+        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4 text-center">
+          <Network className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+          <p className="text-sm text-slate-400">Click on a node to view details</p>
+        </div>
+      );
+    }
+
+    const config = typeConfig[selectedNode.type];
+    const Icon = config.icon;
+
+    return (
+      <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4">
+        <div className="flex items-center space-x-2 mb-3">
+          <Icon className={`h-4 w-4 ${config.textColor}`} />
+          <h3 className="text-white font-medium">{selectedNode.title}</h3>
+        </div>
+        
+        <p className="text-sm text-slate-300 mb-3">{selectedNode.content}</p>
+        
+        <div className="space-y-2">
+          <div>
+            <span className="text-xs text-slate-400">Type: </span>
+            <span className={`text-xs ${config.textColor}`}>{selectedNode.type}</span>
+          </div>
+          
+          <div>
+            <span className="text-xs text-slate-400">Importance: </span>
+            <span className="text-xs text-white">{selectedNode.importance}%</span>
+          </div>
+          
+          <div>
+            <span className="text-xs text-slate-400">Connections: </span>
+            <span className="text-xs text-white">{selectedNode.connections.length}</span>
+          </div>
+          
+          <div>
+            <span className="text-xs text-slate-400">Last Modified: </span>
+            <span className="text-xs text-white">{selectedNode.lastModified}</span>
+          </div>
+          
+          <div className="flex flex-wrap gap-1 mt-2">
+            {selectedNode.tags.map((tag, index) => (
+              <span key={index} className="px-2 py-1 bg-slate-600/50 text-slate-300 text-xs rounded">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        </div>
+        
+        <div className="flex space-x-2 mt-4">
+          <button className="flex-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded text-sm transition-colors">
+            Open in Obsidian
+          </button>
+          <button className="flex-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 px-3 py-1 rounded text-sm transition-colors">
+            Generate Insights
+          </button>
+        </div>
+      </div>
+    );
   };
+
+  const renderGraphStats = () => (
+    <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4">
+      <h4 className="text-white font-medium mb-3">Graph Statistics</h4>
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-slate-400">Total Nodes:</span>
+          <span className="text-white">{nodes.length}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Filtered:</span>
+          <span className="text-white">{filteredNodes.length}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Connections:</span>
+          <span className="text-white">{nodes.reduce((acc, node) => acc + node.connections.length, 0)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Avg. Importance:</span>
+          <span className="text-white">{Math.round(nodes.reduce((acc, node) => acc + node.importance, 0) / nodes.length)}%</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">AI Insights:</span>
+          <span className="text-purple-400">{nodes.filter(n => n.type === 'insight').length}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
+        <div className="flex items-center justify-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl transition-all duration-300 ${
@@ -206,6 +373,22 @@ const KnowledgeGraphVisualizer: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-2">
+          <button
+            onClick={handleExportGraph}
+            className="flex items-center space-x-1 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-2 rounded-lg text-sm transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            <span>Export</span>
+          </button>
+          
+          <button
+            onClick={handleShareGraph}
+            className="flex items-center space-x-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-2 rounded-lg text-sm transition-colors"
+          >
+            <Share className="h-4 w-4" />
+            <span>Share</span>
+          </button>
+          
           <button
             onClick={handleAnalyzeGraph}
             disabled={isAnalyzing}
@@ -258,152 +441,45 @@ const KnowledgeGraphVisualizer: React.FC = () => {
           </div>
         </div>
 
+        {/* Tag Filter */}
+        <div className="mb-6">
+          <div className="flex items-center space-x-2 mb-2">
+            <Tag className="h-4 w-4 text-slate-400" />
+            <span className="text-sm text-slate-300">Filter by tags:</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {getAllTags().slice(0, 10).map(tag => (
+              <button
+                key={tag}
+                onClick={() => {
+                  if (selectedTags.includes(tag)) {
+                    setSelectedTags(selectedTags.filter(t => t !== tag));
+                  } else {
+                    setSelectedTags([...selectedTags, tag]);
+                  }
+                }}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  selectedTags.includes(tag)
+                    ? 'bg-blue-600/30 text-blue-400 border border-blue-500/50'
+                    : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50'
+                }`}
+              >
+                #{tag}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Graph Visualization Area */}
           <div className="lg:col-span-2">
-            <div className={`bg-slate-900/50 border border-slate-700/50 rounded-lg relative overflow-hidden ${
-              isExpanded ? 'h-96' : 'h-80'
-            }`}>
-              <div className="absolute inset-0 p-4">
-                {/* Simplified graph visualization */}
-                <svg className="w-full h-full">
-                  {/* Render connections */}
-                  {filteredNodes.map(node => 
-                    node.connections.map(connId => {
-                      const connectedNode = filteredNodes.find(n => n.id === connId);
-                      if (!connectedNode) return null;
-                      
-                      const strength = getConnectionStrength(node.id, connId);
-                      const opacity = strength / 100;
-                      
-                      return (
-                        <line
-                          key={`${node.id}-${connId}`}
-                          x1={`${(parseInt(node.id) * 73) % 80 + 10}%`}
-                          y1={`${(parseInt(node.id) * 47) % 70 + 15}%`}
-                          x2={`${(parseInt(connId) * 73) % 80 + 10}%`}
-                          y2={`${(parseInt(connId) * 47) % 70 + 15}%`}
-                          stroke="rgb(99, 102, 241)"
-                          strokeWidth="1"
-                          strokeOpacity={opacity}
-                        />
-                      );
-                    })
-                  )}
-                  
-                  {/* Render nodes */}
-                  {filteredNodes.map(node => {
-                    const config = typeConfig[node.type];
-                    return (
-                      <g key={node.id}>
-                        <circle
-                          cx={`${(parseInt(node.id) * 73) % 80 + 10}%`}
-                          cy={`${(parseInt(node.id) * 47) % 70 + 15}%`}
-                          r={node.importance >= 90 ? "8" : node.importance >= 80 ? "6" : "4"}
-                          fill={config.color.replace('bg-', '').replace('-500', '')}
-                          className="cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => setSelectedNode(node)}
-                        />
-                        <text
-                          x={`${(parseInt(node.id) * 73) % 80 + 10}%`}
-                          y={`${(parseInt(node.id) * 47) % 70 + 25}%`}
-                          textAnchor="middle"
-                          className="text-xs fill-slate-300 cursor-pointer"
-                          onClick={() => setSelectedNode(node)}
-                        >
-                          {node.title.length > 15 ? node.title.substring(0, 15) + '...' : node.title}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
-              </div>
-              
-              {/* Graph Controls */}
-              <div className="absolute top-4 right-4 flex space-x-2">
-                <button className="p-2 bg-slate-800/80 hover:bg-slate-700/80 rounded-lg transition-colors">
-                  <RefreshCw className="h-4 w-4 text-slate-400" />
-                </button>
-              </div>
-            </div>
+            {renderNetworkView()}
           </div>
 
-          {/* Node Details Panel */}
+          {/* Side Panel */}
           <div className="space-y-4">
-            {selectedNode ? (
-              <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4">
-                <div className="flex items-center space-x-2 mb-3">
-                  {React.createElement(typeConfig[selectedNode.type].icon, {
-                    className: `h-4 w-4 ${typeConfig[selectedNode.type].textColor}`
-                  })}
-                  <h3 className="text-white font-medium">{selectedNode.title}</h3>
-                </div>
-                
-                <p className="text-sm text-slate-300 mb-3">{selectedNode.content}</p>
-                
-                <div className="space-y-2">
-                  <div>
-                    <span className="text-xs text-slate-400">Importance: </span>
-                    <span className="text-xs text-white">{selectedNode.importance}%</span>
-                  </div>
-                  
-                  <div>
-                    <span className="text-xs text-slate-400">Connections: </span>
-                    <span className="text-xs text-white">{selectedNode.connections.length}</span>
-                  </div>
-                  
-                  <div>
-                    <span className="text-xs text-slate-400">Last Modified: </span>
-                    <span className="text-xs text-white">{selectedNode.lastModified}</span>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {selectedNode.tags.map((tag, index) => (
-                      <span key={index} className="px-2 py-1 bg-slate-600/50 text-slate-300 text-xs rounded">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="flex space-x-2 mt-4">
-                  <button className="flex-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded text-sm transition-colors">
-                    Open in Obsidian
-                  </button>
-                  <button className="flex-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 px-3 py-1 rounded text-sm transition-colors">
-                    Generate Insights
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4 text-center">
-                <Network className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-                <p className="text-sm text-slate-400">Click on a node to view details</p>
-              </div>
-            )}
-
-            {/* Graph Statistics */}
-            <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4">
-              <h4 className="text-white font-medium mb-3">Graph Statistics</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Total Nodes:</span>
-                  <span className="text-white">{nodes.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Connections:</span>
-                  <span className="text-white">{nodes.reduce((acc, node) => acc + node.connections.length, 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Avg. Importance:</span>
-                  <span className="text-white">{Math.round(nodes.reduce((acc, node) => acc + node.importance, 0) / nodes.length)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">AI Insights:</span>
-                  <span className="text-purple-400">{nodes.filter(n => n.type === 'insight').length}</span>
-                </div>
-              </div>
-            </div>
+            {renderNodeDetails()}
+            {renderGraphStats()}
           </div>
         </div>
       </div>
