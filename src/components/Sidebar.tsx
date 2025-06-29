@@ -161,14 +161,14 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
         />
       )}
 
-      {/* Sidebar - Fixed Position with Full Height */}
+      {/* Sidebar - Fixed Position Over Main Content */}
       <div className={`
-        fixed lg:relative top-0 left-0 h-screen bg-slate-900/98 backdrop-blur-md border-r border-slate-700/50 z-[50] flex flex-col
-        transition-all duration-300 ease-in-out shadow-2xl lg:shadow-none
+        fixed top-0 left-0 h-full bg-slate-900/98 backdrop-blur-md border-r border-slate-700/50 z-[50] flex flex-col
+        transition-all duration-300 ease-in-out shadow-2xl
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         ${isCollapsed ? 'w-20' : 'w-80'}
       `}>
-        {/* Header - Fixed */}
+        {/* Header */}
         <div className="flex-shrink-0 p-4 border-b border-slate-700/50 bg-slate-900/95">
           <div className="flex items-center justify-between">
             {!isCollapsed && (
@@ -192,8 +192,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           </div>
         </div>
 
-        {/* Navigation - Scrollable */}
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden p-4 scrollbar-thin scrollbar-track-slate-800 scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-500">
+        {/* Navigation - All Items Visible */}
+        <nav className="flex-1 p-4">
           <div className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -206,7 +206,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
                   className={`
                     w-full flex items-center space-x-3 p-3 rounded-xl transition-all duration-200 group
                     ${isActive 
-                      ? `bg-gradient-to-r ${item.gradient} text-white shadow-lg scale-[1.02] shadow-${item.color.split('-')[1]}-500/20` 
+                      ? `bg-gradient-to-r ${item.gradient} text-white shadow-lg scale-[1.02]` 
                       : 'text-slate-300 hover:bg-slate-800/50 hover:text-white hover:scale-[1.01]'
                     }
                     ${isCollapsed ? 'justify-center' : ''}
@@ -239,7 +239,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           </div>
         </nav>
 
-        {/* Footer - Fixed */}
+        {/* Footer */}
         <div className="flex-shrink-0 p-4 border-t border-slate-700/50 bg-slate-900/95">
           <button
             onClick={() => handleSectionSelect('settings')}
@@ -273,31 +273,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           )}
         </div>
       </div>
-
-      {/* Custom Scrollbar Styles */}
-      <style jsx>{`
-        .scrollbar-thin {
-          scrollbar-width: thin;
-        }
-        
-        .scrollbar-track-slate-800::-webkit-scrollbar-track {
-          background-color: rgb(30 41 59);
-          border-radius: 0.375rem;
-        }
-        
-        .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
-          background-color: rgb(71 85 105);
-          border-radius: 0.375rem;
-        }
-        
-        .hover\\:scrollbar-thumb-slate-500:hover::-webkit-scrollbar-thumb {
-          background-color: rgb(100 116 139);
-        }
-        
-        ::-webkit-scrollbar {
-          width: 6px;
-        }
-      `}</style>
     </>
   );
 };
