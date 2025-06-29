@@ -24,12 +24,12 @@ import { useProjects } from '../hooks/useAPI';
 interface Project {
   id: string;
   name: string;
-  status: 'Planning' | 'In Progress' | 'On Hold' | 'Completed' | 'Cancelled';
+  status: 'Planejamento' | 'Em Andamento' | 'Em Espera' | 'Concluído' | 'Cancelado';
   progress: number;
   team_size: number;
   budget: string;
   deadline: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: 'alta' | 'média' | 'baixa';
   roi: string;
   description?: string;
   created_at?: string;
@@ -48,28 +48,28 @@ const ProjectOverview: React.FC = () => {
 
   const [newProject, setNewProject] = useState<Partial<Project>>({
     name: '',
-    status: 'Planning',
+    status: 'Planejamento',
     progress: 0,
     team_size: 1,
     budget: '',
     deadline: '',
-    priority: 'medium',
+    priority: 'média',
     roi: '+0%',
     description: ''
   });
 
   const statusConfig = {
-    'Planning': { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
-    'In Progress': { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
-    'On Hold': { color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
-    'Completed': { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30' },
-    'Cancelled': { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' }
+    'Planejamento': { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
+    'Em Andamento': { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
+    'Em Espera': { color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
+    'Concluído': { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30' },
+    'Cancelado': { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' }
   };
 
   const priorityColors = {
-    high: 'bg-red-500/20 border-red-500/30',
-    medium: 'bg-yellow-500/20 border-yellow-500/30',
-    low: 'bg-green-500/20 border-green-500/30'
+    alta: 'bg-red-500/20 border-red-500/30',
+    média: 'bg-yellow-500/20 border-yellow-500/30',
+    baixa: 'bg-green-500/20 border-green-500/30'
   };
 
   const filteredProjects = projects.filter(project => {
@@ -82,7 +82,7 @@ const ProjectOverview: React.FC = () => {
 
   const handleCreateProject = async () => {
     if (!newProject.name || !newProject.budget || !newProject.deadline) {
-      alert('Please fill in all required fields');
+      alert('Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
@@ -90,10 +90,10 @@ const ProjectOverview: React.FC = () => {
       await createProject(newProject);
       setShowCreateForm(false);
       resetNewProject();
-      alert('Project created successfully!');
+      alert('Projeto criado com sucesso!');
     } catch (error) {
-      console.error('Failed to create project:', error);
-      alert('Failed to create project. Please try again.');
+      console.error('Falha ao criar projeto:', error);
+      alert('Falha ao criar projeto. Tente novamente.');
     }
   };
 
@@ -101,36 +101,36 @@ const ProjectOverview: React.FC = () => {
     try {
       await updateProject(projectId, updates);
       setEditingProject(null);
-      alert('Project updated successfully!');
+      alert('Projeto atualizado com sucesso!');
     } catch (error) {
-      console.error('Failed to update project:', error);
-      alert('Failed to update project. Please try again.');
+      console.error('Falha ao atualizar projeto:', error);
+      alert('Falha ao atualizar projeto. Tente novamente.');
     }
   };
 
   const handleDeleteProject = async (projectId: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) {
+    if (!confirm('Tem certeza que deseja excluir este projeto?')) {
       return;
     }
 
     try {
-      // In a real app, this would call the delete API
-      alert('Project deleted successfully!');
+      // Em uma aplicação real, isso chamaria a API de exclusão
+      alert('Projeto excluído com sucesso!');
     } catch (error) {
-      console.error('Failed to delete project:', error);
-      alert('Failed to delete project. Please try again.');
+      console.error('Falha ao excluir projeto:', error);
+      alert('Falha ao excluir projeto. Tente novamente.');
     }
   };
 
   const resetNewProject = () => {
     setNewProject({
       name: '',
-      status: 'Planning',
+      status: 'Planejamento',
       progress: 0,
       team_size: 1,
       budget: '',
       deadline: '',
-      priority: 'medium',
+      priority: 'média',
       roi: '+0%',
       description: ''
     });
@@ -138,11 +138,11 @@ const ProjectOverview: React.FC = () => {
 
   const getProjectStats = () => {
     const total = projects.length;
-    const completed = projects.filter(p => p.status === 'Completed').length;
-    const inProgress = projects.filter(p => p.status === 'In Progress').length;
+    const completed = projects.filter(p => p.status === 'Concluído').length;
+    const inProgress = projects.filter(p => p.status === 'Em Andamento').length;
     const overdue = projects.filter(p => {
       const deadline = new Date(p.deadline);
-      return deadline < new Date() && p.status !== 'Completed';
+      return deadline < new Date() && p.status !== 'Concluído';
     }).length;
 
     return { total, completed, inProgress, overdue };
@@ -164,7 +164,7 @@ const ProjectOverview: React.FC = () => {
     return (
       <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Create New Project</h2>
+          <h2 className="text-xl font-bold text-white">Criar Novo Projeto</h2>
           <button 
             onClick={() => {
               setShowCreateForm(false);
@@ -178,13 +178,13 @@ const ProjectOverview: React.FC = () => {
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Project Name *</label>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Nome do Projeto *</label>
             <input
               type="text"
               value={newProject.name}
               onChange={(e) => setNewProject({...newProject, name: e.target.value})}
               className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              placeholder="Enter project name..."
+              placeholder="Digite o nome do projeto..."
             />
           </div>
 
@@ -196,41 +196,41 @@ const ProjectOverview: React.FC = () => {
                 onChange={(e) => setNewProject({...newProject, status: e.target.value as any})}
                 className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
               >
-                <option value="Planning">Planning</option>
-                <option value="In Progress">In Progress</option>
-                <option value="On Hold">On Hold</option>
-                <option value="Completed">Completed</option>
+                <option value="Planejamento">Planejamento</option>
+                <option value="Em Andamento">Em Andamento</option>
+                <option value="Em Espera">Em Espera</option>
+                <option value="Concluído">Concluído</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Priority</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Prioridade</label>
               <select
                 value={newProject.priority}
                 onChange={(e) => setNewProject({...newProject, priority: e.target.value as any})}
                 className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
               >
-                <option value="high">High Priority</option>
-                <option value="medium">Medium Priority</option>
-                <option value="low">Low Priority</option>
+                <option value="alta">Alta Prioridade</option>
+                <option value="média">Média Prioridade</option>
+                <option value="baixa">Baixa Prioridade</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Budget *</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Orçamento *</label>
               <input
                 type="text"
                 value={newProject.budget}
                 onChange={(e) => setNewProject({...newProject, budget: e.target.value})}
                 className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                placeholder="e.g., $150K"
+                placeholder="ex: R$ 150K"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Team Size</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Tamanho da Equipe</label>
               <input
                 type="number"
                 value={newProject.team_size}
@@ -243,7 +243,7 @@ const ProjectOverview: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Deadline *</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Prazo *</label>
               <input
                 type="date"
                 value={newProject.deadline}
@@ -253,20 +253,20 @@ const ProjectOverview: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Expected ROI</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">ROI Esperado</label>
               <input
                 type="text"
                 value={newProject.roi}
                 onChange={(e) => setNewProject({...newProject, roi: e.target.value})}
                 className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                placeholder="e.g., +35%"
+                placeholder="ex: +35%"
               />
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
-              Progress: {newProject.progress}%
+              Progresso: {newProject.progress}%
             </label>
             <input
               type="range"
@@ -279,12 +279,12 @@ const ProjectOverview: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Descrição</label>
             <textarea
               value={newProject.description}
               onChange={(e) => setNewProject({...newProject, description: e.target.value})}
               className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white h-20 focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              placeholder="Project description..."
+              placeholder="Descrição do projeto..."
             />
           </div>
 
@@ -293,7 +293,7 @@ const ProjectOverview: React.FC = () => {
               onClick={handleCreateProject}
               className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
             >
-              Create Project
+              Criar Projeto
             </button>
             <button
               onClick={() => {
@@ -302,7 +302,7 @@ const ProjectOverview: React.FC = () => {
               }}
               className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
             >
-              Cancel
+              Cancelar
             </button>
           </div>
         </div>
@@ -328,7 +328,7 @@ const ProjectOverview: React.FC = () => {
           className="flex items-center space-x-2 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
         >
           <Plus className="h-4 w-4" />
-          <span>New Project</span>
+          <span>Novo Projeto</span>
         </button>
       </div>
 
@@ -345,7 +345,7 @@ const ProjectOverview: React.FC = () => {
         <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-1">
             <CheckCircle className="h-4 w-4 text-green-400" />
-            <span className="text-sm text-slate-400">Completed</span>
+            <span className="text-sm text-slate-400">Concluídos</span>
           </div>
           <div className="text-xl font-bold text-green-400">{stats.completed}</div>
         </div>
@@ -353,7 +353,7 @@ const ProjectOverview: React.FC = () => {
         <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-1">
             <Clock className="h-4 w-4 text-yellow-400" />
-            <span className="text-sm text-slate-400">In Progress</span>
+            <span className="text-sm text-slate-400">Em Andamento</span>
           </div>
           <div className="text-xl font-bold text-yellow-400">{stats.inProgress}</div>
         </div>
@@ -361,7 +361,7 @@ const ProjectOverview: React.FC = () => {
         <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-1">
             <AlertTriangle className="h-4 w-4 text-red-400" />
-            <span className="text-sm text-slate-400">Overdue</span>
+            <span className="text-sm text-slate-400">Atrasados</span>
           </div>
           <div className="text-xl font-bold text-red-400">{stats.overdue}</div>
         </div>
@@ -373,7 +373,7 @@ const ProjectOverview: React.FC = () => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search projects..."
+            placeholder="Pesquisar projetos..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-10 pr-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/50"
@@ -385,11 +385,11 @@ const ProjectOverview: React.FC = () => {
           onChange={(e) => setFilterStatus(e.target.value)}
           className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
         >
-          <option value="all">All Status</option>
-          <option value="Planning">Planning</option>
-          <option value="In Progress">In Progress</option>
-          <option value="On Hold">On Hold</option>
-          <option value="Completed">Completed</option>
+          <option value="all">Todos os Status</option>
+          <option value="Planejamento">Planejamento</option>
+          <option value="Em Andamento">Em Andamento</option>
+          <option value="Em Espera">Em Espera</option>
+          <option value="Concluído">Concluído</option>
         </select>
 
         <select
@@ -397,10 +397,10 @@ const ProjectOverview: React.FC = () => {
           onChange={(e) => setFilterPriority(e.target.value)}
           className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
         >
-          <option value="all">All Priority</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+          <option value="all">Todas as Prioridades</option>
+          <option value="alta">Alta</option>
+          <option value="média">Média</option>
+          <option value="baixa">Baixa</option>
         </select>
       </div>
       
@@ -408,7 +408,7 @@ const ProjectOverview: React.FC = () => {
       <div className="space-y-4">
         {filteredProjects.map((project) => {
           const statusConf = statusConfig[project.status as keyof typeof statusConfig];
-          const isOverdue = new Date(project.deadline) < new Date() && project.status !== 'Completed';
+          const isOverdue = new Date(project.deadline) < new Date() && project.status !== 'Concluído';
           
           return (
             <div key={project.id} className={`border border-slate-600/50 rounded-lg p-4 hover:bg-slate-700/30 transition-all duration-200 ${priorityColors[project.priority as keyof typeof priorityColors]}`}>
@@ -443,14 +443,14 @@ const ProjectOverview: React.FC = () => {
                     
                     <div className="flex items-center space-x-1 text-slate-400">
                       <Users className="h-3 w-3" />
-                      <span className="text-xs">{project.team_size} {t('projects.members')}</span>
+                      <span className="text-xs">{project.team_size} membros</span>
                     </div>
                     
                     <div className="flex items-center space-x-1 text-slate-400">
                       <Calendar className="h-3 w-3" />
                       <span className={`text-xs ${isOverdue ? 'text-red-400' : ''}`}>
                         {project.deadline}
-                        {isOverdue && ' (Overdue)'}
+                        {isOverdue && ' (Atrasado)'}
                       </span>
                     </div>
                   </div>
@@ -470,7 +470,7 @@ const ProjectOverview: React.FC = () => {
               
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-400">{t('projects.progress')}</span>
+                  <span className="text-sm text-slate-400">Progresso</span>
                   <span className="text-sm text-white font-medium">{project.progress}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
@@ -488,7 +488,7 @@ const ProjectOverview: React.FC = () => {
       {filteredProjects.length === 0 && (
         <div className="text-center py-8">
           <Briefcase className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400">No projects found matching your criteria</p>
+          <p className="text-slate-400">Nenhum projeto encontrado com os critérios especificados</p>
         </div>
       )}
     </div>

@@ -34,97 +34,97 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
   const menuItems = [
     {
       id: 'overview',
-      label: 'Executive Overview',
+      label: t('nav.overview'),
       icon: Home,
-      description: 'Main dashboard with key metrics',
+      description: t('nav.overview.desc'),
       color: 'text-blue-400',
       gradient: 'from-blue-500 to-cyan-600'
     },
     {
       id: 'business-intelligence',
-      label: 'Business Intelligence',
+      label: t('nav.business_intelligence'),
       icon: BarChart3,
-      description: 'KPIs, metrics and analytics',
+      description: t('nav.business_intelligence.desc'),
       color: 'text-emerald-400',
       gradient: 'from-emerald-500 to-teal-600'
     },
     {
       id: 'market-intelligence',
-      label: 'Market Intelligence',
+      label: t('nav.market_intelligence'),
       icon: Globe,
-      description: 'Market opportunities and trends',
+      description: t('nav.market_intelligence.desc'),
       color: 'text-purple-400',
       gradient: 'from-purple-500 to-pink-600'
     },
     {
       id: 'predictive-analytics',
-      label: 'Predictive Analytics',
+      label: t('nav.predictive_analytics'),
       icon: TrendingUp,
-      description: 'Forecasting and scenario analysis',
+      description: t('nav.predictive_analytics.desc'),
       color: 'text-orange-400',
       gradient: 'from-orange-500 to-red-600'
     },
     {
       id: 'ai-orchestrator',
-      label: 'AI Agent Orchestrator',
+      label: t('nav.ai_orchestrator'),
       icon: Bot,
-      description: 'Manage AI workforce',
+      description: t('nav.ai_orchestrator.desc'),
       color: 'text-cyan-400',
       gradient: 'from-cyan-500 to-blue-600'
     },
     {
       id: 'knowledge-graph',
-      label: 'Knowledge Graph',
+      label: t('nav.knowledge_graph'),
       icon: Network,
-      description: 'Visualize knowledge connections',
+      description: t('nav.knowledge_graph.desc'),
       color: 'text-indigo-400',
       gradient: 'from-indigo-500 to-purple-600'
     },
     {
       id: 'synergy-intelligence',
-      label: 'Synergy Intelligence',
+      label: t('nav.synergy_intelligence'),
       icon: Brain,
-      description: 'Discover hidden connections',
+      description: t('nav.synergy_intelligence.desc'),
       color: 'text-pink-400',
       gradient: 'from-pink-500 to-rose-600'
     },
     {
       id: 'strategic-sessions',
-      label: 'Strategic Sessions',
+      label: t('nav.strategic_sessions'),
       icon: Calendar,
-      description: 'Plan strategic meetings',
+      description: t('nav.strategic_sessions.desc'),
       color: 'text-violet-400',
       gradient: 'from-violet-500 to-purple-600'
     },
     {
       id: 'decision-journal',
-      label: 'Decision Journal',
+      label: t('nav.decision_journal'),
       icon: BookOpen,
-      description: 'Track decisions and outcomes',
+      description: t('nav.decision_journal.desc'),
       color: 'text-green-400',
       gradient: 'from-green-500 to-emerald-600'
     },
     {
       id: 'projects',
-      label: 'Project Management',
+      label: t('nav.projects'),
       icon: Target,
-      description: 'Manage active projects',
+      description: t('nav.projects.desc'),
       color: 'text-yellow-400',
       gradient: 'from-yellow-500 to-orange-600'
     },
     {
       id: 'obsidian',
-      label: 'Second Brain',
+      label: t('nav.obsidian'),
       icon: Zap,
-      description: 'Obsidian integration',
+      description: t('nav.obsidian.desc'),
       color: 'text-teal-400',
       gradient: 'from-teal-500 to-cyan-600'
     },
     {
       id: 'mcp',
-      label: 'MCP Services',
+      label: t('nav.mcp'),
       icon: Activity,
-      description: 'AI service protocols',
+      description: t('nav.mcp.desc'),
       color: 'text-red-400',
       gradient: 'from-red-500 to-pink-600'
     }
@@ -177,8 +177,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
                   <Brain className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-white">GG.AI Labs</h1>
-                  <p className="text-xs text-slate-400">CEO Dashboard</p>
+                  <h1 className="text-lg font-bold text-white">{t('header.title')}</h1>
+                  <p className="text-xs text-slate-400">{t('header.subtitle')}</p>
                 </div>
               </div>
             )}
@@ -251,15 +251,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
               }
               ${isCollapsed ? 'justify-center' : ''}
             `}
-            title={isCollapsed ? 'Settings' : ''}
+            title={isCollapsed ? t('nav.settings') : ''}
           >
             <div className="p-2 bg-slate-700/30 rounded-lg">
               <Settings className="h-4 w-4" />
             </div>
             {!isCollapsed && (
               <div className="flex-1 text-left">
-                <div className="font-medium text-sm">Settings</div>
-                <div className="text-xs opacity-70">System configuration</div>
+                <div className="font-medium text-sm">{t('nav.settings')}</div>
+                <div className="text-xs opacity-70">{t('nav.settings.desc')}</div>
               </div>
             )}
           </button>
@@ -267,7 +267,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           {!isCollapsed && (
             <div className="mt-4 pt-4 border-t border-slate-700/50">
               <div className="text-xs text-slate-500 text-center">
-                v1.0.0 • Intelligence Augmentation Platform
+                v1.0.0 • Plataforma de Amplificação de Inteligência
               </div>
             </div>
           )}

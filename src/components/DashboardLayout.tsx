@@ -37,39 +37,39 @@ const DashboardLayout: React.FC = () => {
 
   const metrics = [
     {
-      title: 'Revenue Growth',
-      value: '$2.4M',
-      change: '+23.5% from last quarter',
+      title: t('metrics.revenue'),
+      value: t('metrics.revenue.value'),
+      change: t('metrics.revenue.change'),
       trend: 'up' as const,
       icon: DollarSign,
-      description: 'Strong performance across all product lines',
+      description: t('metrics.revenue.desc'),
       translationKey: 'metrics.revenue'
     },
     {
-      title: 'AI Efficiency Score',
-      value: '94.2%',
-      change: '+8.1% this month',
+      title: t('metrics.ai_efficiency'),
+      value: t('metrics.ai_efficiency.value'),
+      change: t('metrics.ai_efficiency.change'),
       trend: 'up' as const,
       icon: Brain,
-      description: 'AI agents operating at peak performance',
+      description: t('metrics.ai_efficiency.desc'),
       translationKey: 'metrics.ai_efficiency'
     },
     {
-      title: 'Active Projects',
-      value: '12',
-      change: '3 launched this week',
+      title: t('metrics.active_projects'),
+      value: t('metrics.active_projects.value'),
+      change: t('metrics.active_projects.change'),
       trend: 'up' as const,
       icon: Target,
-      description: 'Strategic initiatives on track',
+      description: t('metrics.active_projects.desc'),
       translationKey: 'metrics.active_projects'
     },
     {
-      title: 'Team Productivity',
-      value: '87%',
-      change: '+5.2% improvement',
+      title: t('metrics.team_productivity'),
+      value: t('metrics.team_productivity.value'),
+      change: t('metrics.team_productivity.change'),
       trend: 'up' as const,
       icon: TrendingUp,
-      description: 'Enhanced by AI-powered insights',
+      description: t('metrics.team_productivity.desc'),
       translationKey: 'metrics.team_productivity'
     }
   ];
@@ -77,61 +77,61 @@ const DashboardLayout: React.FC = () => {
   const enhancedInsights = [
     {
       id: '1',
-      title: 'Market Opportunity Detected',
-      insight: 'Analysis of your Obsidian notes reveals a potential new market segment in AI healthcare tools. Cross-referencing with industry trends shows 340% growth potential.',
+      title: 'Oportunidade de Mercado Detectada',
+      insight: 'Análise das suas notas do Obsidian revela um potencial novo segmento de mercado em ferramentas de IA para saúde. Cruzamento com tendências da indústria mostra 340% de potencial de crescimento.',
       confidence: 92,
       priority: 'high' as const,
       actionable: true,
-      timestamp: '5 minutes ago',
-      connectedNotes: ['Healthcare AI Research.md', 'Market Analysis 2024.md', 'Competitive Intelligence.md'],
+      timestamp: '5 minutos atrás',
+      connectedNotes: ['Pesquisa IA Saúde.md', 'Análise de Mercado 2024.md', 'Inteligência Competitiva.md'],
       suggestedActions: [
-        'Conduct market size analysis',
-        'Identify key competitors',
-        'Develop MVP roadmap',
-        'Secure initial funding'
+        'Conduzir análise de tamanho de mercado',
+        'Identificar principais concorrentes',
+        'Desenvolver roadmap de MVP',
+        'Garantir financiamento inicial'
       ],
-      relatedProjects: ['AI Product Launch', 'Market Expansion']
+      relatedProjects: ['Lançamento Produto IA', 'Expansão de Mercado']
     },
     {
       id: '2',
-      title: 'Team Performance Optimization',
-      insight: 'Your meeting notes indicate that engineering velocity could increase by 25% by reallocating resources from Project Alpha to Beta based on current priority scoring.',
+      title: 'Otimização de Performance da Equipe',
+      insight: 'Suas notas de reunião indicam que a velocidade de engenharia poderia aumentar 25% realocando recursos do Projeto Alpha para Beta baseado na pontuação de prioridade atual.',
       confidence: 87,
       priority: 'medium' as const,
       actionable: true,
-      timestamp: '12 minutes ago',
-      connectedNotes: ['Team Performance Metrics.md', 'Project Alpha Status.md', 'Resource Allocation.md'],
+      timestamp: '12 minutos atrás',
+      connectedNotes: ['Métricas Performance Equipe.md', 'Status Projeto Alpha.md', 'Alocação de Recursos.md'],
       suggestedActions: [
-        'Review current sprint commitments',
-        'Analyze team capacity',
-        'Reallocate senior developers',
-        'Update project timelines'
+        'Revisar compromissos de sprint atuais',
+        'Analisar capacidade da equipe',
+        'Realocar desenvolvedores sênior',
+        'Atualizar cronogramas de projeto'
       ],
-      relatedProjects: ['Infrastructure Upgrade']
+      relatedProjects: ['Upgrade de Infraestrutura']
     }
   ];
 
   const handleAnalyzeKnowledge = async () => {
     try {
-      alert('Starting comprehensive knowledge graph analysis...');
+      alert('Iniciando análise abrangente do grafo de conhecimento...');
     } catch (error) {
-      console.error('Failed to analyze knowledge:', error);
+      console.error('Falha ao analisar conhecimento:', error);
     }
   };
 
   const handleGenerateStrategy = async () => {
     try {
-      alert('Generating strategic report based on current insights...');
+      alert('Gerando relatório estratégico baseado nos insights atuais...');
     } catch (error) {
-      console.error('Failed to generate strategy:', error);
+      console.error('Falha ao gerar estratégia:', error);
     }
   };
 
   const handleScheduleReview = async () => {
     try {
-      alert('Scheduling AI review session for next week...');
+      alert('Agendando sessão de revisão IA para próxima semana...');
     } catch (error) {
-      console.error('Failed to schedule review:', error);
+      console.error('Falha ao agendar revisão:', error);
     }
   };
 
@@ -264,7 +264,7 @@ const DashboardLayout: React.FC = () => {
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <Activity className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400">Section under development</p>
+              <p className="text-slate-400">Seção em desenvolvimento</p>
             </div>
           </div>
         );

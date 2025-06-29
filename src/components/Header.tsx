@@ -16,25 +16,25 @@ const Header: React.FC = () => {
   const notifications = [
     {
       id: 1,
-      title: 'New AI Insight Available',
-      message: 'Market opportunity detected in healthcare AI',
-      time: '2 minutes ago',
+      title: 'Novo Insight de IA Disponível',
+      message: 'Oportunidade de mercado detectada em IA para saúde',
+      time: '2 minutos atrás',
       type: 'insight',
       read: false
     },
     {
       id: 2,
-      title: 'Strategic Session Scheduled',
-      message: 'Cross-domain innovation workshop set for tomorrow',
-      time: '1 hour ago',
+      title: 'Sessão Estratégica Agendada',
+      message: 'Workshop de inovação cross-domain marcado para amanhã',
+      time: '1 hora atrás',
       type: 'session',
       read: false
     },
     {
       id: 3,
-      title: 'Decision Journal Updated',
-      message: 'Resource reallocation decision validated',
-      time: '3 hours ago',
+      title: 'Diário de Decisões Atualizado',
+      message: 'Decisão de realocação de recursos validada',
+      time: '3 horas atrás',
       type: 'decision',
       read: true
     }
@@ -76,7 +76,7 @@ const Header: React.FC = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search across all systems..."
+                placeholder={t('header.search')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg pl-10 pr-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
@@ -123,7 +123,7 @@ const Header: React.FC = () => {
                   <User className="h-4 w-4 text-white" />
                 </div>
                 <div className="hidden md:block text-left">
-                  <div className="text-sm font-medium text-white">CEO Admin</div>
+                  <div className="text-sm font-medium text-white">Admin CEO</div>
                   <div className="text-xs text-slate-400">GG.AI Labs</div>
                 </div>
               </button>
