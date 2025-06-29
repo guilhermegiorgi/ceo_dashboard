@@ -192,8 +192,30 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           </div>
         </div>
 
-        {/* Navigation - All Items Visible */}
-        <nav className="flex-1 p-4">
+        {/* Navigation - Scrollable with Transparent Scrollbar */}
+        <nav className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-600/50 hover:scrollbar-thumb-slate-500/70">
+          <style jsx>{`
+            /* Custom scrollbar styles */
+            .scrollbar-thin::-webkit-scrollbar {
+              width: 6px;
+            }
+            .scrollbar-track-transparent::-webkit-scrollbar-track {
+              background: transparent;
+            }
+            .scrollbar-thumb-slate-600\/50::-webkit-scrollbar-thumb {
+              background-color: rgba(71, 85, 105, 0.5);
+              border-radius: 3px;
+            }
+            .hover\\:scrollbar-thumb-slate-500\/70:hover::-webkit-scrollbar-thumb {
+              background-color: rgba(100, 116, 139, 0.7);
+            }
+            /* Firefox scrollbar */
+            .scrollbar-thin {
+              scrollbar-width: thin;
+              scrollbar-color: rgba(71, 85, 105, 0.5) transparent;
+            }
+          `}</style>
+          
           <div className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
