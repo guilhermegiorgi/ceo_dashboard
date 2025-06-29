@@ -37,40 +37,36 @@ const DashboardLayout: React.FC = () => {
 
   const metrics = [
     {
-      title: t('metrics.revenue'),
-      value: t('metrics.revenue.value'),
-      change: t('metrics.revenue.change'),
+      title: 'Crescimento da Receita',
+      value: 'R$ 12,8M',
+      change: '+23,5% do último trimestre',
       trend: 'up' as const,
       icon: DollarSign,
-      description: t('metrics.revenue.desc'),
-      translationKey: 'metrics.revenue'
+      description: 'Performance forte em todas as linhas de produto'
     },
     {
-      title: t('metrics.ai_efficiency'),
-      value: t('metrics.ai_efficiency.value'),
-      change: t('metrics.ai_efficiency.change'),
+      title: 'Score de Eficiência IA',
+      value: '94,2%',
+      change: '+8,1% este mês',
       trend: 'up' as const,
       icon: Brain,
-      description: t('metrics.ai_efficiency.desc'),
-      translationKey: 'metrics.ai_efficiency'
+      description: 'Agentes IA operando com performance máxima'
     },
     {
-      title: t('metrics.active_projects'),
-      value: t('metrics.active_projects.value'),
-      change: t('metrics.active_projects.change'),
+      title: 'Projetos Ativos',
+      value: '12',
+      change: '3 lançados esta semana',
       trend: 'up' as const,
       icon: Target,
-      description: t('metrics.active_projects.desc'),
-      translationKey: 'metrics.active_projects'
+      description: 'Iniciativas estratégicas no cronograma'
     },
     {
-      title: t('metrics.team_productivity'),
-      value: t('metrics.team_productivity.value'),
-      change: t('metrics.team_productivity.change'),
+      title: 'Produtividade da Equipe',
+      value: '87%',
+      change: '+5,2% de melhoria',
       trend: 'up' as const,
       icon: TrendingUp,
-      description: t('metrics.team_productivity.desc'),
-      translationKey: 'metrics.team_productivity'
+      description: 'Aprimorada por insights alimentados por IA'
     }
   ];
 
@@ -151,8 +147,8 @@ const DashboardLayout: React.FC = () => {
                   <BarChart3 className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-white">{t('metrics.title')}</h2>
-                  <p className="text-slate-400">{t('metrics.subtitle')}</p>
+                  <h2 className="text-2xl font-bold text-white">Visão Executiva</h2>
+                  <p className="text-slate-400">Inteligência de negócios e métricas em tempo real</p>
                 </div>
               </div>
               
@@ -171,14 +167,14 @@ const DashboardLayout: React.FC = () => {
                     <Zap className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white">{t('insights.title')}</h2>
-                    <p className="text-slate-400">{t('insights.subtitle')}</p>
+                    <h2 className="text-2xl font-bold text-white">Insights Alimentados por IA</h2>
+                    <p className="text-slate-400">Recomendações estratégicas do seu segundo cérebro</p>
                   </div>
                 </div>
                 
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-sm text-green-400">{t('insights.live')}</span>
+                  <span className="text-sm text-green-400">Análise ao Vivo</span>
                 </div>
               </div>
               
@@ -196,14 +192,14 @@ const DashboardLayout: React.FC = () => {
 
             {/* Quick Actions */}
             <section className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
-              <h2 className="text-xl font-bold text-white mb-4">{t('actions.title')}</h2>
+              <h2 className="text-xl font-bold text-white mb-4">Ações Rápidas</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button 
                   onClick={handleAnalyzeKnowledge}
                   className="flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 hover:scale-105"
                 >
                   <Brain className="h-5 w-5" />
-                  <span>{t('actions.analyze')}</span>
+                  <span>Analisar Grafo de Conhecimento</span>
                 </button>
                 
                 <button 
@@ -211,7 +207,7 @@ const DashboardLayout: React.FC = () => {
                   className="flex items-center justify-center space-x-2 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 hover:scale-105"
                 >
                   <Target className="h-5 w-5" />
-                  <span>{t('actions.strategy')}</span>
+                  <span>Gerar Relatório Estratégico</span>
                 </button>
                 
                 <button 
@@ -219,7 +215,7 @@ const DashboardLayout: React.FC = () => {
                   className="flex items-center justify-center space-x-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 hover:scale-105"
                 >
                   <Clock className="h-5 w-5" />
-                  <span>{t('actions.schedule')}</span>
+                  <span>Agendar Revisão IA</span>
                 </button>
               </div>
             </section>
