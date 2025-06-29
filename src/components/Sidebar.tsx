@@ -34,97 +34,97 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
   const menuItems = [
     {
       id: 'overview',
-      label: t('nav.overview'),
+      label: 'Visão Executiva',
       icon: Home,
-      description: t('nav.overview.desc'),
+      description: 'Painel principal com métricas essenciais',
       color: 'text-blue-400',
       gradient: 'from-blue-500 to-cyan-600'
     },
     {
       id: 'business-intelligence',
-      label: t('nav.business_intelligence'),
+      label: 'Inteligência de Negócios',
       icon: BarChart3,
-      description: t('nav.business_intelligence.desc'),
+      description: 'KPIs, métricas e análises',
       color: 'text-emerald-400',
       gradient: 'from-emerald-500 to-teal-600'
     },
     {
       id: 'market-intelligence',
-      label: t('nav.market_intelligence'),
+      label: 'Inteligência de Mercado',
       icon: Globe,
-      description: t('nav.market_intelligence.desc'),
+      description: 'Oportunidades e tendências de mercado',
       color: 'text-purple-400',
       gradient: 'from-purple-500 to-pink-600'
     },
     {
       id: 'predictive-analytics',
-      label: t('nav.predictive_analytics'),
+      label: 'Análise Preditiva',
       icon: TrendingUp,
-      description: t('nav.predictive_analytics.desc'),
+      description: 'Previsões e análise de cenários',
       color: 'text-orange-400',
       gradient: 'from-orange-500 to-red-600'
     },
     {
       id: 'ai-orchestrator',
-      label: t('nav.ai_orchestrator'),
+      label: 'Orquestrador de IA',
       icon: Bot,
-      description: t('nav.ai_orchestrator.desc'),
+      description: 'Gerenciar força de trabalho IA',
       color: 'text-cyan-400',
       gradient: 'from-cyan-500 to-blue-600'
     },
     {
       id: 'knowledge-graph',
-      label: t('nav.knowledge_graph'),
+      label: 'Grafo de Conhecimento',
       icon: Network,
-      description: t('nav.knowledge_graph.desc'),
+      description: 'Visualizar conexões de conhecimento',
       color: 'text-indigo-400',
       gradient: 'from-indigo-500 to-purple-600'
     },
     {
       id: 'synergy-intelligence',
-      label: t('nav.synergy_intelligence'),
+      label: 'Inteligência de Sinergia',
       icon: Brain,
-      description: t('nav.synergy_intelligence.desc'),
+      description: 'Descobrir conexões ocultas',
       color: 'text-pink-400',
       gradient: 'from-pink-500 to-rose-600'
     },
     {
       id: 'strategic-sessions',
-      label: t('nav.strategic_sessions'),
+      label: 'Sessões Estratégicas',
       icon: Calendar,
-      description: t('nav.strategic_sessions.desc'),
+      description: 'Planejar reuniões estratégicas',
       color: 'text-violet-400',
       gradient: 'from-violet-500 to-purple-600'
     },
     {
       id: 'decision-journal',
-      label: t('nav.decision_journal'),
+      label: 'Diário de Decisões',
       icon: BookOpen,
-      description: t('nav.decision_journal.desc'),
+      description: 'Rastrear decisões e resultados',
       color: 'text-green-400',
       gradient: 'from-green-500 to-emerald-600'
     },
     {
       id: 'projects',
-      label: t('nav.projects'),
+      label: 'Gestão de Projetos',
       icon: Target,
-      description: t('nav.projects.desc'),
+      description: 'Gerenciar projetos ativos',
       color: 'text-yellow-400',
       gradient: 'from-yellow-500 to-orange-600'
     },
     {
       id: 'obsidian',
-      label: t('nav.obsidian'),
+      label: 'Segundo Cérebro',
       icon: Zap,
-      description: t('nav.obsidian.desc'),
+      description: 'Integração com Obsidian',
       color: 'text-teal-400',
       gradient: 'from-teal-500 to-cyan-600'
     },
     {
       id: 'mcp',
-      label: t('nav.mcp'),
+      label: 'Serviços MCP',
       icon: Activity,
-      description: t('nav.mcp.desc'),
+      description: 'Protocolos de serviços IA',
       color: 'text-red-400',
       gradient: 'from-red-500 to-pink-600'
     }
@@ -145,10 +145,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
 
   return (
     <>
-      {/* Mobile Menu Button */}
+      {/* Mobile Menu Button - Fixed Position */}
       <button
         onClick={handleToggleMobile}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-slate-800 border border-slate-700 rounded-lg text-white hover:bg-slate-700 transition-colors"
+        className="lg:hidden fixed top-4 left-4 z-[60] p-3 bg-slate-800/95 backdrop-blur-sm border border-slate-700/50 rounded-xl text-white hover:bg-slate-700/95 transition-all duration-200 shadow-xl"
       >
         {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
@@ -156,44 +156,44 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
-          className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+          className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[45]"
           onClick={() => setIsOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Fixed Position with Full Height */}
       <div className={`
-        fixed lg:relative top-0 left-0 h-full bg-slate-900/95 backdrop-blur-sm border-r border-slate-700/50 z-40
-        transition-all duration-300 ease-in-out
+        fixed lg:relative top-0 left-0 h-screen bg-slate-900/98 backdrop-blur-md border-r border-slate-700/50 z-[50] flex flex-col
+        transition-all duration-300 ease-in-out shadow-2xl lg:shadow-none
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        ${isCollapsed ? 'w-16' : 'w-80'}
+        ${isCollapsed ? 'w-20' : 'w-80'}
       `}>
-        {/* Header */}
-        <div className="p-4 border-b border-slate-700/50">
+        {/* Header - Fixed */}
+        <div className="flex-shrink-0 p-4 border-b border-slate-700/50 bg-slate-900/95">
           <div className="flex items-center justify-between">
             {!isCollapsed && (
               <div className="flex items-center space-x-3">
-                <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
+                <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg shadow-lg">
                   <Brain className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-white">{t('header.title')}</h1>
-                  <p className="text-xs text-slate-400">{t('header.subtitle')}</p>
+                  <h1 className="text-lg font-bold text-white">GG.AI Labs</h1>
+                  <p className="text-xs text-slate-400">Painel do CEO</p>
                 </div>
               </div>
             )}
             
             <button
               onClick={handleToggleCollapse}
-              className="hidden lg:flex p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white"
+              className="hidden lg:flex p-2 hover:bg-slate-800/50 rounded-lg transition-colors text-slate-400 hover:text-white"
             >
               {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </button>
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-4">
+        {/* Navigation - Scrollable */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden p-4 scrollbar-thin scrollbar-track-slate-800 scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-500">
           <div className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -204,10 +204,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
                   key={item.id}
                   onClick={() => handleSectionSelect(item.id)}
                   className={`
-                    w-full flex items-center space-x-3 p-3 rounded-xl transition-all duration-200
+                    w-full flex items-center space-x-3 p-3 rounded-xl transition-all duration-200 group
                     ${isActive 
-                      ? `bg-gradient-to-r ${item.gradient} text-white shadow-lg scale-105` 
-                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                      ? `bg-gradient-to-r ${item.gradient} text-white shadow-lg scale-[1.02] shadow-${item.color.split('-')[1]}-500/20` 
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white hover:scale-[1.01]'
                     }
                     ${isCollapsed ? 'justify-center' : ''}
                   `}
@@ -216,22 +216,22 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
                   <div className={`
                     p-2 rounded-lg transition-all duration-200
                     ${isActive 
-                      ? 'bg-white/20' 
-                      : 'bg-slate-700/30'
+                      ? 'bg-white/20 shadow-inner' 
+                      : 'bg-slate-700/30 group-hover:bg-slate-600/50'
                     }
                   `}>
                     <Icon className="h-4 w-4" />
                   </div>
                   
                   {!isCollapsed && (
-                    <div className="flex-1 text-left">
-                      <div className="font-medium text-sm">{item.label}</div>
-                      <div className="text-xs opacity-70">{item.description}</div>
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="font-medium text-sm truncate">{item.label}</div>
+                      <div className="text-xs opacity-70 truncate">{item.description}</div>
                     </div>
                   )}
                   
                   {!isCollapsed && isActive && (
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-lg" />
                   )}
                 </button>
               );
@@ -239,27 +239,27 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           </div>
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-700/50">
+        {/* Footer - Fixed */}
+        <div className="flex-shrink-0 p-4 border-t border-slate-700/50 bg-slate-900/95">
           <button
             onClick={() => handleSectionSelect('settings')}
             className={`
               w-full flex items-center space-x-3 p-3 rounded-xl transition-all duration-200
               ${activeSection === 'settings' 
-                ? 'bg-gradient-to-r from-slate-600 to-slate-700 text-white' 
+                ? 'bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-lg' 
                 : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
               }
               ${isCollapsed ? 'justify-center' : ''}
             `}
-            title={isCollapsed ? t('nav.settings') : ''}
+            title={isCollapsed ? 'Configurações' : ''}
           >
             <div className="p-2 bg-slate-700/30 rounded-lg">
               <Settings className="h-4 w-4" />
             </div>
             {!isCollapsed && (
               <div className="flex-1 text-left">
-                <div className="font-medium text-sm">{t('nav.settings')}</div>
-                <div className="text-xs opacity-70">{t('nav.settings.desc')}</div>
+                <div className="font-medium text-sm">Configurações</div>
+                <div className="text-xs opacity-70">Configuração do sistema</div>
               </div>
             )}
           </button>
@@ -273,6 +273,31 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           )}
         </div>
       </div>
+
+      {/* Custom Scrollbar Styles */}
+      <style jsx>{`
+        .scrollbar-thin {
+          scrollbar-width: thin;
+        }
+        
+        .scrollbar-track-slate-800::-webkit-scrollbar-track {
+          background-color: rgb(30 41 59);
+          border-radius: 0.375rem;
+        }
+        
+        .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
+          background-color: rgb(71 85 105);
+          border-radius: 0.375rem;
+        }
+        
+        .hover\\:scrollbar-thumb-slate-500:hover::-webkit-scrollbar-thumb {
+          background-color: rgb(100 116 139);
+        }
+        
+        ::-webkit-scrollbar {
+          width: 6px;
+        }
+      `}</style>
     </>
   );
 };
