@@ -34,6 +34,7 @@ const DashboardLayout: React.FC = () => {
   const { t } = useLanguage();
   const [activeSection, setActiveSection] = useState('overview');
   const [showSettings, setShowSettings] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const metrics = [
     {
@@ -271,8 +272,13 @@ const DashboardLayout: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
       
-      {/* Main Content Area - Full Width */}
-      <div className="min-h-screen">
+      {/* Main Content Area - Responsive Margin */}
+      <div className={`min-h-screen transition-all duration-300 ${
+        // Desktop: adjust margin based on sidebar state
+        'lg:ml-80 lg:ml-20'
+      }`} style={{
+        marginLeft: window.innerWidth >= 1024 ? (sidebarCollapsed ? '80px' : '320px') : '0'
+      }}>
         <Header />
         
         <main className="p-6">
