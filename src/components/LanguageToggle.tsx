@@ -13,7 +13,7 @@ const LanguageToggle: React.FC = () => {
     <button
       onClick={toggleLanguage}
       className="relative flex items-center space-x-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/50 hover:border-slate-500/50 rounded-lg px-3 py-2 transition-all duration-300 group"
-      title={language === 'en' ? 'Switch to Portuguese' : 'Mudar para Inglês'}
+      title={language === 'en' ? 'Mudar para Português' : 'Switch to English'}
     >
       <Globe className="h-4 w-4 text-slate-400 group-hover:text-white transition-colors" />
       

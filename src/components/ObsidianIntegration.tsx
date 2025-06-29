@@ -7,10 +7,10 @@ const ObsidianIntegration: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   
   const knowledgeNodes = [
-    { id: 1, title: 'Product Strategy Q1', connections: 12, lastUpdated: '2 hours ago', type: 'strategy' },
-    { id: 2, title: 'Market Analysis 2024', connections: 8, lastUpdated: '5 hours ago', type: 'analysis' },
-    { id: 3, title: 'Team Meeting Notes', connections: 15, lastUpdated: '1 day ago', type: 'notes' },
-    { id: 4, title: 'Competitor Research', connections: 6, lastUpdated: '3 days ago', type: 'research' },
+    { id: 1, title: 'Estratégia de Produto Q1', connections: 12, lastUpdated: '2 horas atrás', type: 'strategy' },
+    { id: 2, title: 'Análise de Mercado 2024', connections: 8, lastUpdated: '5 horas atrás', type: 'analysis' },
+    { id: 3, title: 'Notas de Reunião da Equipe', connections: 15, lastUpdated: '1 dia atrás', type: 'notes' },
+    { id: 4, title: 'Pesquisa de Concorrentes', connections: 6, lastUpdated: '3 dias atrás', type: 'research' },
   ];
 
   const typeColors = {

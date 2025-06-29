@@ -41,7 +41,7 @@ const MCPIntegration: React.FC = () => {
 
   const handleQuery = async () => {
     if (!query.trim()) {
-      alert('Please enter a query');
+      alert('Por favor, digite uma consulta');
       return;
     }
 
@@ -55,16 +55,16 @@ const MCPIntegration: React.FC = () => {
         const result = await queryService(selectedService, query);
         setQueryResults([{
           serviceId: selectedService,
-          serviceName: services.find(s => s.id === selectedService)?.name || 'Unknown',
+          serviceName: services.find(s => s.id === selectedService)?.name || 'Desconhecido',
           success: true,
           response: result
         }]);
       }
       
-      alert('Query completed successfully!');
+      alert('Consulta concluída com sucesso!');
     } catch (error) {
-      console.error('Failed to query MCP services:', error);
-      alert('Failed to query MCP services. Please try again.');
+      console.error('Falha ao consultar serviços MCP:', error);
+      alert('Falha ao consultar serviços MCP. Tente novamente.');
     } finally {
       setIsQuerying(false);
     }
@@ -107,7 +107,7 @@ const MCPIntegration: React.FC = () => {
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-sm text-green-400">{health.active}/{health.total} {t('mcp.active')}</span>
+            <span className="text-sm text-green-400">{health.active}/{health.total} Ativos</span>
           </div>
           
           <button
@@ -124,7 +124,7 @@ const MCPIntegration: React.FC = () => {
         <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-1">
             <Activity className="h-4 w-4 text-blue-400" />
-            <span className="text-sm text-slate-400">Services</span>
+            <span className="text-sm text-slate-400">Serviços</span>
           </div>
           <div className="text-xl font-bold text-blue-400">{health.total}</div>
         </div>
@@ -132,7 +132,7 @@ const MCPIntegration: React.FC = () => {
         <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-1">
             <CheckCircle className="h-4 w-4 text-green-400" />
-            <span className="text-sm text-slate-400">Active</span>
+            <span className="text-sm text-slate-400">Ativos</span>
           </div>
           <div className="text-xl font-bold text-green-400">{health.active}</div>
         </div>
@@ -140,7 +140,7 @@ const MCPIntegration: React.FC = () => {
         <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-1">
             <BarChart3 className="h-4 w-4 text-purple-400" />
-            <span className="text-sm text-slate-400">Success Rate</span>
+            <span className="text-sm text-slate-400">Taxa de Sucesso</span>
           </div>
           <div className="text-xl font-bold text-purple-400">{health.avgSuccessRate.toFixed(1)}%</div>
         </div>
@@ -148,7 +148,7 @@ const MCPIntegration: React.FC = () => {
         <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-1">
             <MessageSquare className="h-4 w-4 text-cyan-400" />
-            <span className="text-sm text-slate-400">Total Queries</span>
+            <span className="text-sm text-slate-400">Total de Consultas</span>
           </div>
           <div className="text-xl font-bold text-cyan-400">{health.totalQueries}</div>
         </div>
@@ -156,7 +156,7 @@ const MCPIntegration: React.FC = () => {
 
       {/* Query Interface */}
       <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-4 mb-6">
-        <h3 className="text-white font-medium mb-4">Query MCP Services</h3>
+        <h3 className="text-white font-medium mb-4">Consultar Serviços MCP</h3>
         
         <div className="space-y-4">
           <div className="flex space-x-4">
@@ -165,7 +165,7 @@ const MCPIntegration: React.FC = () => {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter your query for AI agents..."
+                placeholder="Digite sua consulta para os agentes IA..."
                 className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                 onKeyPress={(e) => e.key === 'Enter' && handleQuery()}
               />
@@ -176,7 +176,7 @@ const MCPIntegration: React.FC = () => {
               onChange={(e) => setSelectedService(e.target.value)}
               className="bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
             >
-              <option value="all">All Services</option>
+              <option value="all">Todos os Serviços</option>
               {services.map(service => (
                 <option key={service.id} value={service.id}>{service.name}</option>
               ))}
@@ -192,14 +192,14 @@ const MCPIntegration: React.FC = () => {
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              <span>{isQuerying ? 'Querying...' : 'Query'}</span>
+              <span>{isQuerying ? 'Consultando...' : 'Consultar'}</span>
             </button>
           </div>
 
           {/* Query Results */}
           {queryResults.length > 0 && (
             <div className="mt-4 space-y-3">
-              <h4 className="text-white font-medium">Query Results:</h4>
+              <h4 className="text-white font-medium">Resultados da Consulta:</h4>
               {queryResults.map((result, index) => (
                 <div key={index} className="bg-slate-600/30 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
@@ -207,7 +207,7 @@ const MCPIntegration: React.FC = () => {
                     <span className={`text-xs px-2 py-1 rounded ${
                       result.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                     }`}>
-                      {result.success ? 'Success' : 'Error'}
+                      {result.success ? 'Sucesso' : 'Erro'}
                     </span>
                   </div>
                   
@@ -233,7 +233,7 @@ const MCPIntegration: React.FC = () => {
       <div className="flex items-center space-x-4 mb-4">
         <div className="flex items-center space-x-2">
           <Filter className="h-4 w-4 text-slate-400" />
-          <span className="text-sm text-slate-300">Filter by status:</span>
+          <span className="text-sm text-slate-300">Filtrar por status:</span>
         </div>
         
         <select
@@ -241,11 +241,11 @@ const MCPIntegration: React.FC = () => {
           onChange={(e) => setFilterStatus(e.target.value)}
           className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
         >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="idle">Idle</option>
-          <option value="processing">Processing</option>
-          <option value="error">Error</option>
+          <option value="all">Todos os Status</option>
+          <option value="active">Ativo</option>
+          <option value="idle">Inativo</option>
+          <option value="processing">Processando</option>
+          <option value="error">Erro</option>
         </select>
       </div>
       
@@ -277,21 +277,21 @@ const MCPIntegration: React.FC = () => {
               <div className="grid grid-cols-3 gap-4 text-center mb-3">
                 <div>
                   <p className="text-lg font-bold text-white">{service.queries}</p>
-                  <p className="text-xs text-slate-400">{t('mcp.queries')}</p>
+                  <p className="text-xs text-slate-400">Consultas</p>
                 </div>
                 <div>
                   <p className="text-lg font-bold text-green-400">{service.successRate}%</p>
-                  <p className="text-xs text-slate-400">{t('mcp.success_rate')}</p>
+                  <p className="text-xs text-slate-400">Taxa de Sucesso</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-300">{service.lastResponse}</p>
-                  <p className="text-xs text-slate-400">{t('mcp.last_response')}</p>
+                  <p className="text-xs text-slate-400">Última Resposta</p>
                 </div>
               </div>
 
               {showAdvanced && service.capabilities && (
                 <div className="border-t border-slate-600/30 pt-3">
-                  <h4 className="text-xs text-slate-400 mb-2">Capabilities:</h4>
+                  <h4 className="text-xs text-slate-400 mb-2">Capacidades:</h4>
                   <div className="flex flex-wrap gap-1">
                     {service.capabilities.map((capability, index) => (
                       <span key={index} className="px-2 py-1 bg-slate-600/50 text-slate-300 text-xs rounded">
@@ -308,11 +308,11 @@ const MCPIntegration: React.FC = () => {
       
       <div className="pt-4 border-t border-slate-700/50">
         <button 
-          onClick={() => queryAllServices('Generate strategic insights from current business context')}
+          onClick={() => queryAllServices('Gerar insights estratégicos do contexto de negócios atual')}
           className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 hover:scale-105"
         >
           <MessageSquare className="h-4 w-4" />
-          <span>{t('mcp.query_all')}</span>
+          <span>Consultar Todos os Serviços</span>
         </button>
       </div>
     </div>
