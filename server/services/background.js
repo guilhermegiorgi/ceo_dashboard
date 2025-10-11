@@ -1,13 +1,20 @@
-import { generateAIInsights } from './aiService.js';
-import obsidianApi from './obsidianApi.js';
+import { generateWeeklyInsights } from './insightService.js';
 import { dbRun, dbAll } from './database.js';
+import { v4 as uuidv4 } from 'uuid';
+import cron from 'node-cron';
+import * as agentService from './agentService.js';
 
 let backgroundIntervals = [];
+let scheduledJobs = new Map(); // agentId -> cron task
+const badSchedules = new Set(); // remember invalid schedules to avoid log spam
 
-export function startBackgroundServices() {
+export async function startBackgroundServices() {
   console.log('Starting background services...');
 
-  // Periodic insight generation (every 5 minutes)
+  // Periodic insight generation (every 5 minutes) - DESATIVADO
+  // A geração automática foi desativada para controlar o uso de tokens.
+  // Os insights agora são gerados apenas sob demanda pelo usuário na interface.
+  /*
   const insightInterval = setInterval(async () => {
     try {
       await generatePeriodicInsights();
@@ -15,15 +22,16 @@ export function startBackgroundServices() {
       console.error('Background insight generation error:', error);
     }
   }, 5 * 60 * 1000); // 5 minutes
+  */
 
-  // Knowledge graph sync (every 10 minutes)
-  const syncInterval = setInterval(async () => {
-    try {
-      await syncKnowledgeGraph();
-    } catch (error) {
-      console.error('Knowledge graph sync error:', error);
-    }
-  }, 10 * 60 * 1000); // 10 minutes
+  // Knowledge graph sync (every 10 minutes) - TEMPORARILY DISABLED
+  // const syncInterval = setInterval(async () => {
+  //   try {
+  //     await syncKnowledgeGraph();
+  //   } catch (error) {
+  //     console.error('Knowledge graph sync error:', error);
+  //   }
+  // }, 10 * 60 * 1000); // 10 minutes
 
   // Health check and cleanup (every hour)
   const cleanupInterval = setInterval(async () => {
@@ -34,13 +42,22 @@ export function startBackgroundServices() {
     }
   }, 60 * 60 * 1000); // 1 hour
 
-  backgroundIntervals.push(insightInterval, syncInterval, cleanupInterval);
+  backgroundIntervals.push(/*syncInterval,*/ cleanupInterval);
   console.log('Background services started successfully');
+
+  // Inicializa agendamento de agentes
+  await refreshAgentSchedules();
+  // Revalida o agendamento a cada 2 minutos (caso schedules sejam alterados)
+  const refreshHandle = setInterval(refreshAgentSchedules, 2 * 60 * 1000);
+  backgroundIntervals.push(refreshHandle);
 }
 
 export function stopBackgroundServices() {
   backgroundIntervals.forEach(interval => clearInterval(interval));
   backgroundIntervals = [];
+  // Para tarefas cron
+  scheduledJobs.forEach(task => task.stop());
+  scheduledJobs.clear();
   console.log('Background services stopped');
 }
 
@@ -48,32 +65,29 @@ async function generatePeriodicInsights() {
   console.log('Generating periodic insights...');
   
   try {
-    // Get recent notes from Obsidian
-    const recentNotes = await obsidianApi.getRecentNotes(5);
-    
-    // Generate insights based on recent activity
-    const context = {
-      recentNotes: recentNotes,
-      timestamp: new Date().toISOString(),
-      trigger: 'periodic'
-    };
-    
-    const insights = await generateAIInsights(context);
-    
+    const insights = await generateWeeklyInsights();
+
+    if (!insights || insights.length === 0) {
+      console.log('No new insights generated.');
+      return;
+    }
+
     // Store insights in database
     for (const insight of insights) {
       await dbRun(`
-        INSERT OR IGNORE INTO insights (id, title, content, confidence, priority, actionable, source, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO insights (id, type, title, description, confidence, urgency, connectedElements, suggestedAction, potentialImpact, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        insight.id,
+        insight.id || uuidv4(), // Usa o ID da IA ou gera um novo
+        insight.type,
         insight.title,
-        insight.content,
+        insight.description,
         insight.confidence,
-        insight.priority,
-        insight.actionable ? 1 : 0,
-        'background',
-        JSON.stringify(insight.metadata || {})
+        insight.urgency,
+        JSON.stringify(insight.connectedElements || []),
+        insight.suggestedAction,
+        insight.potentialImpact,
+        'background'
       ]);
     }
     
@@ -86,57 +100,14 @@ async function generatePeriodicInsights() {
       });
     }
     
-    console.log(`Generated ${insights.length} periodic insights`);
+    console.log(`Generated and stored ${insights.length} periodic insights.`);
   } catch (error) {
     console.error('Failed to generate periodic insights:', error);
   }
 }
 
 async function syncKnowledgeGraph() {
-  console.log('Syncing knowledge graph...');
-  
-  try {
-    // Get recent notes from Obsidian
-    const recentNotes = await obsidianApi.getRecentNotes(20);
-    
-    for (const note of recentNotes) {
-      try {
-        // Get note content and links
-        const content = await obsidianApi.getNoteContent(note.path);
-        const links = await obsidianApi.getNoteLinks(note.path);
-        
-        // Extract tags from content
-        const tags = extractTags(content.content || '');
-        
-        // Calculate importance score
-        const importance = calculateImportance(content, links);
-        
-        // Update or insert knowledge node
-        await dbRun(`
-          INSERT OR REPLACE INTO knowledge_nodes 
-          (id, title, type, content, connections, tags, last_modified, importance, obsidian_path)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          note.path,
-          note.name,
-          determineNodeType(content.content || ''),
-          content.content || '',
-          JSON.stringify(links.outgoing || []),
-          JSON.stringify(tags),
-          note.modified,
-          importance,
-          note.path
-        ]);
-        
-      } catch (error) {
-        console.error(`Failed to sync note ${note.path}:`, error);
-      }
-    }
-    
-    console.log(`Synced ${recentNotes.length} knowledge nodes`);
-  } catch (error) {
-    console.error('Failed to sync knowledge graph:', error);
-  }
+  console.warn('syncKnowledgeGraph is temporarily disabled and will not run.');
 }
 
 async function performCleanup() {
@@ -164,52 +135,54 @@ async function performCleanup() {
   }
 }
 
-function extractTags(content) {
-  const tagRegex = /#[\w-]+/g;
-  const matches = content.match(tagRegex) || [];
-  return matches.map(tag => tag.substring(1)); // Remove # prefix
-}
+async function refreshAgentSchedules() {
+  try {
+    const agents = await dbAll('SELECT * FROM agents WHERE schedule IS NOT NULL AND schedule != ""');
+    const activeIds = new Set();
+    for (const agent of agents) {
+      activeIds.add(agent.id);
+      if (!scheduledJobs.has(agent.id)) {
+        const expr = String(agent.schedule || '').trim();
+        const isManual = expr.toLowerCase() === 'manual';
+        const hasValidate = typeof cron.validate === 'function';
+        const isValid = !isManual && expr.length > 0 && (!hasValidate || cron.validate(expr));
 
-function determineNodeType(content) {
-  const lowerContent = content.toLowerCase();
-  
-  if (lowerContent.includes('project') || lowerContent.includes('initiative')) {
-    return 'project';
-  }
-  if (lowerContent.includes('decision') || lowerContent.includes('choice')) {
-    return 'decision';
-  }
-  if (lowerContent.includes('insight') || lowerContent.includes('analysis')) {
-    return 'insight';
-  }
-  if (lowerContent.includes('person') || lowerContent.includes('team member')) {
-    return 'person';
-  }
-  if (lowerContent.includes('concept') || lowerContent.includes('framework')) {
-    return 'concept';
-  }
-  
-  return 'note';
-}
+        if (!isValid) {
+          if (!badSchedules.has(agent.id)) {
+            console.warn('Cron inválido/ignorado para agente', agent.id, agent.name || '', expr);
+            badSchedules.add(agent.id);
+          }
+          continue;
+        }
 
-function calculateImportance(content, links) {
-  let score = 50; // Base score
-  
-  // Increase score based on content length
-  score += Math.min((content.content?.length || 0) / 100, 20);
-  
-  // Increase score based on number of connections
-  score += Math.min((links.outgoing?.length || 0) * 5, 20);
-  score += Math.min((links.incoming?.length || 0) * 3, 15);
-  
-  // Increase score for recent modifications
-  const lastModified = new Date(content.frontmatter?.modified || Date.now());
-  const daysSinceModified = (Date.now() - lastModified.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSinceModified < 7) {
-    score += 10;
-  } else if (daysSinceModified < 30) {
-    score += 5;
+        // Tenta agendar
+        try {
+          const task = cron.schedule(expr, async () => {
+            try {
+              await agentService.runAgent(agent.id);
+            } catch (err) {
+              console.error('Agente agendado falhou:', agent.id, err);
+            }
+          }, { scheduled: true });
+          scheduledJobs.set(agent.id, task);
+          console.log('Agente agendado:', agent.name, expr);
+        } catch (e) {
+          if (!badSchedules.has(agent.id)) {
+            console.warn('Cron inválido para agente', agent.id, expr, e.message);
+            badSchedules.add(agent.id);
+          }
+        }
+      }
+    }
+    // Remove jobs que não existem mais
+    for (const [id, task] of scheduledJobs.entries()) {
+      if (!activeIds.has(id)) {
+        task.stop();
+        scheduledJobs.delete(id);
+        console.log('Agendamento removido para agente', id);
+      }
+    }
+  } catch (error) {
+    console.error('Falha ao atualizar agendamentos de agentes:', error);
   }
-  
-  return Math.min(Math.max(score, 0), 100);
 }

@@ -1,0 +1,6 @@
+{
+  "watch": ["server/"],
+  "ext": "js,json",
+  "ignore": ["*.sqlite", "node_modules/"],
+  "delay": "1500"
+}

@@ -1,247 +1,126 @@
 import express from 'express';
-import { getDatabase, dbAll, dbRun, dbGet } from '../services/database.js';
-import { cacheGet, cacheSet, cacheDel } from '../services/cache.js';
+import vaultService from '../services/vaultService.js';
 
 const router = express.Router();
 
-// Get all decisions
+/**
+ * @route   GET /api/decisions
+ * @desc    Obtém todas as decisões disponíveis
+ * @access  Privado
+ */
 router.get('/', async (req, res) => {
   try {
-    const { category, status, limit = 50 } = req.query;
-    
-    let query = 'SELECT * FROM decisions';
-    const params = [];
-    const conditions = [];
-
-    if (category && category !== 'all') {
-      conditions.push('category = ?');
-      params.push(category);
-    }
-
-    if (status && status !== 'all') {
-      conditions.push('status = ?');
-      params.push(status);
-    }
-
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    query += ' ORDER BY created_at DESC LIMIT ?';
-    params.push(parseInt(limit));
-
-    const decisions = await dbAll(query, params);
-    
-    // Parse JSON fields
-    const formattedDecisions = decisions.map(decision => ({
-      ...decision,
-      tags: decision.tags ? JSON.parse(decision.tags) : [],
-      related_insights: decision.related_insights ? JSON.parse(decision.related_insights) : [],
-      would_do_again: Boolean(decision.would_do_again)
-    }));
-
-    res.json(formattedDecisions);
+    // Por enquanto, retorna uma lista vazia
+    res.json([]);
   } catch (error) {
-    console.error('Error fetching decisions:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Erro ao buscar decisões:', error);
+    res.status(500).json({ error: 'Falha ao buscar decisões.', details: error.message });
   }
 });
 
-// Create new decision
+// Helper para formatar a data no formato YYYY-MM-DD
+const getFormattedDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Formata os dados da decisão em uma nota Markdown estruturada.
+ * @param {object} decisionData - Os dados da requisição.
+ * @returns {string} - O conteúdo da nota em Markdown.
+ */
+const formatDecisionToMarkdown = (decisionData) => {
+  const {
+    title,
+    description,
+    context,
+    decision,
+    rationale,
+    expected_outcome,
+    confidence,
+    impact,
+    category,
+    tags = [],
+    related_insights = []
+  } = decisionData;
+
+  const today = getFormattedDate();
+
+  return `---
+tags: decision, ${tags.join(', ')}
+category: ${category || 'Uncategorized'}
+confidence: ${confidence || 'N/A'}
+impact: ${impact || 'N/A'}
+status: pending
+created_date: ${today}
+---
+
+# Decision: ${title}
+
+## 1. Contexto e Descrição
+*O que levou a esta decisão? Qual o cenário atual?*
+
+${description || 'N/A'}
+
+## 2. A Decisão Tomada
+*Qual foi a escolha final?*
+
+${decision || 'N/A'}
+
+## 3. Racional e Justificativa
+*Por que esta decisão foi tomada? Quais alternativas foram consideradas?*
+
+${rationale || 'N/A'}
+
+## 4. Resultado Esperado
+*O que se espera alcançar com esta decisão?*
+
+${expected_outcome || 'N/A'}
+
+## 5. Insights Relacionados
+*Quais insights do dashboard ou outras fontes informaram esta decisão?*
+
+${related_insights.length > 0 ? related_insights.map(insight => `- ${insight}`).join('\n') : 'Nenhum'}
+`;
+};
+
+/**
+ * Endpoint para criar uma nova decisão.
+ * Recebe os dados da decisão, formata-os em Markdown e envia para o Cognito.
+ */
 router.post('/', async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      context,
-      decision,
-      rationale,
-      expected_outcome,
-      confidence,
-      impact,
-      category,
-      tags = [],
-      related_insights = []
-    } = req.body;
+    const { title, description, decision, rationale } = req.body;
 
     if (!title || !description || !decision || !rationale) {
       return res.status(400).json({ 
-        error: 'Title, description, decision, and rationale are required' 
+        error: 'Os campos title, description, decision e rationale são obrigatórios.' 
       });
     }
 
-    const id = Date.now().toString();
-    const created_date = new Date().toISOString().split('T')[0];
+    // 1. Formatar os dados em uma nota Markdown
+    const noteContent = formatDecisionToMarkdown(req.body);
     
-    await dbRun(`
-      INSERT INTO decisions (
-        id, title, description, context, decision, rationale, expected_outcome,
-        confidence, impact, category, status, created_date, tags, related_insights
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      id, title, description, context, decision, rationale, expected_outcome,
-      confidence, impact, category, 'pending', created_date,
-      JSON.stringify(tags), JSON.stringify(related_insights)
-    ]);
+    // 2. Formatar o nome do arquivo e chamar o vaultService
+    const today = getFormattedDate();
+    const safeTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 50);
+    const noteTitle = `${today}-${safeTitle}`;
+    const folderName = 'decisions';
 
-    // Clear cache
-    await cacheDel('decisions:all');
+    const vaultResponse = await vaultService.createNote(noteTitle, noteContent, folderName);
 
-    const newDecision = await dbGet('SELECT * FROM decisions WHERE id = ?', [id]);
-
-    res.json({ 
-      message: 'Decision recorded successfully', 
-      decision: {
-        ...newDecision,
-        tags: JSON.parse(newDecision.tags || '[]'),
-        related_insights: JSON.parse(newDecision.related_insights || '[]')
-      }
+    res.status(201).json({ 
+      message: 'Decisão registrada com sucesso no Segundo Cérebro!', 
+      path: vaultResponse.path, // Assuming the service returns the path of the created note
+      vaultResponse: vaultResponse 
     });
+
   } catch (error) {
-    console.error('Error creating decision:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Update decision
-router.put('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-
-    // Check if decision exists
-    const decision = await dbGet('SELECT * FROM decisions WHERE id = ?', [id]);
-    if (!decision) {
-      return res.status(404).json({ error: 'Decision not found' });
-    }
-
-    // Build update query dynamically
-    const allowedFields = [
-      'title', 'description', 'context', 'decision', 'rationale', 
-      'expected_outcome', 'actual_outcome', 'confidence', 'impact', 
-      'category', 'status', 'review_date', 'tags', 'related_insights', 
-      'lessons', 'would_do_again'
-    ];
-    
-    const updateFields = [];
-    const updateValues = [];
-
-    for (const [key, value] of Object.entries(updates)) {
-      if (allowedFields.includes(key)) {
-        updateFields.push(`${key} = ?`);
-        if (key === 'tags' || key === 'related_insights') {
-          updateValues.push(JSON.stringify(value));
-        } else if (key === 'would_do_again') {
-          updateValues.push(value ? 1 : 0);
-        } else {
-          updateValues.push(value);
-        }
-      }
-    }
-
-    if (updateFields.length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
-    }
-
-    updateValues.push(id);
-
-    await dbRun(`
-      UPDATE decisions 
-      SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, updateValues);
-
-    // Clear cache
-    await cacheDel('decisions:all');
-
-    const updatedDecision = await dbGet('SELECT * FROM decisions WHERE id = ?', [id]);
-
-    res.json({ 
-      message: 'Decision updated successfully',
-      decision: {
-        ...updatedDecision,
-        tags: JSON.parse(updatedDecision.tags || '[]'),
-        related_insights: JSON.parse(updatedDecision.related_insights || '[]'),
-        would_do_again: Boolean(updatedDecision.would_do_again)
-      }
-    });
-  } catch (error) {
-    console.error('Error updating decision:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get decision analytics
-router.get('/analytics', async (req, res) => {
-  try {
-    const analytics = {};
-
-    // Success rate
-    const successStats = await dbGet(`
-      SELECT 
-        COUNT(CASE WHEN status = 'validated' THEN 1 END) as validated,
-        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
-        COUNT(*) as total
-      FROM decisions 
-      WHERE status IN ('validated', 'failed')
-    `);
-
-    analytics.successRate = successStats.total > 0 
-      ? Math.round((successStats.validated / (successStats.validated + successStats.failed)) * 100)
-      : 0;
-
-    // Average confidence
-    const confidenceStats = await dbGet(`
-      SELECT AVG(confidence) as avg_confidence
-      FROM decisions
-    `);
-
-    analytics.averageConfidence = Math.round(confidenceStats.avg_confidence || 0);
-
-    // Total decisions
-    const totalStats = await dbGet(`
-      SELECT COUNT(*) as total
-      FROM decisions
-    `);
-
-    analytics.totalDecisions = totalStats.total;
-
-    // Pending review
-    const pendingStats = await dbGet(`
-      SELECT COUNT(*) as pending
-      FROM decisions
-      WHERE status = 'implemented'
-    `);
-
-    analytics.pendingReview = pendingStats.pending;
-
-    // Decisions by category
-    const categoryStats = await dbAll(`
-      SELECT category, COUNT(*) as count
-      FROM decisions
-      GROUP BY category
-      ORDER BY count DESC
-    `);
-
-    analytics.byCategory = categoryStats;
-
-    // Recent trends (last 30 days)
-    const trendStats = await dbAll(`
-      SELECT 
-        DATE(created_at) as date,
-        COUNT(*) as count
-      FROM decisions
-      WHERE created_at >= datetime('now', '-30 days')
-      GROUP BY DATE(created_at)
-      ORDER BY date DESC
-    `);
-
-    analytics.recentTrends = trendStats;
-
-    res.json(analytics);
-  } catch (error) {
-    console.error('Error fetching decision analytics:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Erro ao registrar a decisão:', error);
+    res.status(500).json({ error: 'Falha ao registrar a decisão.', details: error.message });
   }
 });
 

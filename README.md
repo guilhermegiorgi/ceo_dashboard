@@ -1,202 +1,165 @@
-# GG.AI Labs - CEO Dashboard
+# GG.AI CEO Dashboard
 
-A sophisticated executive dashboard that integrates with your Obsidian second brain to provide AI-powered business insights and strategic recommendations.
+Um dashboard executivo multi-tenant que se integra ao seu Segundo Cérebro exposto pelo **Obsidian Brain Cloud** (OBC) para gerar insights estratégicos com IA.  
+O CEO Dashboard nunca acessa o filesystem do vault diretamente; todas as operações acontecem via APIs REST e MCP fornecidas pelo OBC.
 
-## 🚀 Overview
+## 🚀 Visão Geral
 
-This dashboard serves as a central command center for CEOs and executives, leveraging AI agents to analyze knowledge graphs, provide real-time business intelligence, and deliver actionable insights through advanced integrations with Obsidian, MCP (Model Context Protocol), and custom AI services.
+Este dashboard permite que CEOs e executivos acessem informações estratégicas baseadas em suas anotações pessoais, com recursos avançados de IA para análise e geração de insights.
 
-## ✨ Features
+## ✨ Funcionalidades
 
-### Core Dashboard
-- **Executive Metrics Overview**: Real-time KPIs including revenue growth, AI efficiency scores, active projects, and team productivity
-- **AI-Powered Insights**: Strategic recommendations with confidence scoring and priority classification
-- **Bilingual Support**: Seamless PT-BR/English toggle with complete localization
-- **Responsive Design**: Premium UI with smooth animations and micro-interactions
+- **Insights Estratégicos**: Geração automática de insights a partir das notas do OBC
+- **Chat com IA**: Interface de conversação integrada ao Cognito (serviço de IA)
+- **Sessões Persistentes**: Manutenção de contexto entre interações
+- **Snapshot em Tempo Real**: Painel consome `/api/dashboard/today`, que agrega foco diário, contexto temporal, tarefas críticas e status de agentes diretamente do OBC
+- **Workspaces Multi-Tenant**: Headers `X-Tenant-*` enviados para isolar workspaces do OBC (beta)
+- **Cache Inteligente**: Melhora de desempenho com cache Redis
+- **Segurança Avançada**: Autenticação JWT e proteção contra ataques comuns
+- **Documentação Completa**: API documentada com OpenAPI (Swagger) e referências MCP
 
-### Integrations
-- **Obsidian Knowledge Graph**: Direct integration with your second brain for knowledge node analysis
-- **MCP Services**: Model Context Protocol integration for AI agent communication
-- **Project Management**: Real-time project tracking with progress visualization
-- **AI Embeddings API**: Custom API integration for content analysis and insights
+## 🛠 Tecnologias
 
-## 🛠 Technology Stack
+### Backend
+- Node.js com Express
+- Redis para cache
+- JWT para autenticação
+- WebSockets para atualizações em tempo real
+- Integração com Obsidian Brain Cloud (FastAPI + FastMCP) e Cognito
 
 ### Frontend
-- **React 18** with TypeScript
-- **Vite** for development and building
-- **Tailwind CSS** for styling
-- **Lucide React** for icons
-- **Context API** for state management
+- React com TypeScript
+- Vite para build e desenvolvimento
+- Tailwind CSS para estilização
+- React Query para gerenciamento de estado
+- Chart.js para visualizações
 
-### Planned Integrations
-- **Obsidian API** for knowledge graph access
-- **Custom Embeddings API** (transformers/embeddings)
-- **MCP Protocol** for AI agent communication
-- **WebSocket** connections for real-time updates
+## 🚀 Começando
 
-## 🏗 Architecture
+### Pré-requisitos
+
+- Node.js 18+
+- Redis
+- Instância do Obsidian Brain Cloud ≥ **1.1.0** (modo multi-tenant habilitado opcionalmente)
+- Acesso ao serviço Cognito
+
+### Instalação
+
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/seu-usuario/ceo-dashboard.git
+   cd ceo-dashboard
+   ```
+
+2. Instale as dependências do servidor:
+   ```bash
+   cd server
+   npm install
+   ```
+
+3. Configure as variáveis de ambiente (opcional):
+   ```bash
+   cp .env.example .env
+   # Edite o arquivo .env com suas configurações
+   ```
+
+   > ⚙️ **Configuração via UI** – A tela **Configurações → Obsidian Brain Cloud** salva `baseUrl`, token, tenant e endpoints MCP em `data/settings.json`. Os valores podem ser testados (REST/MCP) diretamente pela interface e têm precedência sobre o `.env`.
+
+   - Valores de fallback (`BRAINCLOUD_BASE_URL`, `BRAINCLOUD_API_TOKEN`, `BRAINCLOUD_TENANT_*`) ainda podem ser definidos no `.env`.
+   - Consulte `docs/INTEGRACAO_OBSIDIAN_BRAIN_CLOUD.md` para detalhes da integração e exemplo de payloads.
+   - Referências REST/MCP completas: repositório `../PLATAFORMAS/obsidian-brain-cloud`.
+
+   Ferramentas externas (busca e APIs):
+   ```
+   TAVILY_API_KEY=seu_token_tavily    # recomendado
+   # ou
+   SERPAPI_KEY=seu_token_serpapi
+   ```
+
+4. Inicie o servidor:
+   ```bash
+   npm run dev
+   ```
+
+5. Em outro terminal, instale e inicie o frontend:
+   ```bash
+   cd ../client
+   npm install
+   npm run dev
+   ```
+
+6. Acesse a aplicação em `http://localhost:5173`
+
+## 📂 Integração com Obsidian Brain Cloud
+
+- **Fluxos principais**: criação de insights, sincronização Git, busca avançada, notas periódicas, contexto temporal e snapshot diário utilizam a REST API exposta pelo OBC.
+- **Snapshot `/api/dashboard/today`**: o backend consolida foco diário, contexto temporal, tarefas e status dos agentes a partir das rotas `/api/v1/focus/current`, `/api/v1/context/time`, `/api/v1/tasks/*` e `/api/v1/mcp/*`.
+- **Multi-Tenant**: defina `BRAINCLOUD_TENANT_*` para propagar `X-Tenant-*` nas requisições e isolar workspaces (beta).
+- **Somente via API/MCP**: o dashboard nunca monta ou escreve diretamente no filesystem do vault; toda interação ocorre via endpoints REST/MCP do OBC.
+- **MCP / Agentes**: agentes conectados ao OBC podem consumir o mesmo vault via Model Context Protocol; veja `docs/mcp_reference.md` no repositório do OBC.
+- Detalhes adicionais estão em `docs/INTEGRACAO_OBSIDIAN_BRAIN_CLOUD.md`.
+
+## 📚 Documentação da API
+
+- Swagger UI do dashboard: `http://localhost:3001/api-docs`
+- Esquema OpenAPI: `/server/docs/openapi.yaml`
+- Snapshot consolidado do dashboard: `GET /api/dashboard/today`
+- Referências do OBC (REST + MCP): acesse `../PLATAFORMAS/obsidian-brain-cloud/docs/api_reference.md` e `../PLATAFORMAS/obsidian-brain-cloud/docs/mcp_reference.md`
+
+## 🔒 Segurança
+
+- Todas as rotas (exceto /health) requerem autenticação via JWT
+- Rate limiting implementado para prevenir abusos
+- Headers de segurança habilitados via Helmet
+- CORS configurado para origens específicas
+
+## 📊 Estrutura do Projeto
 
 ```
-src/
-├── components/          # Reusable UI components
-│   ├── Header.tsx      # Main navigation with language toggle
-│   ├── MetricCard.tsx  # KPI display cards
-│   ├── AIInsightCard.tsx # AI-generated insights
-│   ├── ObsidianIntegration.tsx # Knowledge graph interface
-│   ├── ProjectOverview.tsx # Project management panel
-│   ├── MCPIntegration.tsx # MCP services panel
-│   └── LanguageToggle.tsx # Bilingual toggle component
-├── contexts/           # React contexts
-│   └── LanguageContext.tsx # Internationalization
-├── App.tsx            # Main application component
-└── main.tsx          # Application entry point
+ceo-dashboard/
+├── client/                 # Frontend React
+├── server/                 # Backend Node.js/Express
+│   ├── config/            # Configurações
+│   ├── controllers/        # Lógica dos controladores
+│   ├── middleware/        # Middlewares do Express
+│   ├── models/            # Modelos de dados
+│   ├── routes/            # Definição de rotas
+│   ├── services/          # Serviços e lógica de negócio
+│   ├── utils/             # Utilitários
+│   ├── .env.example       # Exemplo de variáveis de ambiente
+│   ├── index.js           # Ponto de entrada do servidor
+│   └── package.json
+└── README.md
 ```
 
-## 🚀 Getting Started
+## 🤝 Contribuição
 
-### Prerequisites
-- Node.js 18+ 
-- npm or yarn
-- Obsidian with API access (for full functionality)
+1. Faça um Fork do projeto
+2. Crie uma Branch para sua Feature (`git checkout -b feature/AmazingFeature`)
+3. Adicione suas mudanças (`git add .`)
+4. Comite suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+5. Faça o Push da Branch (`git push origin feature/AmazingFeature`)
+6. Abra um Pull Request
 
-### Installation
+## 🚀 Implantação
 
-1. Clone the repository
-```bash
-git clone <repository-url>
-cd gg-ai-labs-dashboard
-```
+Para instruções completas de implantação, incluindo configuração de VPS, backup automático e monitoramento, consulte:
 
-2. Install dependencies
-```bash
-npm install
-```
+📖 **[Guia de Implantação Completo](docs/DEPLOYMENT.md)**
 
-3. Start development server
-```bash
-npm run dev
-```
+### Recursos de Implantação
+- 🐳 Dockerização completa
+- ☁️ Deploy em VPS com Nginx + SSL
+- 🔄 Backup automático do vault Obsidian
+- 📊 Monitoramento com Prometheus + Grafana
+- 🚀 CI/CD com GitHub Actions
 
-4. Open [http://localhost:5173](http://localhost:5173) in your browser
+## 📄 Licença
 
-### Environment Setup
+Distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
 
-Create a `.env` file in the root directory:
+## 📧 Contato
 
-```env
-# Obsidian Integration
-VITE_OBSIDIAN_API_URL=http://localhost:27123
-VITE_OBSIDIAN_API_KEY=your_obsidian_api_key
+GG.AI Labs - [GitHub](https://github.com/ggailabs) - contato@ggailabs.com
 
-# Custom AI Services
-VITE_EMBEDDINGS_API_URL=your_embeddings_api_url
-VITE_EMBEDDINGS_API_KEY=your_api_key
-
-# MCP Configuration
-VITE_MCP_ENDPOINT=your_mcp_endpoint
-VITE_MCP_API_KEY=your_mcp_key
-```
-
-## 🔧 Configuration
-
-### Obsidian Setup
-1. Install the Obsidian Local REST API plugin
-2. Configure API access in Obsidian settings
-3. Update environment variables with your Obsidian API details
-
-### AI Services Setup
-1. Deploy your embeddings/transformers API
-2. Configure API endpoints in environment variables
-3. Set up authentication keys
-
-## 📊 Features in Detail
-
-### AI Insights Engine
-- **Confidence Scoring**: Each insight includes a confidence percentage
-- **Priority Classification**: High/Medium/Low priority system
-- **Actionable Recommendations**: Clear next steps for each insight
-- **Real-time Analysis**: Live processing of your knowledge graph
-
-### Knowledge Graph Integration
-- **Search Functionality**: Query your Obsidian vault directly
-- **Node Visualization**: See connections and relationships
-- **Recent Activity**: Track latest knowledge updates
-- **AI-Generated Insights**: Automatic analysis of your notes
-
-### Project Management
-- **Progress Tracking**: Visual progress bars and status indicators
-- **Team Management**: Member allocation and workload distribution
-- **Budget Monitoring**: Financial tracking and ROI calculations
-- **Deadline Management**: Timeline visualization and alerts
-
-## 🌐 Internationalization
-
-The dashboard supports both English and Portuguese (Brazil) with:
-- Complete UI translation
-- Localized number formatting
-- Currency conversion (USD ↔ BRL)
-- Date/time localization
-- Cultural adaptations
-
-## 🎨 Design System
-
-### Color Palette
-- **Primary**: Blue to Purple gradients
-- **Secondary**: Green to Teal gradients
-- **Accent**: Purple to Pink gradients
-- **Status Colors**: Green (success), Yellow (warning), Red (error)
-- **Background**: Slate 900/800 with transparency layers
-
-### Typography
-- **Headings**: Bold, clear hierarchy
-- **Body**: Readable with proper contrast
-- **Metrics**: Large, prominent numbers
-- **Labels**: Subtle, informative
-
-## 🔮 Roadmap
-
-### Phase 1 (Current)
-- [x] Core dashboard UI
-- [x] Bilingual support
-- [x] Mock data integration
-- [x] Responsive design
-
-### Phase 2 (Next)
-- [ ] Obsidian API integration
-- [ ] Real-time data connections
-- [ ] WebSocket implementation
-- [ ] User authentication
-
-### Phase 3 (Future)
-- [ ] MCP protocol integration
-- [ ] Advanced AI agents
-- [ ] Custom embeddings processing
-- [ ] Multi-user support
-- [ ] Mobile app companion
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For support and questions:
-- Create an issue in the repository
-- Contact the development team
-- Check the [documentation](DOCS.md) for detailed guides
-
-## 🙏 Acknowledgments
-
-- Obsidian team for the knowledge management platform
-- React and Vite communities
-- Tailwind CSS for the design system
-- Lucide for the beautiful icons
+Link do Projeto: [https://github.com/ggailabs/ceo-dashboard](https://github.com/ggailabs/ceo-dashboard)

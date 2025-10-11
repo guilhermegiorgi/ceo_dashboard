@@ -1,0 +1,239 @@
+openapi: 3.0.0
+info:
+  title: GG.AI CEO Dashboard API
+  description: |
+    API para o Dashboard Executivo da GG.AI, integrado ao Segundo Cérebro no Obsidian
+    e ao serviço de IA Cognito para geração de insights estratégicos.
+  version: 1.0.0
+  contact:
+    name: Suporte GG.AI
+    email: suporte@gg.ai
+    url: https://gg.ai
+servers:
+  - url: http://localhost:3001/api
+    description: Servidor de desenvolvimento
+  - url: https://api.gg.ai/v1
+    description: Servidor de produção
+
+tags:
+  - name: Insights
+    description: Gerenciamento de insights estratégicos
+  - name: Cognito
+    description: Integração com o serviço de IA Cognito
+  - name: Autenticação
+    description: Autenticação e gerenciamento de usuários
+  - name: Decisões
+    description: Registro e acompanhamento de decisões
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Mensagem de erro"
+        details:
+          type: object
+          example: {}
+        timestamp:
+          type: string
+          format: date-time
+    Insight:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [strategic_insight, opportunity, risk, idea]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        relatedNotes:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+paths:
+  /insights/weekly:
+    get:
+      tags: [Insights]
+      summary: Obtém insights semanais
+      description: Retorna insights gerados a partir das notas da semana no Obsidian
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cache
+          schema:
+            type: boolean
+            default: true
+          description: Indica se deve usar cache
+      responses:
+        '200':
+          description: Lista de insights semanais
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Insight'
+                  timestamp:
+                    type: string
+                    format: date-time
+                  cache:
+                    type: string
+                    enum: [HIT, MISS]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  
+  /cognito/query:
+    post:
+      tags: [Cognito]
+      summary: Envia uma consulta para o Cognito
+      description: Envia uma consulta para o serviço de IA Cognito e retorna a resposta
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: A consulta a ser enviada para o Cognito
+                sessionId:
+                  type: string
+                  description: ID da sessão para manter o contexto
+                stream:
+                  type: boolean
+                  default: false
+                  description: Se deve retornar um stream de eventos
+      responses:
+        '200':
+          description: Resposta do Cognito
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      answer:
+                        type: string
+                      sources:
+                        type: array
+                        items:
+                          type: object
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /cognito/chat:
+    post:
+      tags: [Cognito]
+      summary: Inicia um chat com o Cognito
+      description: Inicia uma conversa com o serviço de IA Cognito
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  description: A mensagem do usuário
+                sessionId:
+                  type: string
+                  description: ID da sessão (opcional)
+      responses:
+        '200':
+          description: Stream de eventos SSE com a resposta do chat
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  responses:
+    BadRequest:
+      description: Requisição inválida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Não autorizado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Acesso negado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServerError:
+      description: Erro interno do servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

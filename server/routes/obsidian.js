@@ -1,28 +1,49 @@
 import express from 'express';
-import obsidianApi from '../services/obsidianApi.js';
+import vaultService from '../services/vaultService.js';
 
 const router = express.Router();
 
-// Get vault information
-router.get('/vault', async (req, res) => {
+// Rota para salvar um insight gerado pela IA
+router.post('/save-insight', async (req, res) => {
   try {
-    const vaultInfo = await obsidianApi.getVaultInfo();
-    res.json(vaultInfo);
+    const insightData = req.body;
+    if (!insightData || !insightData.title) {
+      return res.status(400).json({ error: 'Dados do insight incompletos. Título é obrigatório.' });
+    }
+    // Compatibilidade: aceitar 'content' como descrição
+    if (!insightData.description && insightData.content) {
+      insightData.description = insightData.content;
+    }
+    if (!insightData.description) {
+      insightData.description = '(sem descrição)';
+    }
+    
+    const result = await vaultService.saveInsightNote(insightData);
+    res.status(201).json({ message: 'Nota de insight criada com sucesso!', ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Erro na API ao salvar nota de insight:', error);
+    res.status(500).json({ error: 'Falha ao salvar a nota de insight no vault.' });
   }
 });
 
 // Search notes
 router.get('/search', async (req, res) => {
   try {
-    const { query, limit = 10 } = req.query;
-    if (!query) {
-      return res.status(400).json({ error: 'Query parameter is required' });
-    }
-    
-    const results = await obsidianApi.searchNotes(query, parseInt(limit));
+    const { query } = req.query;
+    // A query é opcional, se não for fornecida, o serviço retorna todas as notas.
+    const results = await vaultService.searchNotes(query || '');
     res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST variant for search (accepts { query })
+router.post('/search', async (req, res) => {
+  try {
+    const { query } = req.body || {};
+    const results = await vaultService.searchNotes(query || '');
+    res.json({ success: true, data: results.results, count: results.results?.length || 0 });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -32,8 +53,12 @@ router.get('/search', async (req, res) => {
 router.get('/note/:path(*)', async (req, res) => {
   try {
     const notePath = req.params.path;
-    const note = await obsidianApi.getNoteContent(notePath);
-    res.json(note);
+    const note = await vaultService.getNoteContent(notePath);
+    if (note) {
+      res.json(note);
+    } else {
+      res.status(404).json({ error: 'Nota não encontrada.' });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -47,46 +72,8 @@ router.post('/note', async (req, res) => {
       return res.status(400).json({ error: 'Title and content are required' });
     }
     
-    const result = await obsidianApi.createNote(title, content, folder);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Update existing note
-router.put('/note/:path(*)', async (req, res) => {
-  try {
-    const notePath = req.params.path;
-    const { content } = req.body;
-    if (!content) {
-      return res.status(400).json({ error: 'Content is required' });
-    }
-    
-    const result = await obsidianApi.updateNote(notePath, content);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get note links
-router.get('/note/:path(*)/links', async (req, res) => {
-  try {
-    const notePath = req.params.path;
-    const links = await obsidianApi.getNoteLinks(notePath);
-    res.json(links);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get recent notes
-router.get('/recent', async (req, res) => {
-  try {
-    const { limit = 10 } = req.query;
-    const notes = await obsidianApi.getRecentNotes(parseInt(limit));
-    res.json(notes);
+    const result = await vaultService.createNote(title, content, folder);
+    res.status(201).json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -12,11 +12,25 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const translations = {
   en: {
+    // Sidebar
+    'sidebar.insightsHub': 'Insights Hub',
+    'sidebar.cognitoChat': 'Cognito AI Chat',
+    'sidebar.knowledgeGraph': 'Knowledge Graph',
+    'sidebar.decisionJournal': 'Decision Journal',
+    'sidebar.sessionPlanner': 'Session Planner',
+    'sidebar.marketIntelligence': 'Market Intelligence',
+    'sidebar.agentPanel': 'Agent Panel',
+    'sidebar.settings': 'Settings',
+
+    // Intelligence Hub
+    'intelligenceHub.title': 'Intelligence Hub',
+    'intelligenceHub.subtitle': 'Connecting insights, driving decisions.',
+
     // Header
     'header.title': 'GG.AI Labs',
     'header.subtitle': 'CEO Dashboard',
     'header.search': 'Search across all systems...',
-    
+
     // Navigation
     'nav.overview': 'Executive Overview',
     'nav.overview.desc': 'Main dashboard with key metrics',
@@ -44,7 +58,7 @@ const translations = {
     'nav.mcp.desc': 'AI service protocols',
     'nav.settings': 'Settings',
     'nav.settings.desc': 'System configuration',
-    
+
     // Metrics
     'metrics.title': 'Executive Overview',
     'metrics.subtitle': 'Real-time business intelligence and metrics',
@@ -64,7 +78,7 @@ const translations = {
     'metrics.team_productivity.value': '87%',
     'metrics.team_productivity.change': '+5.2% improvement',
     'metrics.team_productivity.desc': 'Enhanced by AI-powered insights',
-    
+
     // AI Insights
     'insights.title': 'AI-Powered Insights',
     'insights.subtitle': 'Strategic recommendations from your second brain',
@@ -78,7 +92,7 @@ const translations = {
     'insights.connected_notes': 'Connected Notes',
     'insights.create_plan': 'Create Action Plan',
     'insights.question': 'Question Premise',
-    
+
     // Obsidian Integration
     'obsidian.title': 'Obsidian Knowledge Graph',
     'obsidian.subtitle': 'Second Brain Integration',
@@ -86,7 +100,22 @@ const translations = {
     'obsidian.search': 'Search your knowledge graph...',
     'obsidian.recent': 'Recent Knowledge Nodes',
     'obsidian.generate': 'Generate AI Insights from Knowledge Graph',
-    
+
+    // Feedback Loop Tracker
+    'feedbackLoop.title': 'Feedback Loop Tracker',
+    'feedbackLoop.subtitle': 'Monitoring automated actions and learnings',
+    'feedbackLoop.loading': 'Loading feedback actions...',
+    'feedbackLoop.error': 'Failed to load feedback actions',
+    'feedbackLoop.noActions': 'No pending feedback actions.',
+    'feedbackLoop.note': 'Second Brain Note',
+    'feedbackLoop.project': 'Related Project',
+    'feedbackLoop.impact': 'Impact',
+    'feedbackLoop.processing': 'Processing feedback to Second Brain...',
+    'feedbackLoop.types.decision': 'Decision',
+    'feedbackLoop.types.insight_validation': 'Insight Validation',
+    'feedbackLoop.types.action_taken': 'Action Taken',
+    'feedbackLoop.types.learning_captured': 'Learning Captured',
+
     // Project Overview
     'projects.title': 'Project Overview',
     'projects.subtitle': 'Active initiatives and progress',
@@ -105,7 +134,7 @@ const translations = {
     'projects.delete': 'Delete Project',
     'projects.save': 'Save',
     'projects.cancel': 'Cancel',
-    
+
     // MCP Integration
     'mcp.title': 'MCP Integration',
     'mcp.subtitle': 'Model Context Protocol Services',
@@ -119,13 +148,13 @@ const translations = {
     'mcp.health': 'Health',
     'mcp.services': 'Services',
     'mcp.capabilities': 'Capabilities',
-    
+
     // Quick Actions
     'actions.title': 'Quick Actions',
     'actions.analyze': 'Analyze Knowledge Graph',
     'actions.strategy': 'Generate Strategy Report',
     'actions.schedule': 'Schedule AI Review',
-    
+
     // Settings
     'settings.title': 'Settings',
     'settings.api': 'API Configuration',
@@ -138,7 +167,7 @@ const translations = {
     'settings.export': 'Export Settings',
     'settings.import': 'Import Settings',
     'settings.reset': 'Reset to Defaults',
-    
+
     // Notifications
     'notifications.title': 'Notifications',
     'notifications.mark_read': 'Mark as Read',
@@ -148,7 +177,7 @@ const translations = {
     'notifications.search': 'Search notifications...',
     'notifications.filter': 'Filter',
     'notifications.empty': 'No notifications found',
-    
+
     // User Profile
     'profile.title': 'Account',
     'profile.profile': 'Profile',
@@ -162,7 +191,7 @@ const translations = {
     'profile.change_password': 'Change Password',
     'profile.enable_2fa': 'Enable 2FA',
     'profile.manage_keys': 'Manage Keys',
-    
+
     // Business Intelligence
     'bi.title': 'Business Intelligence Hub',
     'bi.subtitle': 'Real-time business metrics and performance analytics',
@@ -173,16 +202,23 @@ const translations = {
     'bi.refresh': 'Refresh',
     'bi.export': 'Export',
     'bi.share': 'Share',
-    
+
     // Market Intelligence
     'market.title': 'Market Intelligence Engine',
     'market.subtitle': 'AI-powered market analysis and opportunity discovery',
-    'market.opportunities': 'Market Opportunities',
-    'market.competitors': 'Competitor Intelligence',
-    'market.trends': 'Market Trends',
     'market.deep_analysis': 'Deep Analysis',
     'market.analyzing': 'Analyzing...',
-    
+    'market.tabs.opportunities': 'Market Opportunities',
+    'market.tabs.competitors': 'Competitor Intelligence',
+    'market.tabs.trends': 'Market Trends',
+    'market.searchPlaceholder': 'Search opportunities, competitors, trends...',
+    'market.filter.all': 'All Markets',
+    'market.filter.healthcare': 'Healthcare',
+    'market.filter.enterprise': 'Enterprise Software',
+    'market.filter.manufacturing': 'Manufacturing',
+    'market.filter.fintech': 'FinTech',
+    'market.trends.soon': 'Market trends analysis coming soon...',
+
     // Predictive Analytics
     'predictive.title': 'Predictive Analytics',
     'predictive.subtitle': 'AI-powered forecasting and scenario analysis',
@@ -190,7 +226,7 @@ const translations = {
     'predictive.scenarios': 'Scenario Analysis',
     'predictive.models': 'Models',
     'predictive.run_analysis': 'Run Analysis',
-    
+
     // AI Orchestrator
     'orchestrator.title': 'AI Agent Orchestrator',
     'orchestrator.subtitle': 'Manage and coordinate your AI workforce',
@@ -198,7 +234,7 @@ const translations = {
     'orchestrator.assign_task': 'Assign Task',
     'orchestrator.view_history': 'View History',
     'orchestrator.optimize': 'Optimize Workflow',
-    
+
     // Knowledge Graph
     'knowledge.title': 'Knowledge Graph Visualizer',
     'knowledge.subtitle': 'Interactive exploration of your Second Brain',
@@ -208,7 +244,7 @@ const translations = {
     'knowledge.export': 'Export',
     'knowledge.share': 'Share',
     'knowledge.stats': 'Graph Statistics',
-    
+
     // Synergy Intelligence
     'synergy.title': 'Proactive Synergy Intelligence',
     'synergy.subtitle': 'Discovering latent connections and strategic opportunities',
@@ -217,7 +253,7 @@ const translations = {
     'synergy.schedule': 'Schedule Session',
     'synergy.create_note': 'Create Analysis Note',
     'synergy.deep_scan': 'Deep Scan Knowledge Graph',
-    
+
     // Strategic Sessions
     'sessions.title': 'Strategic Session Planner',
     'sessions.subtitle': 'AI-suggested strategic thinking sessions',
@@ -228,7 +264,7 @@ const translations = {
     'sessions.participants': 'Participants',
     'sessions.preparation': 'Preparation Notes',
     'sessions.outcomes': 'Expected Outcomes',
-    
+
     // Decision Journal
     'decisions.title': 'Decision Journal',
     'decisions.subtitle': 'Track decisions, outcomes, and learnings',
@@ -239,7 +275,11 @@ const translations = {
     'decisions.pending': 'Pending Review',
     'decisions.search': 'Search decisions...',
     'decisions.generate_insights': 'Generate Decision Insights',
-    
+
+    // Cognito Chat
+    'cognitoChat.title': 'Cognito AI Chat',
+    'cognitoChat.subtitle': 'Chat with the AI to get real-time insights and answers.',
+
     // Common
     'common.loading': 'Loading...',
     'common.error': 'Error',
@@ -278,7 +318,30 @@ const translations = {
     'common.down': 'Down',
     'common.left': 'Left',
     'common.right': 'Right',
-    
+
+    // Common CRUD
+    'common.creating': 'Creating...',
+    'common.updating': 'Updating...',
+    'common.deleting': 'Deleting...',
+    'common.create_success': 'Item created successfully.',
+    'common.update_success': 'Item updated successfully.',
+    'common.delete_success': 'Item deleted successfully.',
+    'common.create_error': 'Error creating item.',
+    'common.update_error': 'Error updating item.',
+    'common.delete_error': 'Error deleting item.',
+    'common.delete_confirm_message': 'Are you sure you want to delete {item}?',
+
+    // Agent Manager
+    'agent.panelTitle': 'Agent Control Panel',
+    'agent.create': 'Create New Agent',
+    'agent.name': 'Agent Name',
+    'agent.type': 'Type',
+    'agent.status': 'Status',
+    'agent.schedule': 'Schedule',
+    'agent.lastRun': 'Last Run',
+    'agent.actions': 'Actions',
+    'agent.runNow': 'Run',
+
     // Time
     'time.minutes_ago': 'minutes ago',
     'time.hour_ago': 'hour ago',
@@ -291,64 +354,78 @@ const translations = {
     'time.this_week': 'This week',
     'time.last_week': 'Last week',
     'time.this_month': 'This month',
-    'time.last_month': 'Last month'
+    'time.last_month': 'Last month',
   },
   pt: {
+    // Sidebar
+    'sidebar.insightsHub': 'Hub de Insights',
+    'sidebar.cognitoChat': 'Chat Cognito AI',
+    'sidebar.knowledgeGraph': 'Grafo de Conhecimento',
+    'sidebar.decisionJournal': 'Diário de Decisões',
+    'sidebar.sessionPlanner': 'Planejador de Sessões',
+    'sidebar.marketIntelligence': 'Inteligência de Mercado',
+    'sidebar.agentPanel': 'Painel de Agentes',
+    'sidebar.settings': 'Configurações',
+
+    // Intelligence Hub
+    'intelligenceHub.title': 'Hub de Inteligência',
+    'intelligenceHub.subtitle': 'Conectando insights, impulsionando decisões.',
+
     // Header
     'header.title': 'GG.AI Labs',
     'header.subtitle': 'Painel do CEO',
     'header.search': 'Pesquisar em todos os sistemas...',
-    
+
     // Navigation
-    'nav.overview': 'Visão Executiva',
-    'nav.overview.desc': 'Painel principal com métricas essenciais',
+    'nav.overview': 'Visão Geral Executiva',
+    'nav.overview.desc': 'Painel principal com métricas chave',
     'nav.business_intelligence': 'Inteligência de Negócios',
     'nav.business_intelligence.desc': 'KPIs, métricas e análises',
     'nav.market_intelligence': 'Inteligência de Mercado',
     'nav.market_intelligence.desc': 'Oportunidades e tendências de mercado',
     'nav.predictive_analytics': 'Análise Preditiva',
     'nav.predictive_analytics.desc': 'Previsões e análise de cenários',
-    'nav.ai_orchestrator': 'Orquestrador de IA',
-    'nav.ai_orchestrator.desc': 'Gerenciar força de trabalho IA',
+    'nav.ai_orchestrator': 'Orquestrador de Agentes AI',
+    'nav.ai_orchestrator.desc': 'Gerencie a força de trabalho de IA',
     'nav.knowledge_graph': 'Grafo de Conhecimento',
-    'nav.knowledge_graph.desc': 'Visualizar conexões de conhecimento',
+    'nav.knowledge_graph.desc': 'Visualize conexões de conhecimento',
     'nav.synergy_intelligence': 'Inteligência de Sinergia',
-    'nav.synergy_intelligence.desc': 'Descobrir conexões ocultas',
+    'nav.synergy_intelligence.desc': 'Descubra conexões ocultas',
     'nav.strategic_sessions': 'Sessões Estratégicas',
-    'nav.strategic_sessions.desc': 'Planejar reuniões estratégicas',
+    'nav.strategic_sessions.desc': 'Planeje reuniões estratégicas',
     'nav.decision_journal': 'Diário de Decisões',
-    'nav.decision_journal.desc': 'Rastrear decisões e resultados',
+    'nav.decision_journal.desc': 'Acompanhe decisões e resultados',
     'nav.projects': 'Gestão de Projetos',
-    'nav.projects.desc': 'Gerenciar projetos ativos',
+    'nav.projects.desc': 'Gerencie projetos ativos',
     'nav.obsidian': 'Segundo Cérebro',
     'nav.obsidian.desc': 'Integração com Obsidian',
-    'nav.mcp': 'Serviços MCP',
-    'nav.mcp.desc': 'Protocolos de serviços IA',
+    'nav.mcp': 'MCP Services',
+    'nav.mcp.desc': 'Protocolos de serviço de IA',
     'nav.settings': 'Configurações',
     'nav.settings.desc': 'Configuração do sistema',
-    
+
     // Metrics
-    'metrics.title': 'Visão Executiva',
-    'metrics.subtitle': 'Inteligência de negócios e métricas em tempo real',
+    'metrics.title': 'Visão Geral Executiva',
+    'metrics.subtitle': 'Business intelligence e métricas em tempo real',
     'metrics.revenue': 'Crescimento da Receita',
-    'metrics.revenue.value': 'R$ 12,8M',
-    'metrics.revenue.change': '+23,5% do último trimestre',
-    'metrics.revenue.desc': 'Performance forte em todas as linhas de produto',
-    'metrics.ai_efficiency': 'Score de Eficiência IA',
-    'metrics.ai_efficiency.value': '94,2%',
-    'metrics.ai_efficiency.change': '+8,1% este mês',
-    'metrics.ai_efficiency.desc': 'Agentes IA operando com performance máxima',
+    'metrics.revenue.value': 'R$12.5M',
+    'metrics.revenue.change': '+23.5% do último trimestre',
+    'metrics.revenue.desc': 'Forte desempenho em todas as linhas de produtos',
+    'metrics.ai_efficiency': 'Pontuação de Eficiência de IA',
+    'metrics.ai_efficiency.value': '94.2%',
+    'metrics.ai_efficiency.change': '+8.1% este mês',
+    'metrics.ai_efficiency.desc': 'Agentes de IA operando com desempenho máximo',
     'metrics.active_projects': 'Projetos Ativos',
     'metrics.active_projects.value': '12',
     'metrics.active_projects.change': '3 lançados esta semana',
-    'metrics.active_projects.desc': 'Iniciativas estratégicas no cronograma',
+    'metrics.active_projects.desc': 'Iniciativas estratégicas no caminho certo',
     'metrics.team_productivity': 'Produtividade da Equipe',
     'metrics.team_productivity.value': '87%',
-    'metrics.team_productivity.change': '+5,2% de melhoria',
-    'metrics.team_productivity.desc': 'Aprimorada por insights alimentados por IA',
-    
+    'metrics.team_productivity.change': '+5.2% de melhoria',
+    'metrics.team_productivity.desc': 'Aprimorado por insights de IA',
+
     // AI Insights
-    'insights.title': 'Insights Alimentados por IA',
+    'insights.title': 'Insights de IA',
     'insights.subtitle': 'Recomendações estratégicas do seu segundo cérebro',
     'insights.live': 'Análise ao Vivo',
     'insights.confidence': 'Confiança:',
@@ -360,17 +437,32 @@ const translations = {
     'insights.connected_notes': 'Notas Conectadas',
     'insights.create_plan': 'Criar Plano de Ação',
     'insights.question': 'Questionar Premissa',
-    
+
     // Obsidian Integration
     'obsidian.title': 'Grafo de Conhecimento Obsidian',
-    'obsidian.subtitle': 'Integração do Segundo Cérebro',
+    'obsidian.subtitle': 'Integração com o Segundo Cérebro',
     'obsidian.connected': 'Conectado',
-    'obsidian.search': 'Pesquise seu grafo de conhecimento...',
+    'obsidian.search': 'Pesquise em seu grafo de conhecimento...',
     'obsidian.recent': 'Nós de Conhecimento Recentes',
-    'obsidian.generate': 'Gerar Insights IA do Grafo de Conhecimento',
-    
+    'obsidian.generate': 'Gerar Insights de IA do Grafo de Conhecimento',
+
+    // Feedback Loop Tracker
+    'feedbackLoop.title': 'Monitor de Ciclo de Feedback',
+    'feedbackLoop.subtitle': 'Monitorando ações e aprendizados automatizados',
+    'feedbackLoop.loading': 'Carregando ações de feedback...',
+    'feedbackLoop.error': 'Falha ao carregar as ações de feedback',
+    'feedbackLoop.noActions': 'Nenhuma ação de feedback pendente.',
+    'feedbackLoop.note': 'Nota do Segundo Cérebro',
+    'feedbackLoop.project': 'Projeto Relacionado',
+    'feedbackLoop.impact': 'Impacto',
+    'feedbackLoop.processing': 'Processando feedback para o Segundo Cérebro...',
+    'feedbackLoop.types.decision': 'Decisão',
+    'feedbackLoop.types.insight_validation': 'Validação de Insight',
+    'feedbackLoop.types.action_taken': 'Ação Tomada',
+    'feedbackLoop.types.learning_captured': 'Aprendizado Capturado',
+
     // Project Overview
-    'projects.title': 'Visão Geral dos Projetos',
+    'projects.title': 'Visão Geral de Projetos',
     'projects.subtitle': 'Iniciativas ativas e progresso',
     'projects.progress': 'Progresso',
     'projects.members': 'membros',
@@ -387,10 +479,10 @@ const translations = {
     'projects.delete': 'Excluir Projeto',
     'projects.save': 'Salvar',
     'projects.cancel': 'Cancelar',
-    
+
     // MCP Integration
     'mcp.title': 'Integração MCP',
-    'mcp.subtitle': 'Serviços do Protocolo de Contexto de Modelo',
+    'mcp.subtitle': 'Serviços do Protocolo de Contexto do Modelo',
     'mcp.active': 'Ativo',
     'mcp.queries': 'Consultas',
     'mcp.success_rate': 'Taxa de Sucesso',
@@ -401,36 +493,36 @@ const translations = {
     'mcp.health': 'Saúde',
     'mcp.services': 'Serviços',
     'mcp.capabilities': 'Capacidades',
-    
+
     // Quick Actions
     'actions.title': 'Ações Rápidas',
     'actions.analyze': 'Analisar Grafo de Conhecimento',
-    'actions.strategy': 'Gerar Relatório Estratégico',
-    'actions.schedule': 'Agendar Revisão IA',
-    
+    'actions.strategy': 'Gerar Relatório de Estratégia',
+    'actions.schedule': 'Agendar Revisão de IA',
+
     // Settings
     'settings.title': 'Configurações',
-    'settings.api': 'Configuração de API',
+    'settings.api': 'Configuração da API',
     'settings.preferences': 'Preferências',
     'settings.notifications': 'Notificações',
     'settings.security': 'Segurança',
-    'settings.data': 'Gestão de Dados',
+    'settings.data': 'Gerenciamento de Dados',
     'settings.save': 'Salvar Configurações',
     'settings.close': 'Fechar',
     'settings.export': 'Exportar Configurações',
     'settings.import': 'Importar Configurações',
     'settings.reset': 'Restaurar Padrões',
-    
+
     // Notifications
     'notifications.title': 'Notificações',
     'notifications.mark_read': 'Marcar como Lida',
     'notifications.mark_all_read': 'Marcar Todas como Lidas',
     'notifications.delete': 'Excluir',
     'notifications.settings': 'Configurações de Notificação',
-    'notifications.search': 'Pesquisar notificações...',
+    'notifications.search': 'Buscar notificações...',
     'notifications.filter': 'Filtrar',
     'notifications.empty': 'Nenhuma notificação encontrada',
-    
+
     // User Profile
     'profile.title': 'Conta',
     'profile.profile': 'Perfil',
@@ -442,12 +534,12 @@ const translations = {
     'profile.cancel': 'Cancelar',
     'profile.sign_out': 'Sair',
     'profile.change_password': 'Alterar Senha',
-    'profile.enable_2fa': 'Ativar 2FA',
+    'profile.enable_2fa': 'Habilitar 2FA',
     'profile.manage_keys': 'Gerenciar Chaves',
-    
+
     // Business Intelligence
-    'bi.title': 'Central de Inteligência de Negócios',
-    'bi.subtitle': 'Métricas de negócios e análises de performance em tempo real',
+    'bi.title': 'Hub de Business Intelligence',
+    'bi.subtitle': 'Métricas de negócios e análises de desempenho em tempo real',
     'bi.overview': 'Visão Geral',
     'bi.kpis': 'KPIs',
     'bi.metrics': 'Métricas',
@@ -455,42 +547,49 @@ const translations = {
     'bi.refresh': 'Atualizar',
     'bi.export': 'Exportar',
     'bi.share': 'Compartilhar',
-    
+
     // Market Intelligence
     'market.title': 'Motor de Inteligência de Mercado',
-    'market.subtitle': 'Análise de mercado e descoberta de oportunidades alimentada por IA',
-    'market.opportunities': 'Oportunidades de Mercado',
-    'market.competitors': 'Inteligência Competitiva',
-    'market.trends': 'Tendências de Mercado',
+    'market.subtitle': 'Análise de mercado e descoberta de oportunidades com IA',
     'market.deep_analysis': 'Análise Profunda',
     'market.analyzing': 'Analisando...',
-    
+    'market.tabs.opportunities': 'Oportunidades de Mercado',
+    'market.tabs.competitors': 'Inteligência Competitiva',
+    'market.tabs.trends': 'Tendências de Mercado',
+    'market.searchPlaceholder': 'Buscar oportunidades, concorrentes, tendências...',
+    'market.filter.all': 'Todos os Mercados',
+    'market.filter.healthcare': 'Saúde',
+    'market.filter.enterprise': 'Software Corporativo',
+    'market.filter.manufacturing': 'Manufatura',
+    'market.filter.fintech': 'FinTech',
+    'market.trends.soon': 'Análise de tendências de mercado em breve...',
+
     // Predictive Analytics
     'predictive.title': 'Análise Preditiva',
-    'predictive.subtitle': 'Previsões e análise de cenários alimentada por IA',
+    'predictive.subtitle': 'Previsões e análise de cenários com IA',
     'predictive.predictions': 'Previsões',
     'predictive.scenarios': 'Análise de Cenários',
     'predictive.models': 'Modelos',
     'predictive.run_analysis': 'Executar Análise',
-    
+
     // AI Orchestrator
-    'orchestrator.title': 'Orquestrador de Agentes IA',
-    'orchestrator.subtitle': 'Gerencie e coordene sua força de trabalho IA',
+    'orchestrator.title': 'Orquestrador de Agentes de IA',
+    'orchestrator.subtitle': 'Gerencie e coordene sua força de trabalho de IA',
     'orchestrator.create_agent': 'Criar Agente',
     'orchestrator.assign_task': 'Atribuir Tarefa',
     'orchestrator.view_history': 'Ver Histórico',
     'orchestrator.optimize': 'Otimizar Fluxo de Trabalho',
-    
+
     // Knowledge Graph
-    'knowledge.title': 'Visualizador de Grafo de Conhecimento',
+    'knowledge.title': 'Visualizador do Grafo de Conhecimento',
     'knowledge.subtitle': 'Exploração interativa do seu Segundo Cérebro',
-    'knowledge.search': 'Pesquisar grafo de conhecimento...',
+    'knowledge.search': 'Buscar no grafo de conhecimento...',
     'knowledge.filter': 'Filtrar',
-    'knowledge.analyze': 'Análise IA',
+    'knowledge.analyze': 'Análise de IA',
     'knowledge.export': 'Exportar',
     'knowledge.share': 'Compartilhar',
     'knowledge.stats': 'Estatísticas do Grafo',
-    
+
     // Synergy Intelligence
     'synergy.title': 'Inteligência de Sinergia Proativa',
     'synergy.subtitle': 'Descobrindo conexões latentes e oportunidades estratégicas',
@@ -498,29 +597,33 @@ const translations = {
     'synergy.explore': 'Explorar Conexão',
     'synergy.schedule': 'Agendar Sessão',
     'synergy.create_note': 'Criar Nota de Análise',
-    'synergy.deep_scan': 'Varredura Profunda do Grafo de Conhecimento',
-    
+    'synergy.deep_scan': 'Scan Profundo do Grafo de Conhecimento',
+
     // Strategic Sessions
     'sessions.title': 'Planejador de Sessões Estratégicas',
     'sessions.subtitle': 'Sessões de pensamento estratégico sugeridas por IA',
-    'sessions.generate': 'Gerar Sessões IA',
+    'sessions.generate': 'Gerar Sessões de IA',
     'sessions.create': 'Criar Sessão',
     'sessions.schedule': 'Agendar',
     'sessions.view_details': 'Ver Detalhes',
     'sessions.participants': 'Participantes',
     'sessions.preparation': 'Notas de Preparação',
     'sessions.outcomes': 'Resultados Esperados',
-    
+
     // Decision Journal
     'decisions.title': 'Diário de Decisões',
-    'decisions.subtitle': 'Rastreie decisões, resultados e aprendizados',
+    'decisions.subtitle': 'Acompanhe decisões, resultados e aprendizados',
     'decisions.record': 'Registrar Decisão',
     'decisions.success_rate': 'Taxa de Sucesso',
     'decisions.confidence': 'Confiança Média',
     'decisions.total': 'Total de Decisões',
-    'decisions.pending': 'Pendente de Revisão',
-    'decisions.search': 'Pesquisar decisões...',
+    'decisions.pending': 'Revisão Pendente',
+    'decisions.search': 'Buscar decisões...',
     'decisions.generate_insights': 'Gerar Insights de Decisão',
+
+    // Cognito Chat
+    'cognitoChat.title': 'Cognito AI Chat',
+    'cognitoChat.subtitle': 'Converse com a IA para obter insights e respostas em tempo real.',
     
     // Common
     'common.loading': 'Carregando...',
@@ -560,6 +663,29 @@ const translations = {
     'common.down': 'Baixo',
     'common.left': 'Esquerda',
     'common.right': 'Direita',
+
+    // Common CRUD
+    'common.creating': 'Criando...',
+    'common.updating': 'Atualizando...',
+    'common.deleting': 'Deletando...',
+    'common.create_success': 'Item criado com sucesso.',
+    'common.update_success': 'Item atualizado com sucesso.',
+    'common.delete_success': 'Item deletado com sucesso.',
+    'common.create_error': 'Erro ao criar o item.',
+    'common.update_error': 'Erro ao atualizar o item.',
+    'common.delete_error': 'Erro ao deletar o item.',
+    'common.delete_confirm_message': 'Tem certeza que deseja deletar {item}?',
+
+    // Agent Manager
+    'agent.panelTitle': 'Painel de Controle de Agentes',
+    'agent.create': 'Criar Novo Agente',
+    'agent.name': 'Nome do Agente',
+    'agent.type': 'Tipo',
+    'agent.status': 'Status',
+    'agent.schedule': 'Agendamento',
+    'agent.lastRun': 'Última Execução',
+    'agent.actions': 'Ações',
+    'agent.runNow': 'Executar',
     
     // Time
     'time.minutes_ago': 'minutos atrás',
@@ -581,7 +707,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [language, setLanguage] = useState<Language>('pt');
 
   const t = (key: string): string => {
-    return translations[language][key as keyof typeof translations[typeof language]] || key;
+    const langTranslations = translations[language];
+    if (!langTranslations) {
+      return key;
+    }
+    return langTranslations[key as keyof typeof langTranslations] || key;
   };
 
   return (

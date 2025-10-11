@@ -1,616 +1,447 @@
-import React, { useState } from 'react';
-import { 
-  Settings, 
-  X, 
-  Database, 
-  Key, 
-  Palette, 
-  Bell, 
-  Shield, 
-  Download, 
-  Upload,
-  Trash2,
-  Save,
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
+import toast from 'react-hot-toast';
+import {
+  Cloud,
   RefreshCw,
+  Save,
+  ShieldCheck,
   Eye,
   EyeOff,
-  Check,
-  AlertTriangle
+  Settings2,
+  Workflow,
+  Layers,
+  X,
 } from 'lucide-react';
 
-interface SettingsModalProps {
+type BrainCloudSettings = {
+  baseUrl: string;
+  apiToken: string;
+  tenantId: string;
+  tenantPlan: string;
+  mcpWs: string;
+  mcpHttp: string;
+  enableRest: boolean;
+  enableMcp: boolean;
+};
+
+const DEFAULT_SETTINGS: BrainCloudSettings = {
+  baseUrl: '',
+  apiToken: '',
+  tenantId: '',
+  tenantPlan: '',
+  mcpWs: '',
+  mcpHttp: '',
+  enableRest: true,
+  enableMcp: true,
+};
+
+type SettingsModalProps = {
+  open: boolean;
   onClose: () => void;
-}
+};
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
-  const [activeTab, setActiveTab] = useState('api');
-  const [showApiKeys, setShowApiKeys] = useState(false);
-  const [settings, setSettings] = useState({
-    // API Configuration
-    obsidianApiUrl: 'http://localhost:27123',
-    obsidianApiKey: '••••••••••••••••',
-    openaiApiKey: '••••••••••••••••',
-    embeddingsApiUrl: 'http://localhost:8000',
-    mcpEndpoint: 'ws://localhost:8080/mcp',
-    
-    // Preferences
-    theme: 'dark',
-    language: 'en',
-    autoRefresh: true,
-    refreshInterval: 30,
-    enableNotifications: true,
-    enableSounds: false,
-    
-    // Privacy & Security
-    enableAnalytics: true,
-    shareUsageData: false,
-    sessionTimeout: 60,
-    enableTwoFactor: false,
-    
-    // Data Management
-    autoBackup: true,
-    backupFrequency: 'daily',
-    retentionPeriod: 90
-  });
+const SECTIONS = [
+  {
+    id: 'general',
+    label: 'General',
+    description: 'Preferências gerais do workspace.',
+    icon: <Settings2 className="h-4 w-4" />,
+  },
+  {
+    id: 'braincloud',
+    label: 'Brain Cloud',
+    description: 'Configurações REST/MCP do Obsidian Brain Cloud.',
+    icon: <Cloud className="h-4 w-4" />,
+  },
+  {
+    id: 'integrations',
+    label: 'Integrations',
+    description: 'Outras integrações e automações (em breve).',
+    icon: <Workflow className="h-4 w-4" />,
+  },
+  {
+    id: 'dataops',
+    label: 'Data Ops',
+    description: 'Pipelines de dados e sync (em breve).',
+    icon: <Layers className="h-4 w-4" />,
+  },
+];
 
-  const tabs = [
-    { id: 'api', label: 'API Configuration', icon: Key },
-    { id: 'preferences', label: 'Preferences', icon: Palette },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'security', label: 'Security', icon: Shield },
-    { id: 'data', label: 'Data Management', icon: Database }
-  ];
+const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
+  const [activeSection, setActiveSection] = useState<'general' | 'braincloud' | 'integrations' | 'dataops'>('braincloud');
+  const [settings, setSettings] = useState<BrainCloudSettings | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testingMode, setTestingMode] = useState<'rest' | 'mcp' | null>(null);
+  const [showToken, setShowToken] = useState(false);
 
-  const handleSaveSettings = () => {
-    // In a real app, this would save settings to the backend
-    console.log('Saving settings:', settings);
-    alert('Settings saved successfully!');
-  };
+  const mergedSettings = useMemo(
+    () => settings ?? DEFAULT_SETTINGS,
+    [settings]
+  );
 
-  const handleTestConnection = async (service: string) => {
-    // In a real app, this would test the API connection
-    console.log('Testing connection to:', service);
-    alert(`Testing connection to ${service}...`);
-  };
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings/braincloud', { credentials: 'include' });
+      if (!res.ok) throw new Error('Falha ao carregar configurações');
+      const data = await res.json();
+      setSettings({ ...DEFAULT_SETTINGS, ...(data?.braincloud || {}) });
+    } catch (error) {
+      console.error(error);
+      toast.error('Não foi possível carregar as configurações.');
+      setSettings(DEFAULT_SETTINGS);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleExportSettings = () => {
-    const exportData = {
-      settings: { ...settings },
-      exportDate: new Date().toISOString(),
-      version: '1.0.0'
-    };
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `dashboard-settings-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  useEffect(() => {
+    if (!open) return;
+    fetchSettings();
+  }, [open, fetchSettings]);
 
-  const handleImportSettings = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try {
-            const importedData = JSON.parse(e.target?.result as string);
-            setSettings({ ...settings, ...importedData.settings });
-            alert('Settings imported successfully!');
-          } catch (error) {
-            alert('Failed to import settings. Invalid file format.');
-          }
-        };
-        reader.readAsText(file);
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
       }
     };
-    input.click();
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [open, onClose]);
+
+  const handleChange = (field: keyof BrainCloudSettings) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setSettings((prev) => ({ ...(prev || DEFAULT_SETTINGS), [field]: value }));
   };
 
-  const handleResetSettings = () => {
-    if (confirm('Are you sure you want to reset all settings to default? This action cannot be undone.')) {
-      // Reset to default settings
-      alert('Settings reset to default values.');
+  const handleToggle = (field: keyof BrainCloudSettings) => () => {
+    setSettings((prev) => ({ ...(prev || DEFAULT_SETTINGS), [field]: !(prev?.[field] as boolean) }));
+  };
+
+  const handleSave = async () => {
+    if (!settings) return;
+    setSaving(true);
+    try {
+      const response = await fetch('/api/settings/braincloud', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ braincloud: settings }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.error || 'Erro ao salvar');
+      }
+
+      const data = await response.json();
+      setSettings({ ...DEFAULT_SETTINGS, ...(data?.braincloud || {}) });
+      toast.success('Configurações salvas com sucesso');
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : 'Falha ao salvar configurações');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const renderAPIConfiguration = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">API Configuration</h3>
-        <p className="text-slate-400 text-sm mb-6">Configure your external service connections</p>
-      </div>
+  const handleTest = async (mode: 'rest' | 'mcp') => {
+    if (!settings) return;
+    setTestingMode(mode);
+    try {
+      const response = await fetch('/api/settings/braincloud/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ braincloud: settings, mode }),
+      });
 
-      {/* Obsidian API */}
-      <div className="bg-slate-700/30 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-white font-medium">Obsidian API</h4>
-          <button
-            onClick={() => handleTestConnection('Obsidian')}
-            className="flex items-center space-x-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded text-sm transition-colors"
-          >
-            <RefreshCw className="h-3 w-3" />
-            <span>Test Connection</span>
-          </button>
-        </div>
-        
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">API URL</label>
-            <input
-              type="text"
-              value={settings.obsidianApiUrl}
-              onChange={(e) => setSettings({...settings, obsidianApiUrl: e.target.value})}
-              className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">API Key</label>
-            <div className="relative">
-              <input
-                type={showApiKeys ? "text" : "password"}
-                value={settings.obsidianApiKey}
-                onChange={(e) => setSettings({...settings, obsidianApiKey: e.target.value})}
-                className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 pr-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              />
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || `Falha ao testar ${mode.toUpperCase()}`);
+      }
+
+      toast.success(`${mode === 'rest' ? 'REST' : 'MCP'} ok: ${payload?.response?.status || 'sucesso'}`);
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : 'Teste falhou');
+    } finally {
+      setTestingMode(null);
+    }
+  };
+
+  if (!open) return null;
+
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-neutral-950/80 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-5xl rounded-3xl border border-neutral-800 bg-neutral-950/95 text-zinc-100 shadow-2xl shadow-black/40">
+        <div className="flex h-[75vh] overflow-hidden rounded-3xl">
+          <aside className="w-60 border-r border-neutral-800 bg-neutral-950/80 p-6">
+            <div className="mb-6">
+              <p className="text-sm font-medium text-emerald-300">Advanced Settings</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Ajuste conexões e integrações do CEO Dashboard.
+              </p>
+            </div>
+            <nav className="space-y-2">
+              {SECTIONS.map((item) => {
+                const active = activeSection === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveSection(item.id as typeof activeSection)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${
+                      active
+                        ? 'bg-neutral-800 text-zinc-100'
+                        : 'text-zinc-400 hover:bg-neutral-900 hover:text-zinc-200'
+                    }`}
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900">
+                      {item.icon}
+                    </span>
+                    <span className="text-left">{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </aside>
+
+          <section className="flex-1 overflow-y-auto p-8">
+            <header className="flex items-start justify-between gap-4 border-b border-neutral-800 pb-4">
+              <div>
+                <p className="text-lg font-semibold">
+                  {SECTIONS.find((sec) => sec.id === activeSection)?.label || 'Configurações'}
+                </p>
+                <p className="text-sm text-zinc-500">
+                  {SECTIONS.find((sec) => sec.id === activeSection)?.description || ''}
+                </p>
+              </div>
               <button
-                onClick={() => setShowApiKeys(!showApiKeys)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white"
+                onClick={onClose}
+                className="rounded-full border border-neutral-800 bg-neutral-900 p-2 text-zinc-400 transition hover:border-neutral-600 hover:text-zinc-100"
+                aria-label="Fechar configurações"
               >
-                {showApiKeys ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                <X className="h-4 w-4" />
               </button>
-            </div>
-          </div>
-        </div>
-      </div>
+            </header>
 
-      {/* OpenAI API */}
-      <div className="bg-slate-700/30 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-white font-medium">OpenAI API</h4>
-          <button
-            onClick={() => handleTestConnection('OpenAI')}
-            className="flex items-center space-x-1 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-1 rounded text-sm transition-colors"
-          >
-            <RefreshCw className="h-3 w-3" />
-            <span>Test Connection</span>
-          </button>
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">API Key</label>
-          <div className="relative">
-            <input
-              type={showApiKeys ? "text" : "password"}
-              value={settings.openaiApiKey}
-              onChange={(e) => setSettings({...settings, openaiApiKey: e.target.value})}
-              className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 pr-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            />
-            <button
-              onClick={() => setShowApiKeys(!showApiKeys)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white"
-            >
-              {showApiKeys ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
-      </div>
+            {activeSection === 'braincloud' && (
+              <div className="mt-6 space-y-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={() => handleTest('rest')}
+                    disabled={testingMode === 'rest' || loading}
+                    className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-zinc-200 transition hover:border-neutral-500 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${testingMode === 'rest' ? 'animate-spin' : ''}`} />
+                    Testar REST
+                  </button>
+                  <button
+                    onClick={() => handleTest('mcp')}
+                    disabled={testingMode === 'mcp' || loading}
+                    className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-zinc-200 transition hover:border-neutral-500 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${testingMode === 'mcp' ? 'animate-spin' : ''}`} />
+                    Testar MCP
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || loading}
+                    className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/30 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <Save className="h-4 w-4" />
+                    Salvar
+                  </button>
+                </div>
 
-      {/* MCP Configuration */}
-      <div className="bg-slate-700/30 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-white font-medium">MCP Endpoint</h4>
-          <button
-            onClick={() => handleTestConnection('MCP')}
-            className="flex items-center space-x-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 px-3 py-1 rounded text-sm transition-colors"
-          >
-            <RefreshCw className="h-3 w-3" />
-            <span>Test Connection</span>
-          </button>
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">WebSocket URL</label>
-          <input
-            type="text"
-            value={settings.mcpEndpoint}
-            onChange={(e) => setSettings({...settings, mcpEndpoint: e.target.value})}
-            className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-        </div>
-      </div>
-    </div>
-  );
+                {loading ? (
+                  <div className="h-40 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/60" />
+                ) : (
+                  <div className="space-y-6">
+                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+                      <div className="flex items-center gap-3 text-zinc-100">
+                        <Cloud className="h-5 w-5" />
+                        <div>
+                          <h2 className="text-sm font-semibold">Obsidian Brain Cloud • REST</h2>
+                          <p className="text-xs text-zinc-400">
+                            URL e credenciais para operações via API.
+                          </p>
+                        </div>
+                      </div>
 
-  const renderPreferences = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Preferences</h3>
-        <p className="text-slate-400 text-sm mb-6">Customize your dashboard experience</p>
-      </div>
+                      <div className="mt-5 space-y-3">
+                        <Field
+                          label="Base URL"
+                          placeholder="https://braincloud.ggai.dev"
+                          value={mergedSettings.baseUrl}
+                          onChange={handleChange('baseUrl')}
+                        />
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Theme</label>
-          <select
-            value={settings.theme}
-            onChange={(e) => setSettings({...settings, theme: e.target.value})}
-            className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          >
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="auto">Auto</option>
-          </select>
-        </div>
+                        <Field
+                          label="Token de API"
+                          type={showToken ? 'text' : 'password'}
+                          placeholder="••••••"
+                          value={mergedSettings.apiToken}
+                          onChange={handleChange('apiToken')}
+                          rightAdornment={
+                            <button
+                              type="button"
+                              onClick={() => setShowToken((prev) => !prev)}
+                              className="text-zinc-400 transition hover:text-zinc-200"
+                            >
+                              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          }
+                        />
 
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Language</label>
-          <select
-            value={settings.language}
-            onChange={(e) => setSettings({...settings, language: e.target.value})}
-            className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          >
-            <option value="en">English</option>
-            <option value="pt">Português</option>
-          </select>
-        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field
+                            label="Tenant ID (opcional)"
+                            placeholder="cliente-xpto"
+                            value={mergedSettings.tenantId}
+                            onChange={handleChange('tenantId')}
+                          />
+                          <Field
+                            label="Tenant Plan"
+                            placeholder="enterprise"
+                            value={mergedSettings.tenantPlan}
+                            onChange={handleChange('tenantPlan')}
+                          />
+                        </div>
+                      </div>
+                    </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-slate-300">Auto Refresh</label>
-            <p className="text-xs text-slate-400">Automatically refresh data</p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.autoRefresh}
-              onChange={(e) => setSettings({...settings, autoRefresh: e.target.checked})}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
+                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+                      <div className="flex items-center gap-3 text-zinc-100">
+                        <ShieldCheck className="h-5 w-5" />
+                        <div>
+                          <h2 className="text-sm font-semibold">Model Context Protocol</h2>
+                          <p className="text-xs text-zinc-400">
+                            Endpoints de WebSocket e HTTP para ferramentas MCP.
+                          </p>
+                        </div>
+                      </div>
 
-        {settings.autoRefresh && (
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Refresh Interval: {settings.refreshInterval} seconds
-            </label>
-            <input
-              type="range"
-              min="10"
-              max="300"
-              value={settings.refreshInterval}
-              onChange={(e) => setSettings({...settings, refreshInterval: parseInt(e.target.value)})}
-              className="w-full"
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+                      <div className="mt-5 space-y-3">
+                        <Field
+                          label="MCP WebSocket"
+                          placeholder="ws://localhost:8000/mcp"
+                          value={mergedSettings.mcpWs}
+                          onChange={handleChange('mcpWs')}
+                        />
+                        <Field
+                          label="MCP HTTP"
+                          placeholder="http://localhost:8000/api/v1/mcp/http"
+                          value={mergedSettings.mcpHttp}
+                          onChange={handleChange('mcpHttp')}
+                        />
 
-  const renderNotifications = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Notification Settings</h3>
-        <p className="text-slate-400 text-sm mb-6">Configure how you receive notifications</p>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-slate-300">Enable Notifications</label>
-            <p className="text-xs text-slate-400">Receive browser notifications</p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.enableNotifications}
-              onChange={(e) => setSettings({...settings, enableNotifications: e.target.checked})}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-slate-300">Sound Notifications</label>
-            <p className="text-xs text-slate-400">Play sound for notifications</p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.enableSounds}
-              onChange={(e) => setSettings({...settings, enableSounds: e.target.checked})}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
-
-        <div className="bg-slate-700/30 rounded-lg p-4">
-          <h4 className="text-white font-medium mb-3">Notification Types</h4>
-          <div className="space-y-3">
-            {[
-              { id: 'insights', label: 'New AI Insights', enabled: true },
-              { id: 'sessions', label: 'Strategic Sessions', enabled: true },
-              { id: 'decisions', label: 'Decision Updates', enabled: false },
-              { id: 'system', label: 'System Alerts', enabled: true }
-            ].map((type) => (
-              <div key={type.id} className="flex items-center justify-between">
-                <span className="text-sm text-slate-300">{type.label}</span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    defaultChecked={type.enabled}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <ToggleField
+                            label="Habilitar features REST"
+                            description="Permite que o dashboard use a API REST da Brain Cloud."
+                            checked={mergedSettings.enableRest}
+                            onToggle={handleToggle('enableRest')}
+                          />
+                          <ToggleField
+                            label="Habilitar features MCP"
+                            description="Libera uso de ferramentas MCP (semantic search, templates, etc.)."
+                            checked={mergedSettings.enableMcp}
+                            onToggle={handleToggle('enableMcp')}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+            )}
 
-  const renderSecurity = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Security & Privacy</h3>
-        <p className="text-slate-400 text-sm mb-6">Manage your security and privacy settings</p>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Session Timeout: {settings.sessionTimeout} minutes
-          </label>
-          <input
-            type="range"
-            min="15"
-            max="480"
-            value={settings.sessionTimeout}
-            onChange={(e) => setSettings({...settings, sessionTimeout: parseInt(e.target.value)})}
-            className="w-full"
-          />
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-slate-300">Two-Factor Authentication</label>
-            <p className="text-xs text-slate-400">Add extra security to your account</p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.enableTwoFactor}
-              onChange={(e) => setSettings({...settings, enableTwoFactor: e.target.checked})}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-slate-300">Usage Analytics</label>
-            <p className="text-xs text-slate-400">Help improve the dashboard</p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.enableAnalytics}
-              onChange={(e) => setSettings({...settings, enableAnalytics: e.target.checked})}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
-
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5" />
-            <div>
-              <h4 className="text-yellow-400 font-medium">Security Recommendations</h4>
-              <ul className="text-sm text-yellow-300 mt-2 space-y-1">
-                <li>• Enable two-factor authentication</li>
-                <li>• Use strong, unique API keys</li>
-                <li>• Regularly rotate your credentials</li>
-                <li>• Monitor access logs</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderDataManagement = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Data Management</h3>
-        <p className="text-slate-400 text-sm mb-6">Manage your data backup and retention</p>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-slate-300">Auto Backup</label>
-            <p className="text-xs text-slate-400">Automatically backup your data</p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.autoBackup}
-              onChange={(e) => setSettings({...settings, autoBackup: e.target.checked})}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
-
-        {settings.autoBackup && (
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Backup Frequency</label>
-            <select
-              value={settings.backupFrequency}
-              onChange={(e) => setSettings({...settings, backupFrequency: e.target.value})}
-              className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            >
-              <option value="hourly">Hourly</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </div>
-        )}
-
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Data Retention: {settings.retentionPeriod} days
-          </label>
-          <input
-            type="range"
-            min="30"
-            max="365"
-            value={settings.retentionPeriod}
-            onChange={(e) => setSettings({...settings, retentionPeriod: parseInt(e.target.value)})}
-            className="w-full"
-          />
-        </div>
-
-        <div className="bg-slate-700/30 rounded-lg p-4">
-          <h4 className="text-white font-medium mb-3">Data Actions</h4>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={handleExportSettings}
-              className="flex items-center justify-center space-x-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 py-2 px-4 rounded-lg transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              <span>Export Settings</span>
-            </button>
-            
-            <button
-              onClick={handleImportSettings}
-              className="flex items-center justify-center space-x-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 py-2 px-4 rounded-lg transition-colors"
-            >
-              <Upload className="h-4 w-4" />
-              <span>Import Settings</span>
-            </button>
-          </div>
-          
-          <button
-            onClick={handleResetSettings}
-            className="w-full mt-3 flex items-center justify-center space-x-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 py-2 px-4 rounded-lg transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span>Reset to Defaults</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'api': return renderAPIConfiguration();
-      case 'preferences': return renderPreferences();
-      case 'notifications': return renderNotifications();
-      case 'security': return renderSecurity();
-      case 'data': return renderDataManagement();
-      default: return renderAPIConfiguration();
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 flex items-center justify-center z-50">
-      <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex">
-        {/* Sidebar */}
-        <div className="w-64 border-r border-slate-700 p-4">
-          <div className="flex items-center space-x-2 mb-6">
-            <Settings className="h-5 w-5 text-slate-400" />
-            <h2 className="text-lg font-semibold text-white">Settings</h2>
-          </div>
-          
-          <nav className="space-y-1">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                    activeTab === tab.id
-                      ? 'bg-blue-600/20 text-blue-400'
-                      : 'text-slate-300 hover:bg-slate-700/50'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="text-sm">{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-700">
-            <h3 className="text-xl font-semibold text-white">
-              {tabs.find(tab => tab.id === activeTab)?.label}
-            </h3>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {renderTabContent()}
-          </div>
-
-          {/* Footer */}
-          <div className="border-t border-slate-700 p-6">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-slate-400">
-                Changes are saved automatically
+            {activeSection !== 'braincloud' && (
+              <div className="mt-12 flex h-full flex-col items-center justify-center gap-4 text-center text-zinc-400">
+                <div className="rounded-full border border-neutral-800 bg-neutral-900/60 p-4">
+                  <ShieldCheck className="h-6 w-6 text-zinc-300" />
+                </div>
+                <div>
+                  <p className="text-base font-medium text-zinc-100">Em breve</p>
+                  <p className="text-sm text-zinc-500">
+                    Estamos trazendo estas configurações para a próxima versão do dashboard.
+                  </p>
+                </div>
               </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleSaveSettings}
-                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  <Save className="h-4 w-4" />
-                  <span>Save Settings</span>
-                </button>
-              </div>
-            </div>
-          </div>
+            )}
+          </section>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
+
+type FieldProps = {
+  label: string;
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+  placeholder?: string;
+  rightAdornment?: React.ReactNode;
+};
+
+const Field: React.FC<FieldProps> = ({ label, value, onChange, type = 'text', placeholder, rightAdornment }) => (
+  <label className="block text-sm text-zinc-300">
+    <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">{label}</span>
+    <div className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 focus-within:border-neutral-600">
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+      />
+      {rightAdornment}
+    </div>
+  </label>
+);
+
+type ToggleFieldProps = {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onToggle: () => void;
+};
+
+const ToggleField: React.FC<ToggleFieldProps> = ({ label, description, checked, onToggle }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    className="flex items-start gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-left transition hover:border-neutral-600"
+  >
+    <span
+      className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] ${
+        checked
+          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+          : 'border-neutral-700 text-neutral-400'
+      }`}
+    >
+      {checked ? '●' : ''}
+    </span>
+    <span className="flex-1 text-sm text-zinc-200">
+      {label}
+      {description && <p className="mt-1 text-xs text-zinc-500">{description}</p>}
+    </span>
+  </button>
+);
 
 export default SettingsModal;

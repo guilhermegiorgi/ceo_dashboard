@@ -1,0 +1,12 @@
+{
+  "braincloud": {
+    "baseUrl": "",
+    "apiToken": "",
+    "tenantId": "",
+    "tenantPlan": "",
+    "mcpWs": "",
+    "mcpHttp": "",
+    "enableRest": true,
+    "enableMcp": true
+  }
+}
