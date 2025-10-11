@@ -18,6 +18,7 @@ import {
   Download
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import apiClient from '../services/apiClient';
 
 interface MarketOpportunity {
   id: string;
@@ -53,61 +54,28 @@ const MarketIntelligenceEngine: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMarket, setFilterMarket] = useState('all');
 
-  const [opportunities, setOpportunities] = useState<MarketOpportunity[]>([
-    {
-      id: '1',
-      title: 'AI-Powered Healthcare Diagnostics',
-      description: 'Emerging opportunity in AI-driven medical imaging and diagnostic tools for small clinics',
-      market: 'Healthcare',
-      potentialValue: '$2.3B',
-      timeToMarket: '18 months',
-      confidence: 87,
-      riskLevel: 'medium',
-      competitorCount: 12,
-      trendDirection: 'up',
-      keyFactors: ['Regulatory approval pathway clear', 'Growing demand from rural clinics', 'AI technology maturity'],
-      actionItems: ['Conduct regulatory research', 'Partner with medical institutions', 'Develop MVP'],
-      sources: ['FDA reports', 'Market research', 'Industry analysis']
-    },
-    {
-      id: '2',
-      title: 'Sustainable Supply Chain Analytics',
-      description: 'AI platform for optimizing supply chains with sustainability metrics and carbon footprint tracking',
-      market: 'Enterprise Software',
-      potentialValue: '$1.8B',
-      timeToMarket: '12 months',
-      confidence: 92,
-      riskLevel: 'low',
-      competitorCount: 8,
-      trendDirection: 'up',
-      keyFactors: ['ESG compliance requirements', 'Supply chain disruptions', 'Carbon tracking mandates'],
-      actionItems: ['Build sustainability metrics engine', 'Secure enterprise partnerships', 'Develop carbon API'],
-      sources: ['ESG reports', 'Supply chain studies', 'Regulatory updates']
-    }
-  ]);
+  const [opportunities, setOpportunities] = useState<MarketOpportunity[]>([]);
+  const [competitorInsights, setCompetitorInsights] = useState<CompetitorInsight[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [competitorInsights, setCompetitorInsights] = useState<CompetitorInsight[]>([
-    {
-      id: '1',
-      competitor: 'TechCorp AI',
-      movement: 'Acquired healthcare AI startup MedVision for $150M',
-      impact: 'negative',
-      urgency: 'high',
-      recommendation: 'Accelerate healthcare AI development or consider strategic partnerships',
-      source: 'Industry news',
-      timestamp: '2 hours ago'
-    },
-    {
-      id: '2',
-      competitor: 'DataFlow Systems',
-      movement: 'Launched new supply chain optimization platform',
-      impact: 'negative',
-      urgency: 'medium',
-      recommendation: 'Differentiate with sustainability focus and carbon tracking',
-      source: 'Product launch announcement',
-      timestamp: '1 day ago'
-    }
-  ]);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const [opps, comps] = await Promise.all([
+          apiClient.getMarketOpportunities(),
+          apiClient.getCompetitorInsights(),
+        ]);
+        setOpportunities(opps);
+        setCompetitorInsights(comps);
+      } catch (error) {
+        console.error("Failed to fetch market intelligence data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const handleDeepAnalysis = async () => {
     setIsAnalyzing(true);
@@ -275,8 +243,8 @@ const MarketIntelligenceEngine: React.FC = () => {
             <Globe className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Market Intelligence Engine</h2>
-            <p className="text-sm text-slate-400">AI-powered market analysis and opportunity discovery</p>
+            <h2 className="text-xl font-bold text-white">{t('market.title')}</h2>
+            <p className="text-sm text-slate-400">{t('market.subtitle')}</p>
           </div>
         </div>
         
@@ -286,16 +254,16 @@ const MarketIntelligenceEngine: React.FC = () => {
           className="flex items-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
         >
           <RefreshCw className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
-          <span>{isAnalyzing ? 'Analyzing...' : 'Deep Analysis'}</span>
+          <span>{isAnalyzing ? t('market.analyzing') : t('market.deep_analysis')}</span>
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex space-x-1 mb-6 bg-slate-700/30 rounded-lg p-1">
         {[
-          { id: 'opportunities', label: 'Market Opportunities', icon: Target },
-          { id: 'competitors', label: 'Competitor Intelligence', icon: Eye },
-          { id: 'trends', label: 'Market Trends', icon: TrendingUp }
+          { id: 'opportunities', label: t('market.tabs.opportunities'), icon: Target },
+          { id: 'competitors', label: t('market.tabs.competitors'), icon: Eye },
+          { id: 'trends', label: t('market.tabs.trends'), icon: TrendingUp }
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -321,7 +289,7 @@ const MarketIntelligenceEngine: React.FC = () => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search opportunities, competitors, trends..."
+            placeholder={t('market.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-10 pr-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
@@ -333,11 +301,11 @@ const MarketIntelligenceEngine: React.FC = () => {
           onChange={(e) => setFilterMarket(e.target.value)}
           className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
         >
-          <option value="all">All Markets</option>
-          <option value="healthcare">Healthcare</option>
-          <option value="enterprise">Enterprise Software</option>
-          <option value="manufacturing">Manufacturing</option>
-          <option value="fintech">FinTech</option>
+          <option value="all">{t('market.filter.all')}</option>
+          <option value="healthcare">{t('market.filter.healthcare')}</option>
+          <option value="enterprise">{t('market.filter.enterprise')}</option>
+          <option value="manufacturing">{t('market.filter.manufacturing')}</option>
+          <option value="fintech">{t('market.filter.fintech')}</option>
         </select>
       </div>
 
@@ -347,7 +315,7 @@ const MarketIntelligenceEngine: React.FC = () => {
       {activeTab === 'trends' && (
         <div className="text-center py-12">
           <TrendingUp className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400">Market trends analysis coming soon...</p>
+          <p className="text-slate-400">{t('market.trends.soon')}</p>
         </div>
       )}
     </div>

@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sentence-transformers
+chromadb
+llama-index
+llama-index-vector-stores-chroma
+python-dotenv
+watchdog==4.0.1
+streamlit==1.36.0
+tiktoken==0.7.0
+openai
+redis
+llama-index-storage-chat-store-redis
+PyYAML
+llama-index-llms-gemini 

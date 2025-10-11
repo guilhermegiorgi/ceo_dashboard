@@ -1,21 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Briefcase, 
   Users, 
   Calendar, 
   DollarSign, 
-  Target, 
   TrendingUp,
   Plus,
-  Edit,
   Trash2,
-  Save,
   X,
   Clock,
   AlertTriangle,
   CheckCircle,
   BarChart3,
-  Filter,
   Search
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -38,10 +34,8 @@ interface Project {
 
 const ProjectOverview: React.FC = () => {
   const { t } = useLanguage();
-  const { projects, loading, createProject, updateProject } = useProjects();
-  
+  const { data: projects, loading, refetch: refetchProjects } = useProjects();
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editingProject, setEditingProject] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
@@ -72,13 +66,20 @@ const ProjectOverview: React.FC = () => {
     baixa: 'bg-green-500/20 border-green-500/30'
   };
 
-  const filteredProjects = projects.filter(project => {
+  const filteredProjects = (projects || []).filter((project: Project) => {
     const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          (project.description && project.description.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = filterStatus === 'all' || project.status === filterStatus;
     const matchesPriority = filterPriority === 'all' || project.priority === filterPriority;
     return matchesSearch && matchesStatus && matchesPriority;
-  });
+  }).sort((a: Project, b: Project) => a.name.localeCompare(b.name));
+
+  // Mockup para createProject e updateProject - a lógica real virá do useAPI ou hook específico
+  const createProject = async (projectData: Partial<Project>) => {
+    console.log('Criando projeto:', projectData);
+    // Simula uma chamada de API bem-sucedida
+    return Promise.resolve();
+  };
 
   const handleCreateProject = async () => {
     if (!newProject.name || !newProject.budget || !newProject.deadline) {
@@ -89,7 +90,18 @@ const ProjectOverview: React.FC = () => {
     try {
       await createProject(newProject);
       setShowCreateForm(false);
-      resetNewProject();
+      setNewProject({
+        name: '',
+        status: 'Planejamento',
+        progress: 0,
+        team_size: 1,
+        budget: '',
+        deadline: '',
+        priority: 'média',
+        roi: '+0%',
+        description: ''
+      });
+      refetchProjects(); // Atualiza a lista de projetos
       alert('Projeto criado com sucesso!');
     } catch (error) {
       console.error('Falha ao criar projeto:', error);
@@ -97,50 +109,28 @@ const ProjectOverview: React.FC = () => {
     }
   };
 
-  const handleUpdateProject = async (projectId: string, updates: Partial<Project>) => {
-    try {
-      await updateProject(projectId, updates);
-      setEditingProject(null);
-      alert('Projeto atualizado com sucesso!');
-    } catch (error) {
-      console.error('Falha ao atualizar projeto:', error);
-      alert('Falha ao atualizar projeto. Tente novamente.');
-    }
-  };
-
   const handleDeleteProject = async (projectId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este projeto?')) {
+    if (!confirm(`Tem certeza que deseja excluir o projeto ${projectId}?`)) {
       return;
     }
 
     try {
       // Em uma aplicação real, isso chamaria a API de exclusão
+      console.log(`Simulando a exclusão do projeto com ID: ${projectId}`);
       alert('Projeto excluído com sucesso!');
+      refetchProjects();
     } catch (error) {
       console.error('Falha ao excluir projeto:', error);
       alert('Falha ao excluir projeto. Tente novamente.');
     }
   };
 
-  const resetNewProject = () => {
-    setNewProject({
-      name: '',
-      status: 'Planejamento',
-      progress: 0,
-      team_size: 1,
-      budget: '',
-      deadline: '',
-      priority: 'média',
-      roi: '+0%',
-      description: ''
-    });
-  };
-
   const getProjectStats = () => {
+    if (!projects) return { total: 0, completed: 0, inProgress: 0, overdue: 0 };
     const total = projects.length;
-    const completed = projects.filter(p => p.status === 'Concluído').length;
-    const inProgress = projects.filter(p => p.status === 'Em Andamento').length;
-    const overdue = projects.filter(p => {
+    const completed = projects.filter((p: Project) => p.status === 'Concluído').length;
+    const inProgress = projects.filter((p: Project) => p.status === 'Em Andamento').length;
+    const overdue = projects.filter((p: Project) => {
       const deadline = new Date(p.deadline);
       return deadline < new Date() && p.status !== 'Concluído';
     }).length;
@@ -168,7 +158,17 @@ const ProjectOverview: React.FC = () => {
           <button 
             onClick={() => {
               setShowCreateForm(false);
-              resetNewProject();
+              setNewProject({
+                name: '',
+                status: 'Planejamento',
+                progress: 0,
+                team_size: 1,
+                budget: '',
+                deadline: '',
+                priority: 'média',
+                roi: '+0%',
+                description: ''
+              });
             }}
             className="text-slate-400 hover:text-white transition-colors"
           >
@@ -298,7 +298,17 @@ const ProjectOverview: React.FC = () => {
             <button
               onClick={() => {
                 setShowCreateForm(false);
-                resetNewProject();
+                setNewProject({
+                  name: '',
+                  status: 'Planejamento',
+                  progress: 0,
+                  team_size: 1,
+                  budget: '',
+                  deadline: '',
+                  priority: 'média',
+                  roi: '+0%',
+                  description: ''
+                });
               }}
               className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
             >
@@ -406,7 +416,7 @@ const ProjectOverview: React.FC = () => {
       
       {/* Projects List */}
       <div className="space-y-4">
-        {filteredProjects.map((project) => {
+        {filteredProjects.map((project: Project) => {
           const statusConf = statusConfig[project.status as keyof typeof statusConfig];
           const isOverdue = new Date(project.deadline) < new Date() && project.status !== 'Concluído';
           
@@ -417,12 +427,7 @@ const ProjectOverview: React.FC = () => {
                   <div className="flex items-center space-x-2 mb-2">
                     <h3 className="text-lg font-semibold text-white">{project.name}</h3>
                     <div className="flex space-x-1">
-                      <button
-                        onClick={() => setEditingProject(project.id)}
-                        className="p-1 text-slate-400 hover:text-blue-400 transition-colors"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </button>
+                      {/* A funcionalidade de edição será reativada no futuro */}
                       <button
                         onClick={() => handleDeleteProject(project.id)}
                         className="p-1 text-slate-400 hover:text-red-400 transition-colors"

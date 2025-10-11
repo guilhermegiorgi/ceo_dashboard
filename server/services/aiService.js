@@ -13,39 +13,30 @@ class AIService {
     const cached = await cacheGet(cacheKey);
     if (cached) return cached;
 
-    try {
-      if (!this.embeddingsApiUrl) {
-        throw new Error('Embeddings API not configured');
-      }
-
-      const response = await fetch(`${this.embeddingsApiUrl}/api/embeddings`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.embeddingsApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text,
-          model: 'sentence-transformers/all-MiniLM-L6-v2'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Embeddings API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      await cacheSet(cacheKey, data, 3600); // Cache for 1 hour
-      return data;
-    } catch (error) {
-      console.error('Failed to generate embeddings:', error);
-      // Return mock embeddings for development
-      return {
-        embeddings: Array(384).fill(0).map(() => Math.random() - 0.5),
-        model: 'mock-model',
-        dimensions: 384
-      };
+    if (!this.embeddingsApiUrl) {
+      throw new Error('Embeddings API not configured');
     }
+
+    const response = await fetch(`${this.embeddingsApiUrl}/api/embeddings`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.embeddingsApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        model: 'sentence-transformers/all-MiniLM-L6-v2'
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Embeddings API error: ${response.status} ${errText}`);
+    }
+
+    const data = await response.json();
+    await cacheSet(cacheKey, data, 3600);
+    return data;
   }
 
   async semanticSearch(query, limit = 10) {
@@ -79,133 +70,63 @@ class AIService {
     const cached = await cacheGet(cacheKey);
     if (cached) return cached;
 
-    try {
-      if (!this.embeddingsApiUrl) {
-        throw new Error('Analysis API not configured');
-      }
-
-      const response = await fetch(`${this.embeddingsApiUrl}/api/analyze`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.embeddingsApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          content,
-          analysis_types: analysisTypes
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Analysis API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      await cacheSet(cacheKey, data, 1800); // Cache for 30 minutes
-      return data;
-    } catch (error) {
-      console.error('Failed to analyze content:', error);
-      // Return mock analysis for development
-      return {
-        sentiment: { score: 0.7, label: 'positive' },
-        topics: ['business', 'strategy', 'ai'],
-        entities: [
-          { text: 'Q1 2024', type: 'DATE' },
-          { text: 'AI Healthcare', type: 'PROJECT' }
-        ]
-      };
+    if (!this.embeddingsApiUrl) {
+      throw new Error('Analysis API not configured');
     }
+
+    const response = await fetch(`${this.embeddingsApiUrl}/api/analyze`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.embeddingsApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        content,
+        analysis_types: analysisTypes
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Analysis API error: ${response.status} ${errText}`);
+    }
+
+    const data = await response.json();
+    await cacheSet(cacheKey, data, 1800);
+    return data;
   }
 
   async generateInsight(context) {
-    try {
-      if (!this.openaiApiKey) {
-        return this.generateMockInsight(context);
-      }
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.openaiApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a strategic business advisor. Generate actionable insights based on the provided context. Focus on opportunities, risks, and strategic recommendations.'
-            },
-            {
-              role: 'user',
-              content: `Generate a strategic insight based on this context: ${JSON.stringify(context)}`
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.7
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const insight = data.choices[0].message.content;
-
-      return {
-        id: Date.now().toString(),
-        title: this.extractTitle(insight),
-        content: insight,
-        confidence: Math.floor(Math.random() * 20) + 80, // 80-99%
-        priority: this.determinePriority(insight),
-        actionable: true,
-        source: 'openai',
-        metadata: {
-          model: 'gpt-4',
-          context: context,
-          timestamp: new Date().toISOString()
-        }
-      };
-    } catch (error) {
-      console.error('Failed to generate AI insight:', error);
-      return this.generateMockInsight(context);
+    const prompt = [
+      { role: 'system', content: 'Você é um advisor estratégico. Gere insights acionáveis com oportunidades, riscos e recomendações.' },
+      { role: 'user', content: `Gere 1 insight estratégico baseado neste contexto: ${JSON.stringify(context)}` }
+    ];
+    const response = await fetch(`${process.env.COGNITO_API_URL || 'http://localhost:8000'}/api/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': process.env.COGNITO_API_KEY || '' },
+      body: JSON.stringify({ prompt, stream: false })
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Cognito insight error: ${response.status} ${err}`);
     }
+    const data = await response.json();
+    const txt = data.answer || '';
+    return {
+      id: Date.now().toString(),
+      title: this.extractTitle(txt),
+      content: txt,
+      confidence: 85,
+      priority: this.determinePriority(txt),
+      actionable: true,
+      source: 'cognito',
+      metadata: { timestamp: new Date().toISOString() }
+    };
   }
 
   generateMockInsight(context) {
-    const mockInsights = [
-      {
-        title: 'Market Opportunity in AI Healthcare',
-        content: 'Analysis of recent market trends and your knowledge base suggests a significant opportunity in AI-powered healthcare tools. The convergence of regulatory changes and technological advancement creates a 6-month window for market entry.',
-        confidence: 89,
-        priority: 'high'
-      },
-      {
-        title: 'Team Productivity Optimization',
-        content: 'Your team performance data indicates that reallocating 25% of engineering resources from maintenance to new feature development could increase overall productivity by 40% based on historical patterns.',
-        confidence: 76,
-        priority: 'medium'
-      },
-      {
-        title: 'Strategic Partnership Opportunity',
-        content: 'Cross-referencing your competitive analysis with recent industry moves suggests that Company X might be open to strategic partnership discussions within the next quarter.',
-        confidence: 82,
-        priority: 'medium'
-      }
-    ];
-
-    const insight = mockInsights[Math.floor(Math.random() * mockInsights.length)];
-    return {
-      id: Date.now().toString(),
-      ...insight,
-      actionable: true,
-      source: 'mock',
-      metadata: {
-        context: context,
-        timestamp: new Date().toISOString()
-      }
-    };
+    // Desabilitado: sem mocks. Exigir configuração apropriada do serviço Cognito.
+    throw new Error('Mock insights desabilitado. Configure COGNITO_API_URL/COGNITO_API_KEY.');
   }
 
   extractTitle(content) {
