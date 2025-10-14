@@ -753,12 +753,12 @@ const BusinessIntelligenceHub: React.FC = () => {
       setModelsLoading(true);
 
       try {
-        const [modelsResponse, configResponse] = await Promise.all([
+        let [modelsResponse, configResponse] = await Promise.all([
           api.getAvailableModels(),
           api.getConversationModel(conversationId),
         ]);
 
-        const mappedModels: ConversationModelOption[] =
+        let mappedModels: ConversationModelOption[] =
           (modelsResponse.models || []).map((model) => ({
             id: model.id,
             modelId: model.modelId,
@@ -770,6 +770,43 @@ const BusinessIntelligenceHub: React.FC = () => {
             isDefault: Boolean(model.isDefault),
             supportsStreaming: model.supportsStreaming,
           })) || [];
+
+        if (mappedModels.length === 0) {
+          try {
+            const providerList = await api.getAIProviders();
+            const providers = providerList.providers || [];
+            if (providers.length > 0) {
+              await Promise.all(
+                providers.map((provider) =>
+                  api
+                    .syncProviderModels(provider.id)
+                    .catch((error) => {
+                      console.error(
+                        `Error syncing models for provider ${provider.displayName}:`,
+                        error
+                      );
+                      return null;
+                    })
+                )
+              );
+
+              modelsResponse = await api.getAvailableModels();
+              mappedModels = (modelsResponse.models || []).map((model) => ({
+                id: model.id,
+                modelId: model.modelId,
+                displayName: model.displayName,
+                providerId: model.providerId || "",
+                providerName: model.providerName || "",
+                providerDisplayName:
+                  model.providerDisplayName || model.providerName || "",
+                isDefault: Boolean(model.isDefault),
+                supportsStreaming: model.supportsStreaming,
+              }));
+            }
+          } catch (syncError) {
+            console.error("Error syncing models automatically:", syncError);
+          }
+        }
 
         setModelOptions(mappedModels);
 
@@ -819,6 +856,23 @@ const BusinessIntelligenceHub: React.FC = () => {
     },
     [api]
   );
+
+  useEffect(() => {
+    if (
+      chatMode === "conversation" &&
+      activeConversation?.id &&
+      !modelsLoading &&
+      modelOptions.length === 0
+    ) {
+      initializeConversationModels(activeConversation.id);
+    }
+  }, [
+    activeConversation?.id,
+    chatMode,
+    initializeConversationModels,
+    modelOptions.length,
+    modelsLoading,
+  ]);
 
   // Chat/Conversation handlers
   const handleStartChat = useCallback(

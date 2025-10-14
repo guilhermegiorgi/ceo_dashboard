@@ -105,6 +105,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const [providerModelsLoading, setProviderModelsLoading] = useState<
     Record<string, boolean>
   >({});
+  const [syncingProviderId, setSyncingProviderId] = useState<string | null>(
+    null
+  );
 
   const mergedSettings = useMemo(
     () => settings ?? DEFAULT_SETTINGS,
@@ -265,7 +268,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         return;
       }
 
-      await api.upsertAIProvider(newProvider);
+      const provider = await api.upsertAIProvider(newProvider);
+      try {
+        await api.syncProviderModels(provider.id);
+      } catch (error) {
+        console.error("Error syncing models after provider save:", error);
+        toast.error("Provedor salvo, mas não foi possível sincronizar modelos");
+      }
       toast.success("Provedor salvo com sucesso");
       setShowProviderForm(false);
       setNewProvider({
@@ -314,6 +323,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
       toast.error("Não foi possível definir o modelo padrão");
     }
   };
+
+  const handleSyncModels = useCallback(
+    async (providerId: string) => {
+      try {
+        setSyncingProviderId(providerId);
+        const response = await api.syncProviderModels(providerId);
+        setProviderModels((prev) => ({
+          ...prev,
+          [providerId]: response.models,
+        }));
+        toast.success("Modelos sincronizados com sucesso");
+      } catch (error) {
+        console.error("Error syncing provider models:", error);
+        toast.error("Não foi possível sincronizar modelos");
+      } finally {
+        setSyncingProviderId(null);
+        loadProviderModels(providerId);
+      }
+    },
+    // 'api' é um singleton importado; mudança no objeto não dispara re-render
+    [loadProviderModels]
+  );
 
   const handleDeleteProvider = async (providerId: string) => {
     if (!confirm("Tem certeza que deseja remover este provedor?")) return;
@@ -697,41 +728,59 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                               </p>
                             </div>
                           </div>
-                          <div className="flex-1">
+                          <div className="flex flex-1 flex-col gap-2">
                             <label className="block text-xs uppercase tracking-wide text-zinc-500">
                               Modelo padrão
                             </label>
-                            {providerModelsLoading[provider.id] ? (
-                              <div className="mt-1 h-10 animate-pulse rounded-lg border border-neutral-800 bg-neutral-900/60" />
-                            ) : providerModels[provider.id]?.length ? (
-                              <select
-                                value={
-                                  providerModels[provider.id].find(
-                                    (model) => model.isDefault
-                                  )?.id || ""
-                                }
-                                onChange={(event) =>
-                                  handleSetDefaultModel(
-                                    provider.id,
-                                    event.target.value
-                                  )
-                                }
-                                className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                              >
-                                <option value="" disabled>
-                                  Selecione o modelo padrão
-                                </option>
-                                {providerModels[provider.id].map((model) => (
-                                  <option key={model.id} value={model.id}>
-                                    {model.displayName}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <div className="mt-1 rounded-lg border border-amber-700/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                                Nenhum modelo disponível. Verifique se a API key é válida.
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1">
+                                {providerModelsLoading[provider.id] ? (
+                                  <div className="h-10 animate-pulse rounded-lg border border-neutral-800 bg-neutral-900/60" />
+                                ) : providerModels[provider.id]?.length ? (
+                                  <select
+                                    value={
+                                      providerModels[provider.id].find(
+                                        (model) => model.isDefault
+                                      )?.id || ""
+                                    }
+                                    onChange={(event) =>
+                                      handleSetDefaultModel(
+                                        provider.id,
+                                        event.target.value
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                  >
+                                    <option value="" disabled>
+                                      Selecione o modelo padrão
+                                    </option>
+                                    {providerModels[provider.id].map((model) => (
+                                      <option key={model.id} value={model.id}>
+                                        {model.displayName}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <div className="rounded-lg border border-amber-700/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                                    Nenhum modelo disponível. Verifique se a API key é válida.
+                                  </div>
+                                )}
                               </div>
-                            )}
+                              <button
+                                onClick={() => handleSyncModels(provider.id)}
+                                disabled={syncingProviderId === provider.id}
+                                className="flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 text-xs text-zinc-300 transition hover:border-neutral-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <RefreshCw
+                                  className={`mr-2 h-4 w-4 ${
+                                    syncingProviderId === provider.id
+                                      ? "animate-spin"
+                                      : ""
+                                  }`}
+                                />
+                                Atualizar modelos
+                              </button>
+                            </div>
                           </div>
                         </div>
                         <button
