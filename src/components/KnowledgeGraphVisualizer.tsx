@@ -21,7 +21,7 @@ import {
   Pause
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useKnowledgeGraph } from '../hooks/useAPI';
+import { useKnowledgeGraph } from '../hooks/useKnowledgeGraph';
 
 interface KnowledgeNode {
   id: string;

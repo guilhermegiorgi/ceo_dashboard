@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import fetch from 'node-fetch';
-import { loadSettings, saveSettings } from '../services/settingsService.js';
+import { loadSettings, saveSettings, getDashboardCollections, updateDashboardCollections } from '../services/settingsService.js';
 
 const router = Router();
 
@@ -71,5 +71,23 @@ router.post('/braincloud/test', async (req, res, next) => {
   }
 });
 
-export default router;
+router.get('/dashboard/collections', async (req, res, next) => {
+  try {
+    const collections = await getDashboardCollections();
+    res.json({ success: true, collections });
+  } catch (error) {
+    next(error);
+  }
+});
 
+router.put('/dashboard/collections', async (req, res, next) => {
+  try {
+    const incoming = req.body?.collections;
+    const saved = await updateDashboardCollections(incoming);
+    res.json({ success: true, collections: saved });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;

@@ -1,14 +1,19 @@
 // src/services/apiClient.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // --- Interfaces de Tipos ---
 
 export interface FeedbackAction {
   id: string;
-  type: 'decision' | 'insight_validation' | 'action_taken' | 'learning_captured';
+  type:
+    | "decision"
+    | "insight_validation"
+    | "action_taken"
+    | "learning_captured";
   title: string;
   description: string;
   timestamp: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: "pending" | "processing" | "completed" | "failed";
   obsidianNote?: string;
   relatedProject?: string;
   impact?: string;
@@ -16,11 +21,15 @@ export interface FeedbackAction {
 
 export interface SynergyInsight {
   id: string;
-  type: 'unexpected_connection' | 'knowledge_gap' | 'success_pattern' | 'strategic_question';
+  type:
+    | "unexpected_connection"
+    | "knowledge_gap"
+    | "success_pattern"
+    | "strategic_question";
   title: string;
   description: string;
   confidence: number;
-  urgency: 'high' | 'medium' | 'low';
+  urgency: "high" | "medium" | "low";
   relatedNotes: string[];
   suggestedAction: string;
   potentialImpact: string;
@@ -92,6 +101,8 @@ export interface DashboardTask {
   tags?: string[];
   filePath?: string;
   sourceType?: string;
+  headingContext?: string | null;
+  lineNumber?: number | null;
 }
 
 export interface DashboardTasksPayload {
@@ -108,6 +119,332 @@ export interface DashboardTasksPayload {
     upcoming: number;
   };
 }
+
+export interface TaskPreferences {
+  viewMode: "list" | "kanban";
+  sortBy: string;
+  pinnedTaskIds: string[];
+  priorityMap: Record<string, string>;
+  boardOrder?: Record<string, string[]>;
+  lastContextId?: string | null;
+  contextTemplate?: {
+    workDescription?: string;
+    shortTermFocus?: string;
+    longTermGoals?: string;
+    otherContext?: string;
+  };
+}
+
+export interface CompletedTask {
+  id?: string;
+  title?: string;
+  status?: string;
+  completedAt?: string;
+  project?: string;
+  filePath?: string;
+  priority?: string | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId?: string;
+  role: "user" | "assistant";
+  content: string;
+  contextSnapshot?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface Conversation {
+  id: string;
+  userId: string;
+  title: string;
+  contextType: "global" | "project" | "note";
+  contextProjectId?: string | null;
+  contextNotePath?: string | null;
+  projectName?: string;
+  messageCount: number;
+  lastMessagePreview?: string;
+  detectedTags?: string[];
+  createdAt: string;
+  updatedAt: string;
+  messages?: ChatMessage[];
+}
+
+export interface ConversationCreatePayload {
+  contextType?: "global" | "project" | "note";
+  contextProjectId?: string;
+  contextNotePath?: string;
+  title?: string;
+}
+
+export interface ConversationStats {
+  totalConversations: number;
+  totalMessages: number;
+  projectConversations: number;
+  noteConversations: number;
+  globalConversations: number;
+  lastConversationAt?: string;
+}
+
+export interface AIProvider {
+  id: string;
+  providerName:
+    | "openai"
+    | "anthropic"
+    | "deepseek"
+    | "google"
+    | "openrouter"
+    | "azure"
+    | "custom";
+  displayName: string;
+  baseUrl?: string;
+  isActive: boolean;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+}
+
+export interface AIProviderCreatePayload {
+  providerName:
+    | "openai"
+    | "anthropic"
+    | "deepseek"
+    | "google"
+    | "openrouter"
+    | "azure"
+    | "custom";
+  displayName: string;
+  apiKey: string;
+  baseUrl?: string;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+
+export interface AIModel {
+  id: string;
+  modelId: string;
+  displayName: string;
+  description?: string;
+  supportsStreaming: boolean;
+  supportsFunctionCalling?: boolean;
+  supportsVision?: boolean;
+  maxTokens?: number;
+  contextWindow?: number;
+  costPerInputToken?: number;
+  costPerOutputToken?: number;
+  isActive: boolean;
+  isDefault: boolean;
+  totalRequests?: number;
+  totalTokens?: number;
+  lastUsedAt?: string;
+  providerId?: string;
+  providerName?: string;
+  providerDisplayName?: string;
+}
+
+export interface AIModelCreatePayload {
+  modelId: string;
+  displayName: string;
+  description?: string;
+  supportsStreaming?: boolean;
+  supportsFunctionCalling?: boolean;
+  supportsVision?: boolean;
+  maxTokens?: number;
+  contextWindow?: number;
+  costPerInputToken?: number;
+  costPerOutputToken?: number;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+
+export interface ConversationModelConfig {
+  id: string;
+  conversationId: string;
+  modelId: string;
+  temperature: number;
+  maxTokens?: number;
+  topP: number;
+  createdAt: string;
+  modelKey?: string;
+  modelName?: string;
+  providerId?: string;
+  providerName?: string;
+  providerDisplayName?: string;
+  supportsStreaming?: boolean;
+  model?: AIModel;
+}
+
+export interface ConversationResponsePayload {
+  message: ChatMessage;
+  usage?: Record<string, unknown> | null;
+  provider?: {
+    id?: string;
+    name?: string;
+    displayName?: string;
+  };
+  model?: {
+    id?: string;
+    identifier?: string;
+    name?: string;
+  };
+}
+
+type ConversationModelConfigResponse = {
+  id: string;
+  conversation_id: string;
+  model_id: string;
+  temperature?: number | string | null;
+  max_tokens?: number | null;
+  top_p?: number | string | null;
+  created_at: string;
+  model_key?: string | null;
+  model_name?: string | null;
+  provider_id?: string | null;
+  provider_name?: string | null;
+  provider_display_name?: string | null;
+  supports_streaming?: boolean | null;
+};
+
+type ConversationMessageResponse = {
+  id: string;
+  conversation_id?: string;
+  role: "user" | "assistant";
+  content: string;
+  context_snapshot?: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type ConversationResponseApiResponse = {
+  message: ConversationMessageResponse;
+  usage?: Record<string, unknown> | null;
+  provider?: {
+    id?: string;
+    name?: string;
+    displayName?: string;
+  };
+  model?: {
+    id?: string;
+    identifier?: string;
+    name?: string;
+  };
+};
+
+type AIProviderResponse = {
+  id: string;
+  provider_name?: string;
+  display_name?: string;
+  base_url?: string | null;
+  is_active?: boolean;
+  is_default?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  last_used_at?: string | null;
+};
+
+type AIModelResponse = {
+  id: string;
+  model_id?: string;
+  display_name?: string;
+  description?: string | null;
+  supports_streaming?: boolean;
+  supports_function_calling?: boolean;
+  supports_vision?: boolean;
+  max_tokens?: number | null;
+  context_window?: number | null;
+  cost_per_input_token?: number | null;
+  cost_per_output_token?: number | null;
+  is_active?: boolean;
+  is_default?: boolean;
+  total_requests?: number | null;
+  total_tokens?: number | null;
+  last_used_at?: string | null;
+  provider_id?: string;
+  provider_name?: string;
+  provider_display_name?: string;
+};
+
+const toNumber = (
+  value: number | string | null | undefined,
+  fallback?: number
+): number => {
+  if (value === null || value === undefined) {
+    return fallback ?? 0;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(parsed)) {
+    return fallback ?? 0;
+  }
+  return parsed;
+};
+
+const mapAIProvider = (data: AIProviderResponse): AIProvider => {
+  const providerName = (data.provider_name || "custom") as AIProvider["providerName"];
+
+  return {
+    id: data.id,
+    providerName,
+    displayName: data.display_name || "",
+    baseUrl: data.base_url ?? undefined,
+    isActive: data.is_active ?? true,
+    isDefault: data.is_default ?? false,
+    createdAt: data.created_at || new Date().toISOString(),
+    updatedAt: data.updated_at || new Date().toISOString(),
+    lastUsedAt: data.last_used_at ?? undefined,
+  };
+};
+
+const mapAIModel = (data: AIModelResponse): AIModel => ({
+  id: data.id,
+  modelId: data.model_id || "",
+  displayName: data.display_name || "",
+  description: data.description ?? undefined,
+  supportsStreaming: data.supports_streaming ?? false,
+  supportsFunctionCalling: data.supports_function_calling ?? undefined,
+  supportsVision: data.supports_vision ?? undefined,
+  maxTokens: data.max_tokens ?? undefined,
+  contextWindow: data.context_window ?? undefined,
+  costPerInputToken: data.cost_per_input_token ?? undefined,
+  costPerOutputToken: data.cost_per_output_token ?? undefined,
+  isActive: data.is_active ?? true,
+  isDefault: data.is_default ?? false,
+  totalRequests: data.total_requests ?? undefined,
+  totalTokens: data.total_tokens ?? undefined,
+  lastUsedAt: data.last_used_at ?? undefined,
+  providerId: data.provider_id ?? undefined,
+  providerName: data.provider_name ?? undefined,
+  providerDisplayName: data.provider_display_name ?? undefined,
+});
+
+const mapChatMessage = (data: ConversationMessageResponse): ChatMessage => ({
+  id: data.id,
+  conversationId: data.conversation_id,
+  role: data.role,
+  content: data.content,
+  contextSnapshot: data.context_snapshot ?? undefined,
+  createdAt: data.created_at,
+});
+
+const mapConversationModelConfig = (
+  data: ConversationModelConfigResponse
+): ConversationModelConfig => ({
+  id: data.id,
+  conversationId: data.conversation_id,
+  modelId: data.model_id,
+  temperature: toNumber(data.temperature, 0.7),
+  maxTokens:
+    data.max_tokens === null || data.max_tokens === undefined
+      ? undefined
+      : Number(data.max_tokens),
+  topP: toNumber(data.top_p, 1),
+  createdAt: data.created_at,
+  modelKey: data.model_key ?? undefined,
+  modelName: data.model_name ?? undefined,
+  providerId: data.provider_id ?? undefined,
+  providerName: data.provider_name ?? undefined,
+  providerDisplayName: data.provider_display_name ?? undefined,
+  supportsStreaming: data.supports_streaming ?? undefined,
+});
 
 export interface DashboardSnapshot {
   success: boolean;
@@ -135,10 +472,27 @@ export interface DashboardSnapshot {
   };
 }
 
+export interface DashboardCollection {
+  id: string;
+  label: string;
+  description?: string;
+  filter?: string;
+  icon?: string;
+}
+
+export interface InboxNote {
+  path: string;
+  title: string;
+  snippet: string;
+  modified?: string | null;
+  created?: string | null;
+  size?: number | null;
+}
+
 // --- Cliente da API ---
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: any;
   headers?: Record<string, string>;
 }
@@ -147,14 +501,17 @@ export class APIClient {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+    this.baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
   }
 
   private isRefreshing = false;
-  private failedQueue: { resolve: (value: unknown) => void; reject: (reason?: any) => void; }[] = [];
+  private failedQueue: {
+    resolve: (value: unknown) => void;
+    reject: (reason?: any) => void;
+  }[] = [];
 
   private processQueue = (error: any, token = null) => {
-    this.failedQueue.forEach(prom => {
+    this.failedQueue.forEach((prom) => {
       if (error) {
         prom.reject(error);
       } else {
@@ -165,52 +522,60 @@ export class APIClient {
     this.failedQueue = [];
   };
 
-  public async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  public async request<T>(
+    endpoint: string,
+    options: RequestOptions = {}
+  ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    let token = localStorage.getItem('token');
-    
+    const token = localStorage.getItem("token");
+
     const config: RequestInit = {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...options.headers,
-        ...(token && { 'Authorization': `Bearer ${token}` }),
+        ...(token && { Authorization: `Bearer ${token}` }),
       },
     };
 
-    if (config.body && typeof config.body === 'object') {
+    if (config.body && typeof config.body === "object") {
       config.body = JSON.stringify(config.body);
     }
 
     try {
       let response = await fetch(url, config);
-      
+
       if (response.status === 401) {
         if (!this.isRefreshing) {
           this.isRefreshing = true;
-          const refreshToken = localStorage.getItem('refreshToken');
+          const refreshToken = localStorage.getItem("refreshToken");
           if (refreshToken) {
             try {
-              const refreshResponse = await fetch(`${this.baseUrl}/api/auth/refresh-token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: refreshToken }),
-              });
+              const refreshResponse = await fetch(
+                `${this.baseUrl}/api/auth/refresh-token`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ token: refreshToken }),
+                }
+              );
               const refreshData = await refreshResponse.json();
               if (refreshData.token) {
-                localStorage.setItem('token', refreshData.token);
-                localStorage.setItem('refreshToken', refreshData.refreshToken);
+                localStorage.setItem("token", refreshData.token);
+                localStorage.setItem("refreshToken", refreshData.refreshToken);
                 this.processQueue(null, refreshData.token);
                 // Repete a requisição original com o novo token
-                (config.headers as Record<string, string>)['Authorization'] = `Bearer ${refreshData.token}`;
+                (config.headers as Record<string, string>)[
+                  "Authorization"
+                ] = `Bearer ${refreshData.token}`;
                 response = await fetch(url, config);
               } else {
-                throw new Error('Falha ao renovar o token');
+                throw new Error("Falha ao renovar o token");
               }
             } catch (e) {
               this.processQueue(e, null);
               localStorage.clear();
-              window.location.href = '/login';
+              window.location.href = "/login";
               throw e;
             } finally {
               this.isRefreshing = false;
@@ -219,28 +584,34 @@ export class APIClient {
         } else {
           return new Promise((resolve, reject) => {
             this.failedQueue.push({ resolve, reject });
-          }).then(newToken => {
-            (config.headers as Record<string, string>)['Authorization'] = `Bearer ${newToken}`;
-            return fetch(url, config);
-          }).then(res => res.json());
+          })
+            .then((newToken) => {
+              (config.headers as Record<string, string>)[
+                "Authorization"
+              ] = `Bearer ${newToken}`;
+              return fetch(url, config);
+            })
+            .then((res) => res.json());
         }
       }
 
       if (!response.ok) {
         const errorBody = await response.text();
-        console.error(`HTTP ${response.status}: ${response.statusText}`, errorBody);
+        console.error(
+          `HTTP ${response.status}: ${response.statusText}`,
+          errorBody
+        );
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json() as T;
+
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        return (await response.json()) as T;
       }
-      
+
       // Retorna como texto se não for JSON
       const textResponse = await response.text();
       return textResponse as unknown as T;
-
     } catch (error) {
       console.error(`API request failed: ${endpoint}`, error);
       throw error;
@@ -248,7 +619,38 @@ export class APIClient {
   }
 
   public async getDashboardSnapshot(): Promise<DashboardSnapshot> {
-    return this.request<DashboardSnapshot>('/api/dashboard/today');
+    return this.request<DashboardSnapshot>("/api/dashboard/today");
+  }
+
+  public async getDashboardCollections(): Promise<DashboardCollection[]> {
+    const response = await this.request<{ collections: DashboardCollection[] }>(
+      "/api/settings/dashboard/collections"
+    );
+    return response.collections || [];
+  }
+
+  public async saveDashboardCollections(
+    collections: DashboardCollection[]
+  ): Promise<DashboardCollection[]> {
+    const response = await this.request<{ collections: DashboardCollection[] }>(
+      "/api/settings/dashboard/collections",
+      {
+        method: "PUT",
+        body: { collections },
+      }
+    );
+    return response.collections || [];
+  }
+
+  public async getGraphData(): Promise<{
+    nodes: Array<{ id: string; label: string; filepath?: string }>;
+    edges: Array<{ source: string; target: string; type?: string }>;
+  }> {
+    return this.request("/api/obsidian/graph");
+  }
+
+  public async analyzeKnowledgeGraph(): Promise<void> {
+    return this.request("/api/obsidian/analyze-graph", { method: "POST" });
   }
 
   async queryCognitoStream(
@@ -260,10 +662,10 @@ export class APIClient {
   ): Promise<void> {
     try {
       const response = await fetch(`${this.baseUrl}/api/mcp/query-stream`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
         },
         body: JSON.stringify({ query, sessionId }),
       });
@@ -274,7 +676,7 @@ export class APIClient {
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new Error('Failed to get response reader');
+        throw new Error("Failed to get response reader");
       }
 
       const decoder = new TextDecoder();
@@ -290,7 +692,7 @@ export class APIClient {
 
       onComplete();
     } catch (error) {
-      console.error('Streaming API request failed:', error);
+      console.error("Streaming API request failed:", error);
       onError(error as Error);
     }
   }
@@ -298,25 +700,42 @@ export class APIClient {
   // --- Métodos para Insights ---
 
   public async getInsights(): Promise<SynergyInsight[]> {
-    const response = await this.request<{ data: SynergyInsight[] }>('/api/insights');
+    const response = await this.request<{ data: SynergyInsight[] }>(
+      "/api/insights"
+    );
     return response.data || [];
   }
 
   public async refreshInsights(): Promise<SynergyInsight[]> {
-    const response = await this.request<{ data: SynergyInsight[] }>('/api/insights/weekly?cache=false');
+    const response = await this.request<{ data: SynergyInsight[] }>(
+      "/api/insights/weekly?cache=false"
+    );
     return response.data || [];
   }
 
-  public async refreshInsightsWithParams(params: { note_query?: string; limit?: number; template?: string; auto_save?: boolean; temperature?: number; iterations?: number }): Promise<SynergyInsight[]> {
+  public async refreshInsightsWithParams(params: {
+    note_query?: string;
+    limit?: number;
+    template?: string;
+    auto_save?: boolean;
+    temperature?: number;
+    iterations?: number;
+  }): Promise<SynergyInsight[]> {
     const usp = new URLSearchParams();
-    usp.set('cache','false');
-    if (params.note_query) usp.set('note_query', params.note_query);
-    if (typeof params.limit === 'number') usp.set('limit', String(params.limit));
-    if (params.template) usp.set('template', params.template);
-    if (typeof params.temperature === 'number') usp.set('temperature', String(params.temperature));
-    if (typeof params.iterations === 'number') usp.set('iterations', String(params.iterations));
-    if (typeof params.auto_save === 'boolean') usp.set('auto_save', params.auto_save ? 'true' : 'false');
-    const response = await this.request<{ data: SynergyInsight[] }>(`/api/insights/weekly?${usp.toString()}`);
+    usp.set("cache", "false");
+    if (params.note_query) usp.set("note_query", params.note_query);
+    if (typeof params.limit === "number")
+      usp.set("limit", String(params.limit));
+    if (params.template) usp.set("template", params.template);
+    if (typeof params.temperature === "number")
+      usp.set("temperature", String(params.temperature));
+    if (typeof params.iterations === "number")
+      usp.set("iterations", String(params.iterations));
+    if (typeof params.auto_save === "boolean")
+      usp.set("auto_save", params.auto_save ? "true" : "false");
+    const response = await this.request<{ data: SynergyInsight[] }>(
+      `/api/insights/weekly?${usp.toString()}`
+    );
     return response.data || [];
   }
 
@@ -324,21 +743,28 @@ export class APIClient {
    * Salva um insight como uma nota no Obsidian vault.
    * @param insight - O objeto de insight a ser salvo.
    */
-  public async saveInsight(insight: SynergyInsight): Promise<{ message: string; path: string }> {
-    return this.request<{ message: string; path: string }>('/api/obsidian/save-insight', {
-      method: 'POST',
-      body: insight,
-    });
+  public async saveInsight(
+    insight: SynergyInsight
+  ): Promise<{ message: string; path: string }> {
+    return this.request<{ message: string; path: string }>(
+      "/api/obsidian/save-insight",
+      {
+        method: "POST",
+        body: insight,
+      }
+    );
   }
 
   // --- Métodos para Feedback Actions ---
 
   public async getFeedbackActions(): Promise<FeedbackAction[]> {
     try {
-      const actions = await this.request<FeedbackAction[]>('/api/feedback-actions');
+      const actions = await this.request<FeedbackAction[]>(
+        "/api/feedback-actions"
+      );
       return actions;
     } catch (error) {
-      console.error('Failed to retrieve feedback actions:', error);
+      console.error("Failed to retrieve feedback actions:", error);
       return []; // Retorna um array vazio para não quebrar a UI
     }
   }
@@ -346,87 +772,304 @@ export class APIClient {
   // --- Métodos para Agentes ---
 
   public async getAgents(): Promise<any[]> {
-    const response = await this.request<{ data: any[] }>('/api/agents');
+    const response = await this.request<{ data: any[] }>("/api/agents");
     return response.data || [];
   }
 
   public async runAgent(agentId: string): Promise<any> {
     return this.request<any>(`/api/agents/${agentId}/run`, {
-      method: 'POST',
+      method: "POST",
     });
   }
 
   public async createAgent(agentData: any): Promise<any> {
-    return this.request<any>('/api/agents', {
-      method: 'POST',
+    return this.request<any>("/api/agents", {
+      method: "POST",
       body: agentData,
     });
   }
 
   public async updateAgent(agentId: string, agentData: any): Promise<any> {
     return this.request<any>(`/api/agents/${agentId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: agentData,
     });
   }
 
   public async deleteAgent(agentId: string): Promise<void> {
     return this.request<void>(`/api/agents/${agentId}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
   public async getAgentRuns(agentId: string, limit = 20): Promise<any[]> {
-    const response = await this.request<{ data: any[] }>(`/api/agents/${agentId}/runs?limit=${limit}`);
+    const response = await this.request<{ data: any[] }>(
+      `/api/agents/${agentId}/runs?limit=${limit}`
+    );
     return response.data || [];
   }
 
   public async getRuns(limit = 50): Promise<any[]> {
-    const response = await this.request<{ data: any[] }>(`/api/agents/runs?limit=${limit}`);
+    const response = await this.request<{ data: any[] }>(
+      `/api/agents/runs?limit=${limit}`
+    );
     return response.data || [];
   }
 
+  public async getInboxNotes(limit = 15): Promise<InboxNote[]> {
+    const response = await this.request<{
+      data: { notes: InboxNote[] };
+    }>(`/api/inbox?limit=${limit}`);
+    return response.data?.notes || [];
+  }
+
+  public async getInboxNoteContent(path: string): Promise<{
+    path: string;
+    title: string;
+    content: string;
+    frontmatter?: string | null;
+    rawContent?: string | null;
+    modified?: string | null;
+    size?: number | null;
+  }> {
+    const response = await this.request<{
+      data: {
+        path: string;
+        title: string;
+        content: string;
+        frontmatter?: string | null;
+        rawContent?: string | null;
+        modified?: string | null;
+        size?: number | null;
+      };
+    }>(`/api/inbox/content?${new URLSearchParams({ path }).toString()}`);
+    return response.data;
+  }
+
+  public async getVaultNoteContent(path: string): Promise<{
+    path: string;
+    content: string;
+    title?: string;
+  }> {
+    const encodedPath = encodeURIComponent(path);
+    const response = await this.request<{
+      data: { content: string; title?: string };
+      path: string;
+    }>(`/api/vault/notes/${encodedPath}`);
+    return {
+      path: response.path,
+      content: response.data?.content || "",
+      title: response.data?.title,
+    };
+  }
+
+  public async toggleTaskCompletion(payload: {
+    filePath: string;
+    lineNumber?: number | null;
+    completed: boolean;
+    title?: string;
+  }): Promise<void> {
+    await this.request("/api/tasks/toggle", {
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  public async getTaskPreferences(): Promise<TaskPreferences> {
+    const response = await this.request<{ data: TaskPreferences }>(
+      "/api/tasks/preferences"
+    );
+    return response.data;
+  }
+
+  public async updateTaskPreferences(
+    patch: Partial<TaskPreferences> & {
+      priorityMap?: Record<string, string | null | undefined>;
+      boardOrder?: Record<string, string[]>;
+      pinnedTaskIds?: string[];
+    }
+  ): Promise<TaskPreferences> {
+    const response = await this.request<{ data: TaskPreferences }>(
+      "/api/tasks/preferences",
+      {
+        method: "PATCH",
+        body: patch,
+      }
+    );
+    return response.data;
+  }
+
+  public async getCompletedTasks(
+    window: string = "week"
+  ): Promise<CompletedTask[]> {
+    const response = await this.request<{ data: CompletedTask[] }>(
+      `/api/tasks/completed?window=${encodeURIComponent(window)}`
+    );
+    return response.data || [];
+  }
+
+  public async triggerTaskCleanup(
+    params: {
+      window?: string;
+    } = {}
+  ): Promise<{ message: string }> {
+    const response = await this.request<{
+      data?: { message?: string };
+    }>("/api/tasks/cleanup", {
+      method: "POST",
+      body: params,
+    });
+    const message =
+      response?.data?.message ||
+      "Solicitação de limpeza de tarefas enviada para o agente.";
+    return { message };
+  }
+
+  public async getVaultRecentChanges(limit = 10, days = 30): Promise<any> {
+    return this.request(
+      `/api/vault/recent-changes?limit=${limit}&days=${days}`
+    );
+  }
+
+  public async getObcStatus(): Promise<any> {
+    return this.request("/api/vault/obc/status");
+  }
+
+  public async getKnowledgeGraphNodes(
+    params: { type?: string; limit?: number; search?: string } = {}
+  ): Promise<any[]> {
+    const usp = new URLSearchParams();
+    if (params.type && params.type !== "all") usp.set("type", params.type);
+    if (typeof params.limit === "number")
+      usp.set("limit", String(params.limit));
+    if (params.search) usp.set("search", params.search);
+    const query = usp.toString();
+    const response = await this.request(
+      `/api/knowledge-graph/nodes${query ? `?${query}` : ""}`
+    );
+    return Array.isArray(response) ? response : [];
+  }
+
+  public async getDecisions(): Promise<any[]> {
+    const response = await this.request<any[]>("/api/decisions");
+    return Array.isArray(response) ? response : [];
+  }
+
+  public async createDecision(payload: Record<string, any>): Promise<any> {
+    return this.request("/api/decisions", {
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  public async getSessions(
+    params: { status?: string; type?: string; limit?: number } = {}
+  ): Promise<any[]> {
+    const usp = new URLSearchParams();
+    if (params.status && params.status !== "all")
+      usp.set("status", params.status);
+    if (params.type && params.type !== "all") usp.set("type", params.type);
+    if (typeof params.limit === "number")
+      usp.set("limit", String(params.limit));
+    const query = usp.toString();
+    const response = await this.request<any[]>(
+      `/api/sessions${query ? `?${query}` : ""}`
+    );
+    return Array.isArray(response) ? response : [];
+  }
+
+  public async createSession(payload: Record<string, any>): Promise<any> {
+    return this.request("/api/sessions", {
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  public async updateSession(
+    id: string,
+    payload: Record<string, any>
+  ): Promise<any> {
+    return this.request(`/api/sessions/${id}`, {
+      method: "PUT",
+      body: payload,
+    });
+  }
+
+  public async deleteSession(id: string): Promise<void> {
+    await this.request(`/api/sessions/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  public async scheduleSession(id: string, date: string): Promise<any> {
+    return this.request(`/api/sessions/${id}/schedule`, {
+      method: "POST",
+      body: { date },
+    });
+  }
+
+  public async generateAISessions(payload: Record<string, any>): Promise<any> {
+    return this.request("/api/sessions/generate", {
+      method: "POST",
+      body: payload,
+    });
+  }
   // --- Métodos para Market Intelligence ---
 
   public async getMarketOpportunities(): Promise<any[]> {
-    const response = await this.request<{ data: any[] }>('/api/market-intelligence/opportunities');
+    const response = await this.request<{ data: any[] }>(
+      "/api/market-intelligence/opportunities"
+    );
     return response.data || [];
   }
 
   public async getCompetitorInsights(): Promise<any[]> {
-    const response = await this.request<{ data: any[] }>('/api/market-intelligence/competitors');
+    const response = await this.request<{ data: any[] }>(
+      "/api/market-intelligence/competitors"
+    );
     return response.data || [];
   }
 
   // --- Métodos para Provedores ---
 
   public async listModels(provider: string, apiKey: string): Promise<any[]> {
-    const response = await this.request<{ data: any[] }>('/api/providers/list-models', {
-      method: 'POST',
-      body: { provider, apiKey },
-    });
+    const response = await this.request<{ data: any[] }>(
+      "/api/providers/list-models",
+      {
+        method: "POST",
+        body: { provider, apiKey },
+      }
+    );
     return response.data || [];
   }
 
   // --- Métodos para Vault ---
 
   public async getVaultStats(): Promise<any> {
-    return this.request('/api/vault/stats');
+    return this.request("/api/vault/stats");
   }
 
-  public async syncVault(direction: 'pull' | 'push' = 'pull', message?: string): Promise<any> {
-    return this.request('/api/vault/sync', {
-      method: 'POST',
-      body: { direction, message }
+  public async syncVault(
+    direction: "pull" | "push" = "pull",
+    message?: string
+  ): Promise<any> {
+    return this.request("/api/vault/sync", {
+      method: "POST",
+      body: { direction, message },
     });
   }
 
-  public async searchVaultNotes(query?: string, folder?: string, limit?: number, withContent?: boolean): Promise<any> {
+  public async searchVaultNotes(
+    query?: string,
+    folder?: string,
+    limit?: number,
+    withContent?: boolean
+  ): Promise<any> {
     const params = new URLSearchParams();
-    if (query) params.append('query', query);
-    if (folder) params.append('folder', folder);
-    if (limit) params.append('limit', limit.toString());
-    if (withContent) params.append('withContent', 'true');
+    if (query) params.append("query", query);
+    if (folder) params.append("folder", folder);
+    if (limit) params.append("limit", limit.toString());
+    if (withContent) params.append("withContent", "true");
 
     return this.request(`/api/vault/notes?${params.toString()}`);
   }
@@ -435,10 +1078,14 @@ export class APIClient {
     return this.request(`/api/vault/notes/${encodeURIComponent(notePath)}`);
   }
 
-  public async createVaultNote(title: string, content: string, folder?: string): Promise<any> {
-    return this.request('/api/vault/notes', {
-      method: 'POST',
-      body: { title, content, folder }
+  public async createVaultNote(
+    title: string,
+    content: string,
+    folder?: string
+  ): Promise<any> {
+    return this.request("/api/vault/notes", {
+      method: "POST",
+      body: { title, content, folder },
     });
   }
 
@@ -452,17 +1099,317 @@ export class APIClient {
     relatedProject?: string;
     impact?: string;
   }): Promise<any> {
-    return this.request('/api/feedback-actions', {
-      method: 'POST',
-      body: actionData
+    return this.request("/api/feedback-actions", {
+      method: "POST",
+      body: actionData,
     });
   }
 
-  public async updateFeedbackActionStatus(actionId: string, status: string): Promise<any> {
+  public async updateFeedbackActionStatus(
+    actionId: string,
+    status: string
+  ): Promise<any> {
     return this.request(`/api/feedback-actions/${actionId}`, {
-      method: 'PUT',
-      body: { status }
+      method: "PUT",
+      body: { status },
     });
+  }
+
+  // --- Métodos para Conversações ---
+
+  /**
+   * Get all conversations for the current user
+   */
+  public async getConversations(options?: {
+    limit?: number;
+    offset?: number;
+    contextType?: "global" | "project" | "note";
+  }): Promise<{ conversations: Conversation[]; total: number }> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.append("limit", options.limit.toString());
+    if (options?.offset) params.append("offset", options.offset.toString());
+    if (options?.contextType) params.append("contextType", options.contextType);
+
+    const response = await this.request<{
+      conversations: Conversation[];
+      total: number;
+    }>(`/api/conversations?${params.toString()}`);
+    return response;
+  }
+
+  /**
+   * Get conversation statistics
+   */
+  public async getConversationStats(): Promise<ConversationStats> {
+    const response = await this.request<ConversationStats>(
+      "/api/conversations/stats"
+    );
+    return response;
+  }
+
+  /**
+   * Get a single conversation with all messages
+   */
+  public async getConversation(conversationId: string): Promise<Conversation> {
+    const response = await this.request<Conversation>(
+      `/api/conversations/${conversationId}`
+    );
+    return response;
+  }
+
+  /**
+   * Create a new conversation
+   */
+  public async createConversation(
+    payload: ConversationCreatePayload
+  ): Promise<Conversation> {
+    const response = await this.request<Conversation>("/api/conversations", {
+      method: "POST",
+      body: payload,
+    });
+    return response;
+  }
+
+  /**
+   * Add a message to a conversation
+   */
+  public async addMessage(
+    conversationId: string,
+    message: {
+      role: "user" | "assistant";
+      content: string;
+      contextSnapshot?: Record<string, unknown>;
+    }
+  ): Promise<ChatMessage> {
+    const response = await this.request<ConversationMessageResponse>(
+      `/api/conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        body: message,
+      }
+    );
+    return mapChatMessage(response);
+  }
+
+  /**
+   * Request an assistant response for the given conversation
+   */
+  public async respondToConversation(
+    conversationId: string,
+    payload?: {
+      temperature?: number;
+      maxTokens?: number;
+      topP?: number;
+      modelId?: string;
+    }
+  ): Promise<ConversationResponsePayload> {
+    const response = await this.request<ConversationResponseApiResponse>(
+      `/api/conversations/${conversationId}/respond`,
+      {
+        method: "POST",
+        body: payload ?? {},
+      }
+    );
+
+    return {
+      ...response,
+      message: mapChatMessage(response.message),
+    };
+  }
+
+  /**
+   * Update conversation title
+   */
+  public async updateConversationTitle(
+    conversationId: string,
+    title: string
+  ): Promise<Conversation> {
+    const response = await this.request<Conversation>(
+      `/api/conversations/${conversationId}/title`,
+      {
+        method: "PATCH",
+        body: { title },
+      }
+    );
+    return response;
+  }
+
+  /**
+   * Generate conversation title using AI
+   */
+  public async generateConversationTitle(
+    conversationId: string
+  ): Promise<{ title: string }> {
+    const response = await this.request<{ title: string }>(
+      `/api/conversations/${conversationId}/generate-title`,
+      {
+        method: "POST",
+      }
+    );
+    return response;
+  }
+
+  /**
+   * Delete a conversation
+   */
+  public async deleteConversation(
+    conversationId: string
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await this.request<{
+      success: boolean;
+      message: string;
+    }>(`/api/conversations/${conversationId}`, {
+      method: "DELETE",
+    });
+    return response;
+  }
+
+  /**
+   * Update detected tags in conversation
+   */
+  public async updateConversationTags(
+    conversationId: string,
+    tags: string[]
+  ): Promise<Conversation> {
+    const response = await this.request<Conversation>(
+      `/api/conversations/${conversationId}/tags`,
+      {
+        method: "PATCH",
+        body: { tags },
+      }
+    );
+    return response;
+  }
+
+  // ==================== AI Providers ====================
+
+  /**
+   * Get all AI providers for the current user
+   */
+  public async getAIProviders(): Promise<{ providers: AIProvider[] }> {
+    const response = await this.request<{ providers: AIProviderResponse[] }>(
+      "/api/ai-providers",
+      {
+        method: "GET",
+      }
+    );
+    return {
+      providers: (response.providers || []).map(mapAIProvider),
+    };
+  }
+
+  /**
+   * Create or update an AI provider
+   */
+  public async upsertAIProvider(
+    payload: AIProviderCreatePayload
+  ): Promise<AIProvider> {
+    const response = await this.request<AIProviderResponse>("/api/ai-providers", {
+      method: "POST",
+      body: payload,
+    });
+    return mapAIProvider(response);
+  }
+
+  /**
+   * Delete an AI provider
+   */
+  public async deleteAIProvider(
+    providerId: string
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await this.request<{
+      success: boolean;
+      message: string;
+    }>(`/api/ai-providers/${providerId}`, {
+      method: "DELETE",
+    });
+    return response;
+  }
+
+  /**
+   * Get all models for a specific provider
+   */
+  public async getProviderModels(
+    providerId: string
+  ): Promise<{ models: AIModel[] }> {
+    const response = await this.request<{ models: AIModelResponse[] }>(
+      `/api/ai-providers/${providerId}/models`,
+      {
+        method: "GET",
+      }
+    );
+    return {
+      models: (response.models || []).map(mapAIModel),
+    };
+  }
+
+  /**
+   * Get all available models across all active providers
+   */
+  public async getAvailableModels(): Promise<{ models: AIModel[] }> {
+    const response = await this.request<{ models: AIModelResponse[] }>(
+      "/api/ai-providers/models/available",
+      {
+        method: "GET",
+      }
+    );
+    return {
+      models: (response.models || []).map(mapAIModel),
+    };
+  }
+
+  /**
+   * Add or update a model for a provider
+   */
+  public async upsertModel(
+    providerId: string,
+    payload: AIModelCreatePayload
+  ): Promise<AIModel> {
+    const response = await this.request<AIModelResponse>(
+      `/api/ai-providers/${providerId}/models`,
+      {
+        method: "POST",
+        body: payload,
+      }
+    );
+    return mapAIModel(response);
+  }
+
+  /**
+   * Set model configuration for a conversation
+   */
+  public async setConversationModel(
+    conversationId: string,
+    modelId: string,
+    parameters?: {
+      temperature?: number;
+      maxTokens?: number;
+      topP?: number;
+    }
+  ): Promise<ConversationModelConfig> {
+    const response = await this.request<ConversationModelConfigResponse>(
+      `/api/ai-providers/conversations/${conversationId}/model`,
+      {
+        method: "POST",
+        body: { modelId, ...parameters },
+      }
+    );
+    return mapConversationModelConfig(response);
+  }
+
+  /**
+   * Get model configuration for a conversation
+   */
+  public async getConversationModel(
+    conversationId: string
+  ): Promise<ConversationModelConfig | null> {
+    const response = await this.request<ConversationModelConfigResponse | null>(
+      `/api/ai-providers/conversations/${conversationId}/model`,
+      {
+        method: "GET",
+      }
+    );
+    return response ? mapConversationModelConfig(response) : null;
   }
 }
 
