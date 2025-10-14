@@ -19,6 +19,7 @@ import {
 import api, {
   AIProvider,
   AIProviderCreatePayload,
+  AIModel,
 } from "../services/apiClient";
 
 type BrainCloudSettings = {
@@ -100,6 +101,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     apiKey: "",
   });
   const [showProviderForm, setShowProviderForm] = useState(false);
+  const [providerModels, setProviderModels] = useState<Record<string, AIModel[]>>({});
+  const [providerModelsLoading, setProviderModelsLoading] = useState<
+    Record<string, boolean>
+  >({});
 
   const mergedSettings = useMemo(
     () => settings ?? DEFAULT_SETTINGS,
@@ -212,18 +217,46 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   };
 
   // AI Providers functions
+  const loadProviderModels = useCallback(
+    async (providerId: string) => {
+      setProviderModelsLoading((prev) => ({ ...prev, [providerId]: true }));
+      try {
+        const response = await api.getProviderModels(providerId);
+        setProviderModels((prev) => ({
+          ...prev,
+          [providerId]: response.models || [],
+        }));
+      } catch (error) {
+        console.error("Error fetching provider models:", error);
+        toast.error("Falha ao carregar modelos do provedor");
+      } finally {
+        setProviderModelsLoading((prev) => ({
+          ...prev,
+          [providerId]: false,
+        }));
+      }
+    },
+    []
+  );
+
   const fetchProviders = useCallback(async () => {
     setLoadingProviders(true);
     try {
       const response = await api.getAIProviders();
       setProviders(response.providers);
+
+      await Promise.all(
+        response.providers.map(async (provider) => {
+          await loadProviderModels(provider.id);
+        })
+      );
     } catch (error) {
       console.error("Error fetching providers:", error);
       toast.error("Não foi possível carregar os provedores de IA");
     } finally {
       setLoadingProviders(false);
     }
-  }, []);
+  }, [loadProviderModels]);
 
   const handleSaveProvider = async () => {
     try {
@@ -244,6 +277,41 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     } catch (error) {
       console.error("Error saving provider:", error);
       toast.error("Erro ao salvar provedor");
+    }
+  };
+
+  const handleSetDefaultModel = async (
+    providerId: string,
+    modelId: string
+  ) => {
+    const models = providerModels[providerId] || [];
+    const targetModel = models.find((model) => model.id === modelId);
+    if (!targetModel) {
+      toast.error("Modelo não encontrado para este provedor");
+      return;
+    }
+
+    try {
+      await api.upsertModel(providerId, {
+        modelId: targetModel.modelId,
+        displayName: targetModel.displayName,
+        description: targetModel.description,
+        supportsStreaming: targetModel.supportsStreaming,
+        supportsFunctionCalling: targetModel.supportsFunctionCalling,
+        supportsVision: targetModel.supportsVision,
+        maxTokens: targetModel.maxTokens,
+        contextWindow: targetModel.contextWindow,
+        costPerInputToken: targetModel.costPerInputToken,
+        costPerOutputToken: targetModel.costPerOutputToken,
+        isActive: true,
+        isDefault: true,
+      });
+
+      toast.success("Modelo padrão atualizado com sucesso");
+      await loadProviderModels(providerId);
+    } catch (error) {
+      console.error("Error updating default model:", error);
+      toast.error("Não foi possível definir o modelo padrão");
     }
   };
 
@@ -598,39 +666,77 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                         key={provider.id}
                         className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 p-4"
                       >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
-                              provider.isActive
-                                ? "border-emerald-500/50 bg-emerald-500/10"
-                                : "border-neutral-700 bg-neutral-800"
-                            }`}
-                          >
-                            <Brain
-                              className={`h-5 w-5 ${
+                        <div className="flex flex-1 gap-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
                                 provider.isActive
-                                  ? "text-emerald-300"
-                                  : "text-zinc-500"
+                                  ? "border-emerald-500/50 bg-emerald-500/10"
+                                  : "border-neutral-700 bg-neutral-800"
                               }`}
-                            />
+                            >
+                              <Brain
+                                className={`h-5 w-5 ${
+                                  provider.isActive
+                                    ? "text-emerald-300"
+                                    : "text-zinc-500"
+                                }`}
+                              />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-zinc-100">
+                                {provider.displayName}
+                              </p>
+                              <p className="text-xs text-zinc-500">
+                                {provider.providerName}
+                                {provider.isDefault && (
+                                  <span className="ml-2 rounded bg-emerald-500/20 px-1.5 py-0.5 text-emerald-300">
+                                    Padrão
+                                  </span>
+                                )}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-zinc-100">
-                              {provider.displayName}
-                            </p>
-                            <p className="text-xs text-zinc-500">
-                              {provider.providerName}
-                              {provider.isDefault && (
-                                <span className="ml-2 rounded bg-emerald-500/20 px-1.5 py-0.5 text-emerald-300">
-                                  Padrão
-                                </span>
-                              )}
-                            </p>
+                          <div className="flex-1">
+                            <label className="block text-xs uppercase tracking-wide text-zinc-500">
+                              Modelo padrão
+                            </label>
+                            {providerModelsLoading[provider.id] ? (
+                              <div className="mt-1 h-10 animate-pulse rounded-lg border border-neutral-800 bg-neutral-900/60" />
+                            ) : providerModels[provider.id]?.length ? (
+                              <select
+                                value={
+                                  providerModels[provider.id].find(
+                                    (model) => model.isDefault
+                                  )?.id || ""
+                                }
+                                onChange={(event) =>
+                                  handleSetDefaultModel(
+                                    provider.id,
+                                    event.target.value
+                                  )
+                                }
+                                className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              >
+                                <option value="" disabled>
+                                  Selecione o modelo padrão
+                                </option>
+                                {providerModels[provider.id].map((model) => (
+                                  <option key={model.id} value={model.id}>
+                                    {model.displayName}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div className="mt-1 rounded-lg border border-amber-700/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                                Nenhum modelo disponível. Verifique se a API key é válida.
+                              </div>
+                            )}
                           </div>
                         </div>
                         <button
                           onClick={() => handleDeleteProvider(provider.id)}
-                          className="rounded-lg border border-red-900/50 bg-red-500/10 p-2 text-red-400 transition hover:bg-red-500/20"
+                          className="ml-4 rounded-lg border border-red-900/50 bg-red-500/10 p-2 text-red-400 transition hover:bg-red-500/20"
                           title="Remover provedor"
                         >
                           <Trash2 className="h-4 w-4" />
