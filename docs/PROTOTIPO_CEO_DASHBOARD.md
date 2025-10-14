@@ -30,56 +30,75 @@ multimodal). O objetivo é orientar a construção de wireframes e do MVP visual
 
 ---
 
-## 2. Estrutura de Layout (3 Painéis)
+## 2. Estrutura de Layout (4 Blocos Independentes)
 
 ```
-┌─────────────────────┬──────────────────────────┬─────────────────────┐
-│ Sidebar              │ Timeline IA              │ Painel de Execução  │
-│ (Navegação)          │ (Chat + Cards + Notes)   │ (Tarefas/Focos)     │
-└─────────────────────┴──────────────────────────┴─────────────────────┘
+┌────────────────┬───────────────────────────┬───────────────────────────┬──────────────┐
+│ Bloco 1         │ Bloco 2                    │ Bloco 3                    │ Bloco 4       │
+│ Sidebar         │ Timeline / Chat IA         │ Painel Operacional         │ Painel Utilit │
+│ Navegação       │ Capture & Insights         │ Tarefas / Projetos / Inbox │ Agentes & KPIs│
+└────────────────┴───────────────────────────┴───────────────────────────┴──────────────┘
 ```
 
-### 2.1 Sidebar (Esquerda)
+Cada bloco pode ser redimensionado, expandido (full screen) ou colapsado individualmente. O divisor central entre Blocos 2 e 3 é móvel, habilitando visão maior de chat ou das tarefas conforme a necessidade. Atalhos do teclado (`Cmd/Ctrl + ←/→`) alternam foco entre os blocos.
+
+### 2.1 Bloco 1 – Sidebar (Navegação Global)
 - **Seletor de Workspace/Tenant** (dropdown + avatar).
-- Entradas principais: `Today`, `Projects`, `Stats`, `Library`, `Agents`.
-- Coleções customizadas (ex.: `Pessoal`, `Investimentos`, `Clientes`).
-- Estado colapsável; ícones com badges (ex.: sync pendente).
-- Botões rápidos na base:
-  - `+ Capturar Nota` (atalho `Cmd/Ctrl + N`)
-  - `🎙 Capturar Áudio`
+- Grupos fixos: `Today`, `Inbox`, `Projects`, `Stats`, `Library`.
+- Área “Favoritos” configurável (links para dashboards ou coleções de notas).
+- Indicadores de sincronização / status do Brain Cloud.
+- Botões rápidos inferiores:
+  - `+ Nova Captura` (menu contextual para nota/tarefa/insight)
+  - `🎙 Gravar Áudio`
   - `📷 Importar Imagem/PDF`
+  - `⚙️ Configurações`
 
-### 2.2 Timeline IA (Centro)
-- **Header contextual**:
-  - Título da vista atual (e.g., `Today`)
-  - Indicador de foco diário (meta principal, produtividade, etc.)
-  - Botões: `Novo Insight`, `Assistente IA`, `Executar agente`
-- **Composer** (barra fixa inferior):
-  - Input com comandos (`/nota`, `/tarefa`, `/resumir`, `/agente`)
-  - Upload quick actions (áudio/imagem)
-  - Atalhos de gravação (press-and-hold)
-- **Blocos de conteúdo** (cards):
-  - Mensagens de chat com IA
-  - Notas criadas recentemente (snippet + tags + links)
-  - Insights sugeridos (com CTA “Salvar” ou “Ignorar”)
-  - Execuções de agentes (log, resultados, status)
-  - Cards de sumarização diária/semanal
-- Cada card oferece ações contextuais:
-  - `Transformar em tarefa`
-  - `Abrir no Obsidian`
-  - `Relacionar com nota`
-  - `Fixar no painel direito`
+### 2.2 Bloco 2 – Timeline IA & Chat Cognitivo
+- **Header contextual** destacando:
+  - Visão atual (`Today`, `Weekly Review`, `Projeto X`…)
+  - Meta diária ou foco semanal ativo (obtido via Brain Cloud).
+  - Botões principais: `Novo Insight`, `Executar Agente Curador`, `Compartilhar`.
+- **Composer unificado**:
+  - Input com suporte a comandos (`/nota`, `/tarefa`, `/resumir`, `/agente`, `/whatsapp-import`).
+  - Ações laterais para anexar mídia (áudio/imagens/documentos) e iniciar gravação.
+  - Sugestões contextuais baseadas nos cards exibidos recentemente.
+- **Cards da timeline**:
+  - Mensagens estilo chat (humano ↔ IA).
+  - Resumos do agente curador (diários/semanal).
+  - Notas recém-criadas via inbox com quick actions.
+  - Insights recomendados (com CTA de aceitar, editar ou descartar).
+  - Logs de execução de agentes (status, duração, links para conteúdo gerado).
+- Ações rápidas em cada card:
+  - `Transformar em tarefa` (traz para Bloco 3).
+  - `Fixar no painel 3` (insights críticos).
+  - `Relacionar com projeto` / `Abrir no Obsidian`.
+  - `Enviar ao WhatsApp` (quando pertinente).
 
-### 2.3 Painel de Execução (Direita)
-- Abas principais:
-  1. **Tarefas** (lista + filtros de status/prazo/projeto)
-  2. **Agenda** (mini calendário com eventos/tarefas)
-  3. **Insights Fixados** (itens relevantes fixados pelo usuário ou IA)
-  4. **Agentes** (monitoramento de automações em curso)
-- Lista de tarefas com quick actions: completar, reatribuir, replanejar.
-- Drag & drop para reorganizar prioridades.
-- Cards exibem origem (nota/insight) com link.
-- Rodapé: KPIs rápidos (tarefas concluídas, insights novos, sync status).
+### 2.3 Bloco 3 – Painel Operacional (Tarefas e Projetos)
+- Abas principais (configuráveis):
+  1. **Tarefas** – lista e Kanban, filtros por projeto/urgência, drag & drop.
+  2. **Projetos** – resumo de projetos ativos com progresso e principais notas.
+  3. **Inbox Curadoria** – notas brutas aguardando revisão pelo agente curador.
+  4. **Insights Fixados** – itens priorizados pelo usuário ou IA.
+- Quando um card da timeline é “fixado” ou convertido em tarefa, ele aparece aqui sem recarregar a página (state compartilhado).
+- O cabeçalho da aba `Tarefas` destaca contadores: atrasadas, hoje, semana.
+- Integração com Brain Cloud REST para listar e atualizar tarefas (`/tasks/*`).
+
+### 2.4 Bloco 4 – Painel Utilitário (Launcher de Funções)
+- **Botões rápidos** que disparam visualizações/contextos no Bloco 3:
+  - `Tasks` → carrega lista/kanban atual no Painel Operacional.
+  - `Daily Notes` → exibe notas de referência (hoje/ontem/semana).
+  - `Workflows` → abre fluxo guiado (ex.: Weekly Review, Brainstorm).
+  - `Search` → ativa busca avançada (REST + MCP) com resultados no Bloco 3.
+- **Utilidades adicionais**:
+  - `Agents` → abre painel avançado de agentes no Bloco 3 (lista completa + criar novo).
+  - `MCP Tools` → catálogo rápido de ferramentas MCP com atalhos.
+  - `Keyboard Shortcuts` → modal lateral com atalhos ativos.
+- **Status compacto**:
+  - Indicador de conectividade (REST/MCP) com tooltip de latência.
+  - Badge para execuções recentes de agentes (abre log ao clicar, reutilizando o Bloco 3).
+
+> O Bloco 4 funciona como um “dock” fixo: ele apenas aciona modos/abas do Bloco 3, mantendo o layout enxuto e evitando replicar informações. Agentes padrão continuam acessíveis via botão reservado (`Agents`) e aparecem em detalhe no Painel Operacional quando chamados.***
 
 ---
 
@@ -227,4 +246,3 @@ multimodal). O objetivo é orientar a construção de wireframes e do MVP visual
 ---
 
 **Próximo passo sugerido:** criar wireframes low-fi no Figma com base nesta descrição e coletar feedback antes de iniciar a implementação do layout no código.
-

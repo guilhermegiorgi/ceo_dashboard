@@ -41,6 +41,7 @@ function simplifyDueItems(dueItems = []) {
       sourceType: item.type,
       filePath: item.file_path,
       headingContext: item.heading_context,
+      lineNumber: typeof item.line_number === 'number' ? item.line_number : null,
     };
   });
 }
@@ -64,7 +65,7 @@ function summarizeAgents(runs = []) {
   return stats;
 }
 
-export async function getDashboardSnapshot({ tasksWindow = 'week' } = {}) {
+export async function getDashboardSnapshot({ tasksWindow = 'week', context } = {}) {
   const generatedAt = new Date().toISOString();
   const warnings = [];
   const data = {
@@ -173,8 +174,8 @@ export async function getDashboardSnapshot({ tasksWindow = 'week' } = {}) {
 
   try {
     const [runs, agents] = await Promise.all([
-      listRuns(15),
-      getAllAgents().catch(() => []),
+      listRuns(15, context),
+      getAllAgents(context).catch(() => []),
     ]);
     const agentLookup = new Map((agents || []).map((agent) => [agent.id, agent]));
     data.agents.recentRuns = runs.map((run) => ({

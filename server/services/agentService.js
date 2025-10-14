@@ -1,202 +1,431 @@
-import { v4 as uuidv4 } from 'uuid';
-import { dbRun, dbGet, dbAll, ensureDbHelpers } from './database.js';
-import { executeAgent } from './agentExecutor.js';
+import { query } from "../database/pg-pool.js";
+import { executeAgent } from "./agentExecutor.js";
 
-/**
- * Cria um agente padrão se nenhum existir.
- */
-export const seedInitialAgent = async () => {
-  ensureDbHelpers();
-  const agents = await dbAll('SELECT id FROM agents LIMIT 1');
-  if (agents.length === 0) {
-    console.log('Nenhum agente encontrado. Criando agente "Minerador de Conhecimento" padrão...');
-    
-    const newAgent = {
-      id: uuidv4(),
-      name: 'Minerador de Conhecimento',
-      type: 'minerador_de_conhecimento',
-      schedule: 'Manual',
-      provider: 'google',
-      model: 'gemini-1.5-flash',
-      api_key: null,
-      status: 'inactive',
-      config_json: JSON.stringify({
-        prompt_template: 'Analise o contexto e gere 1 insight estratégico acionável (oportunidade, risco ou recomendação). Use evidências do conteúdo.',
-        tools: ['web_search','http_get'],
-        note_query: '',
-        note_limit: 20,
-        temperature: 0.3,
-        iterations: 3
-      }),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+function normalizeContext(input = {}) {
+  const tenantId = input.tenantId || input.tenant_id;
+  const userId = input.userId || input.user_id || input.id;
 
-    await dbRun(
-      `INSERT INTO agents (id, name, type, provider, model, schedule, api_key, status, config_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        newAgent.id, newAgent.name, newAgent.type, newAgent.provider, newAgent.model,
-        newAgent.schedule, newAgent.api_key, newAgent.status, newAgent.config_json,
-        newAgent.created_at, newAgent.updated_at
-      ]
+  if (!tenantId || !userId) {
+    throw new Error(
+      "Tenant e usuário são obrigatórios para operar agentes (tenantId/userId ausentes no token)."
     );
   }
-};
 
-/**
- * Lista todos os agentes do banco de dados.
- * @returns {Promise<Array>} Uma lista de agentes.
- */
-export const getAllAgents = async () => {
-  ensureDbHelpers();
-  return await dbAll('SELECT * FROM agents ORDER BY created_at DESC');
-};
+  return { tenantId, userId };
+}
 
-/**
- * Busca um agente específico pelo ID.
- * @param {string} id - O ID do agente.
- * @returns {Promise<Object>} O objeto do agente.
- */
-export const getAgentById = async (id) => {
-  ensureDbHelpers();
-  return await dbGet('SELECT * FROM agents WHERE id = ?', [id]);
-};
+function parseConfig(config) {
+  if (!config) {
+    return {};
+  }
+  if (typeof config === "string") {
+    try {
+      return JSON.parse(config);
+    } catch (error) {
+      console.warn("Não foi possível converter config_json para JSON:", error);
+      return {};
+    }
+  }
+  if (typeof config === "object") {
+    return config;
+  }
+  return {};
+}
 
-/**
- * Cria um novo agente.
- * @param {Object} agentData - Os dados do novo agente.
- * @returns {Promise<Object>} O agente recém-criado.
- */
-export const createAgent = async (agentData) => {
-  ensureDbHelpers();
-  const { name, type, provider, model, schedule, api_key, config_json } = agentData;
-  const newAgent = {
-    id: uuidv4(),
-    name,
-    type,
-    provider: provider || null,
-    model: model || null,
-    schedule: schedule || null,
-    api_key: api_key || null,
-    status: 'inactive',
-    config_json: config_json ? JSON.stringify(config_json) : null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+function buildConfiguration(agentData, config) {
+  return {
+    schedule:
+      agentData.schedule ??
+      agentData.configuration?.schedule ??
+      agentData.metadata?.schedule ??
+      null,
+    provider:
+      agentData.provider ??
+      agentData.configuration?.provider ??
+      agentData.metadata?.provider ??
+      null,
+    model:
+      agentData.model ??
+      agentData.configuration?.model ??
+      agentData.metadata?.model ??
+      null,
+    api_key:
+      agentData.api_key ??
+      agentData.configuration?.api_key ??
+      agentData.metadata?.api_key ??
+      null,
+    settings:
+      agentData.config_json ??
+      agentData.configuration?.settings ??
+      agentData.configuration?.config_json ??
+      config,
   };
+}
 
-  await dbRun(
-    `INSERT INTO agents (id, name, type, provider, model, schedule, api_key, status, config_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      newAgent.id,
-      newAgent.name,
-      newAgent.type,
-      newAgent.provider,
-      newAgent.model,
-      newAgent.schedule,
-      newAgent.api_key,
-      newAgent.status,
-      newAgent.config_json,
-      newAgent.created_at,
-      newAgent.updated_at,
-    ]
+function deriveLastRun(row) {
+  if (row.last_run_at) {
+    return row.last_run_at;
+  }
+  const metadata = row.metadata || {};
+  return metadata.last_run_at || metadata.lastRunAt || null;
+}
+
+function computeSuccessRate(successRuns = 0, totalRuns = 0) {
+  if (!totalRuns) {
+    return undefined;
+  }
+  const rate = Math.round((Number(successRuns) / Number(totalRuns)) * 100);
+  return Number.isFinite(rate) ? rate : undefined;
+}
+
+function mapAgentRow(row) {
+  const configuration = row.configuration || {};
+  const configSettings =
+    configuration.settings ||
+    configuration.config_json ||
+    configuration.config ||
+    {};
+  const totalRuns = Number(row.total_runs ?? row.run_count ?? 0);
+  const successRuns = Number(row.success_runs ?? 0);
+
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    userId: row.user_id,
+    name: row.name,
+    description: row.description || "",
+    type: row.agent_type,
+    status: row.status || "inactive",
+    schedule: configuration.schedule ?? null,
+    provider: configuration.provider ?? null,
+    model: configuration.model ?? null,
+    api_key: configuration.api_key ?? null,
+    config_json: configSettings,
+    metadata: row.metadata || {},
+    last_run_at: deriveLastRun(row),
+    lastRun: deriveLastRun(row),
+    totalRuns,
+    successRate: computeSuccessRate(successRuns, totalRuns),
+  };
+}
+
+function mapRunRow(row) {
+  const output =
+    row.output && typeof row.output === "object" ? row.output : { log: row.output };
+  return {
+    id: row.id,
+    agent_id: row.agent_id,
+    agent_name: row.agent_name,
+    status: row.status,
+    start_time: row.started_at || row.created_at,
+    end_time: row.completed_at,
+    duration_ms: row.duration_ms ?? null,
+    tokens_used: row.tokens_used ?? null,
+    log: output?.log ?? null,
+    output,
+    error: row.error ?? null,
+    metadata: row.metadata ?? {},
+    created_at: row.created_at,
+  };
+}
+
+export const seedInitialAgent = async () => {
+  // Em ambientes com PostgreSQL e RLS não criamos registros padrão automaticamente.
+  console.info(
+    "seedInitialAgent: inicialização automática ignorada (usar migrations/seed dedicados)."
+  );
+};
+
+export const getAllAgents = async (context) => {
+  const ctx = normalizeContext(context);
+  const result = await query(
+    `
+      SELECT a.*,
+             stats.total_runs,
+             stats.success_runs,
+             stats.last_run_at
+      FROM agents a
+      LEFT JOIN (
+        SELECT agent_id,
+               COUNT(*)::int AS total_runs,
+               COUNT(*) FILTER (WHERE status IN ('completed','success'))::int AS success_runs,
+               MAX(COALESCE(completed_at, started_at, created_at)) AS last_run_at
+        FROM agent_runs
+        GROUP BY agent_id
+      ) stats ON stats.agent_id = a.id
+      WHERE a.status IS DISTINCT FROM 'archived'
+      ORDER BY COALESCE(stats.last_run_at, a.updated_at, a.created_at) DESC
+    `,
+    [],
+    ctx
   );
 
-  return newAgent;
+  return result.rows.map(mapAgentRow);
 };
 
-/**
- * Atualiza um agente existente.
- * @param {string} id - O ID do agente a ser atualizado.
- * @param {Object} agentData - Os novos dados do agente.
- * @returns {Promise<Object>} O agente atualizado.
- */
-export const updateAgent = async (id, agentData) => {
-  ensureDbHelpers();
-  const { name, type, provider, model, schedule, api_key, status, config_json } = agentData;
-  const updatedAt = new Date().toISOString();
-
-  // Garante que o status seja um valor válido, caso contrário, mantém o status atual (ou define um padrão)
-  const currentAgent = await getAgentById(id);
-  const newStatus = status || currentAgent.status || 'inactive';
-
-  // Garante que config_json seja uma string JSON
-  const configString = typeof config_json === 'string' ? config_json : JSON.stringify(config_json);
-
-  await dbRun(
-    `UPDATE agents
-     SET name = ?, type = ?, provider = ?, model = ?, schedule = ?, api_key = ?, status = ?, config_json = ?, updated_at = ?
-     WHERE id = ?`,
-    [name, type, provider, model, schedule, api_key, newStatus, configString, updatedAt, id]
+export const getAgentById = async (id, context) => {
+  const ctx = normalizeContext(context);
+  const result = await query(
+    `
+      SELECT a.*,
+             stats.total_runs,
+             stats.success_runs,
+             stats.last_run_at
+      FROM agents a
+      LEFT JOIN (
+        SELECT agent_id,
+               COUNT(*)::int AS total_runs,
+               COUNT(*) FILTER (WHERE status IN ('completed','success'))::int AS success_runs,
+               MAX(COALESCE(completed_at, started_at, created_at)) AS last_run_at
+        FROM agent_runs
+        GROUP BY agent_id
+      ) stats ON stats.agent_id = a.id
+      WHERE a.id = $1
+      LIMIT 1
+    `,
+    [id],
+    ctx
   );
 
-  return await getAgentById(id);
-};
-
-/**
- * Deleta um agente.
- * @param {string} id - O ID do agente a ser deletado.
- */
-export const deleteAgent = async (id) => {
-  ensureDbHelpers();
-  await dbRun('DELETE FROM agents WHERE id = ?', [id]);
-};
-
-/**
- * Executa um agente e registra o resultado.
- * @param {string} agentId - O ID do agente a ser executado.
- * @returns {Promise<Object>} O registro da execução.
- */
-export const runAgent = async (agentId) => {
-  ensureDbHelpers();
-  const agent = await getAgentById(agentId);
-  if (!agent) {
-    throw new Error('Agente não encontrado');
+  if (result.rows.length === 0) {
+    return null;
   }
 
-  const runId = uuidv4();
-  const startTime = new Date();
+  return mapAgentRow(result.rows[0]);
+};
 
-  // 1. Registrar o início da execução
-  await dbRun(
-    'INSERT INTO agent_runs (id, agent_id, start_time, status) VALUES (?, ?, ?, ?)',
-    [runId, agentId, startTime.toISOString(), 'running']
+export const createAgent = async (agentData, context) => {
+  const ctx = normalizeContext(context);
+  const parsedConfig = parseConfig(agentData.config_json);
+  const configuration = buildConfiguration(agentData, parsedConfig);
+  const systemPrompt = parsedConfig.prompt_template || parsedConfig.prompt || null;
+
+  const result = await query(
+    `
+      INSERT INTO agents (
+        tenant_id,
+        user_id,
+        name,
+        description,
+        agent_type,
+        system_prompt,
+        configuration,
+        status,
+        brain_context_enabled,
+        metadata
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10::jsonb)
+      RETURNING *
+    `,
+    [
+      ctx.tenantId,
+      ctx.userId,
+      agentData.name,
+      agentData.description || "",
+      agentData.type || "general",
+      systemPrompt,
+      configuration,
+      agentData.status || "active",
+      agentData.brain_context_enabled ?? true,
+      agentData.metadata || {},
+    ],
+    ctx
   );
-  await dbRun('UPDATE agents SET status = ?, last_run_at = ? WHERE id = ?', ['running', startTime.toISOString(), agentId]);
+
+  return mapAgentRow(result.rows[0]);
+};
+
+export const updateAgent = async (id, agentData, context) => {
+  const ctx = normalizeContext(context);
+  const parsedConfig = parseConfig(agentData.config_json);
+  const configuration = buildConfiguration(agentData, parsedConfig);
+  const systemPrompt = parsedConfig.prompt_template || parsedConfig.prompt || null;
+
+  const result = await query(
+    `
+      UPDATE agents
+      SET name = $2,
+          description = $3,
+          agent_type = $4,
+          system_prompt = $5,
+          configuration = $6::jsonb,
+          status = $7,
+          metadata = CASE
+                       WHEN $8::jsonb IS NULL THEN metadata
+                       ELSE $8::jsonb
+                     END,
+          brain_context_enabled = COALESCE($9, brain_context_enabled),
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [
+      id,
+      agentData.name,
+      agentData.description || "",
+      agentData.type || "general",
+      systemPrompt,
+      configuration,
+      agentData.status || "active",
+      agentData.metadata ?? null,
+      agentData.brain_context_enabled ?? null,
+    ],
+    ctx
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapAgentRow(result.rows[0]);
+};
+
+export const deleteAgent = async (id, context) => {
+  const ctx = normalizeContext(context);
+  await query("DELETE FROM agents WHERE id = $1", [id], ctx);
+};
+
+export const runAgent = async (agentId, context) => {
+  const ctx = normalizeContext(context);
+  const agentResult = await query(
+    `
+      SELECT *
+      FROM agents
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [agentId],
+    ctx
+  );
+
+  if (agentResult.rows.length === 0) {
+    throw new Error("Agente não encontrado");
+  }
+
+  const agent = mapAgentRow(agentResult.rows[0]);
+
+  await query(
+    `
+      UPDATE agents
+      SET status = 'running',
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+    [agentId],
+    ctx
+  );
+
+  const runResult = await query(
+    `
+      INSERT INTO agent_runs (agent_id, status, started_at, input)
+      VALUES ($1, 'running', NOW(), $2::jsonb)
+      RETURNING *
+    `,
+    [
+      agentId,
+      {
+        trigger: "manual",
+        executedBy: ctx.userId,
+      },
+    ],
+    ctx
+  );
+
+  const run = runResult.rows[0];
 
   try {
-    // 2. Executar a lógica do agente
-    const logMessage = await executeAgent(agent);
+    const log = await executeAgent(agent);
 
-    // 3. Registrar o sucesso
-    await dbRun(
-      'UPDATE agent_runs SET end_time = ?, status = ?, log = ? WHERE id = ?',
-      [new Date().toISOString(), 'success', logMessage, runId]
+    await query(
+      `
+        UPDATE agent_runs
+        SET status = 'completed',
+            output = $2::jsonb,
+            completed_at = NOW(),
+            duration_ms = FLOOR(
+              EXTRACT(
+                EPOCH FROM (NOW() - COALESCE(started_at, created_at))
+              ) * 1000
+            )
+        WHERE id = $1
+      `,
+      [run.id, { log }],
+      ctx
     );
-    await dbRun('UPDATE agents SET status = ? WHERE id = ?', ['active', agentId]);
-    
-    return await dbGet('SELECT * FROM agent_runs WHERE id = ?', [runId]);
 
+    await query(
+      `
+        UPDATE agents
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('last_run_at', NOW()),
+            status = 'active',
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [agentId],
+      ctx
+    );
+
+    return { id: run.id, log };
   } catch (error) {
-    // 4. Registrar a falha
-    console.error(`Falha ao executar o agente ${agentId}:`, error);
-    await dbRun(
-      'UPDATE agent_runs SET end_time = ?, status = ?, log = ? WHERE id = ?',
-      [new Date().toISOString(), 'failed', error.message, runId]
+    await query(
+      `
+        UPDATE agent_runs
+        SET status = 'failed',
+            error = $2,
+            completed_at = NOW()
+        WHERE id = $1
+      `,
+      [run.id, error.message || "Erro desconhecido"],
+      ctx
     );
-    await dbRun('UPDATE agents SET status = ? WHERE id = ?', ['error', agentId]);
 
-    throw error; // Propaga o erro para a rota
+    await query(
+      `
+        UPDATE agents
+        SET status = 'failed',
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [agentId],
+      ctx
+    ).catch(() => {});
+
+    throw error;
   }
 };
 
-export const listRuns = async (limit = 50) => {
-  ensureDbHelpers();
-  return await dbAll('SELECT * FROM agent_runs ORDER BY start_time DESC LIMIT ?',[limit]);
+export const listRuns = async (limit = 50, context) => {
+  const ctx = normalizeContext(context);
+  const result = await query(
+    `
+      SELECT ar.*, a.name AS agent_name
+      FROM agent_runs ar
+      JOIN agents a ON a.id = ar.agent_id
+      WHERE a.status IS DISTINCT FROM 'archived'
+      ORDER BY ar.created_at DESC
+      LIMIT $1
+    `,
+    [limit],
+    ctx
+  );
+
+  return result.rows.map(mapRunRow);
 };
 
-export const listRunsByAgent = async (agentId, limit = 50) => {
-  ensureDbHelpers();
-  return await dbAll('SELECT * FROM agent_runs WHERE agent_id = ? ORDER BY start_time DESC LIMIT ?',[agentId, limit]);
+export const listRunsByAgent = async (agentId, limit = 50, context) => {
+  const ctx = normalizeContext(context);
+  const result = await query(
+    `
+      SELECT ar.*, a.name AS agent_name
+      FROM agent_runs ar
+      JOIN agents a ON a.id = ar.agent_id
+      WHERE ar.agent_id = $1
+      ORDER BY ar.created_at DESC
+      LIMIT $2
+    `,
+    [agentId, limit],
+    ctx
+  );
+
+  return result.rows.map(mapRunRow);
 };

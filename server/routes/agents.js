@@ -7,7 +7,7 @@ const router = express.Router();
 // Rota para listar todos os agentes
 router.get('/', authenticateToken, async (req, res, next) => {
   try {
-    const agents = await agentService.getAllAgents();
+    const agents = await agentService.getAllAgents(req.user);
     res.json({ success: true, data: agents });
   } catch (error) {
     next(error);
@@ -17,8 +17,40 @@ router.get('/', authenticateToken, async (req, res, next) => {
 // Rota para criar um novo agente
 router.post('/', authenticateToken, async (req, res, next) => {
   try {
-    const newAgent = await agentService.createAgent(req.body);
+    const newAgent = await agentService.createAgent(req.body, req.user);
     res.status(201).json({ success: true, data: newAgent });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Runs recentes (geral)
+router.get('/runs', authenticateToken, async (req, res, next) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+    const data = await agentService.listRuns(limit, req.user);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Runs por agente
+router.get('/:id/runs', authenticateToken, async (req, res, next) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+    const data = await agentService.listRunsByAgent(req.params.id, limit, req.user);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Rota para executar um agente
+router.post('/:id/run', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await agentService.runAgent(req.params.id, req.user);
+    res.json({ success: true, message: 'Execução do agente concluída.', data: result });
   } catch (error) {
     next(error);
   }
@@ -27,7 +59,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
 // Rota para obter um agente específico
 router.get('/:id', authenticateToken, async (req, res, next) => {
   try {
-    const agent = await agentService.getAgentById(req.params.id);
+    const agent = await agentService.getAgentById(req.params.id, req.user);
     if (!agent) {
       return res.status(404).json({ success: false, error: 'Agente não encontrado' });
     }
@@ -40,7 +72,7 @@ router.get('/:id', authenticateToken, async (req, res, next) => {
 // Rota para atualizar um agente
 router.put('/:id', authenticateToken, async (req, res, next) => {
   try {
-    const updatedAgent = await agentService.updateAgent(req.params.id, req.body);
+    const updatedAgent = await agentService.updateAgent(req.params.id, req.body, req.user);
     if (!updatedAgent) {
       return res.status(404).json({ success: false, error: 'Agente não encontrado' });
     }
@@ -53,40 +85,8 @@ router.put('/:id', authenticateToken, async (req, res, next) => {
 // Rota para deletar um agente
 router.delete('/:id', authenticateToken, async (req, res, next) => {
   try {
-    await agentService.deleteAgent(req.params.id);
+    await agentService.deleteAgent(req.params.id, req.user);
     res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Rota para executar um agente
-router.post('/:id/run', authenticateToken, async (req, res, next) => {
-  try {
-    const result = await agentService.runAgent(req.params.id);
-    res.json({ success: true, message: 'Execução do agente concluída.', data: result });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Runs recentes (geral)
-router.get('/runs', authenticateToken, async (req, res, next) => {
-  try {
-    const limit = req.query.limit ? parseInt(req.query.limit) : 50;
-    const data = await agentService.listRuns(limit);
-    res.json({ success: true, data });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Runs por agente
-router.get('/:id/runs', authenticateToken, async (req, res, next) => {
-  try {
-    const limit = req.query.limit ? parseInt(req.query.limit) : 50;
-    const data = await agentService.listRunsByAgent(req.params.id, limit);
-    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
