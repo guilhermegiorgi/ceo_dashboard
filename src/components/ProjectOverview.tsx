@@ -15,7 +15,7 @@ import {
   Search
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useProjects } from '../hooks/useAPI';
+import { useProjects } from '../hooks/useProjects';
 
 interface Project {
   id: string;

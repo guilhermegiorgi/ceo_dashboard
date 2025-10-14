@@ -13,6 +13,9 @@ const defaultSettings = {
     mcpHttp: '',
     enableRest: true,
     enableMcp: true
+  },
+  dashboard: {
+    collections: []
   }
 };
 
@@ -33,6 +36,10 @@ export async function loadSettings() {
     braincloud: {
       ...defaultSettings.braincloud,
       ...(parsed.braincloud || {})
+    },
+    dashboard: {
+      ...defaultSettings.dashboard,
+      ...(parsed.dashboard || {})
     }
   };
 }
@@ -43,9 +50,35 @@ export async function saveSettings(settings) {
     braincloud: {
       ...current.braincloud,
       ...(settings.braincloud || {})
+    },
+    dashboard: {
+      ...current.dashboard,
+      ...(settings.dashboard || {})
     }
   };
   await fs.writeFile(SETTINGS_FILE, JSON.stringify(merged, null, 2));
   return merged;
 }
 
+export async function getDashboardCollections() {
+  const settings = await loadSettings();
+  return settings.dashboard?.collections || [];
+}
+
+export async function updateDashboardCollections(collections = []) {
+  if (!Array.isArray(collections)) {
+    throw new Error('Collections payload must be an array');
+  }
+  const normalized = collections
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      id: String(item.id || item.label || Date.now()),
+      label: String(item.label || 'Collection'),
+      description: item.description ? String(item.description) : '',
+      filter: item.filter ? String(item.filter) : '',
+      icon: item.icon ? String(item.icon) : 'sparkles'
+    }));
+
+  const saved = await saveSettings({ dashboard: { collections: normalized } });
+  return saved.dashboard.collections;
+}

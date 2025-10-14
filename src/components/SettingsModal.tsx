@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import ReactDOM from 'react-dom';
-import toast from 'react-hot-toast';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom";
+import toast from "react-hot-toast";
 import {
   Cloud,
   RefreshCw,
@@ -12,7 +12,14 @@ import {
   Workflow,
   Layers,
   X,
-} from 'lucide-react';
+  Brain,
+  Trash2,
+  Plus,
+} from "lucide-react";
+import api, {
+  AIProvider,
+  AIProviderCreatePayload,
+} from "../services/apiClient";
 
 type BrainCloudSettings = {
   baseUrl: string;
@@ -26,12 +33,12 @@ type BrainCloudSettings = {
 };
 
 const DEFAULT_SETTINGS: BrainCloudSettings = {
-  baseUrl: '',
-  apiToken: '',
-  tenantId: '',
-  tenantPlan: '',
-  mcpWs: '',
-  mcpHttp: '',
+  baseUrl: "",
+  apiToken: "",
+  tenantId: "",
+  tenantPlan: "",
+  mcpWs: "",
+  mcpHttp: "",
   enableRest: true,
   enableMcp: true,
 };
@@ -43,38 +50,56 @@ type SettingsModalProps = {
 
 const SECTIONS = [
   {
-    id: 'general',
-    label: 'General',
-    description: 'Preferências gerais do workspace.',
+    id: "general",
+    label: "General",
+    description: "Preferências gerais do workspace.",
     icon: <Settings2 className="h-4 w-4" />,
   },
   {
-    id: 'braincloud',
-    label: 'Brain Cloud',
-    description: 'Configurações REST/MCP do Obsidian Brain Cloud.',
+    id: "braincloud",
+    label: "Brain Cloud",
+    description: "Configurações REST/MCP do Obsidian Brain Cloud.",
     icon: <Cloud className="h-4 w-4" />,
   },
   {
-    id: 'integrations',
-    label: 'Integrations',
-    description: 'Outras integrações e automações (em breve).',
+    id: "aiproviders",
+    label: "AI Providers",
+    description: "Configurar provedores de IA e modelos para chat.",
+    icon: <Brain className="h-4 w-4" />,
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    description: "Outras integrações e automações (em breve).",
     icon: <Workflow className="h-4 w-4" />,
   },
   {
-    id: 'dataops',
-    label: 'Data Ops',
-    description: 'Pipelines de dados e sync (em breve).',
+    id: "dataops",
+    label: "Data Ops",
+    description: "Pipelines de dados e sync (em breve).",
     icon: <Layers className="h-4 w-4" />,
   },
 ];
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
-  const [activeSection, setActiveSection] = useState<'general' | 'braincloud' | 'integrations' | 'dataops'>('braincloud');
+  const [activeSection, setActiveSection] = useState<
+    "general" | "braincloud" | "aiproviders" | "integrations" | "dataops"
+  >("braincloud");
   const [settings, setSettings] = useState<BrainCloudSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [testingMode, setTestingMode] = useState<'rest' | 'mcp' | null>(null);
+  const [testingMode, setTestingMode] = useState<"rest" | "mcp" | null>(null);
   const [showToken, setShowToken] = useState(false);
+
+  // AI Providers state
+  const [providers, setProviders] = useState<AIProvider[]>([]);
+  const [loadingProviders, setLoadingProviders] = useState(false);
+  const [newProvider, setNewProvider] = useState<AIProviderCreatePayload>({
+    providerName: "openai",
+    displayName: "",
+    apiKey: "",
+  });
+  const [showProviderForm, setShowProviderForm] = useState(false);
 
   const mergedSettings = useMemo(
     () => settings ?? DEFAULT_SETTINGS,
@@ -84,13 +109,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/settings/braincloud', { credentials: 'include' });
-      if (!res.ok) throw new Error('Falha ao carregar configurações');
-      const data = await res.json();
+      const data = await api.request<{
+        success?: boolean;
+        braincloud?: Partial<BrainCloudSettings> | null;
+      }>("/api/settings/braincloud");
+
       setSettings({ ...DEFAULT_SETTINGS, ...(data?.braincloud || {}) });
     } catch (error) {
       console.error(error);
-      toast.error('Não foi possível carregar as configurações.');
+      toast.error("Não foi possível carregar as configurações.");
       setSettings(DEFAULT_SETTINGS);
     } finally {
       setLoading(false);
@@ -105,78 +132,139 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    document.body.style.overflow = 'hidden';
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
     };
   }, [open, onClose]);
 
-  const handleChange = (field: keyof BrainCloudSettings) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setSettings((prev) => ({ ...(prev || DEFAULT_SETTINGS), [field]: value }));
-  };
+  const handleChange =
+    (field: keyof BrainCloudSettings) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value;
+      setSettings((prev) => ({
+        ...(prev || DEFAULT_SETTINGS),
+        [field]: value,
+      }));
+    };
 
   const handleToggle = (field: keyof BrainCloudSettings) => () => {
-    setSettings((prev) => ({ ...(prev || DEFAULT_SETTINGS), [field]: !(prev?.[field] as boolean) }));
+    setSettings((prev) => ({
+      ...(prev || DEFAULT_SETTINGS),
+      [field]: !(prev?.[field] as boolean),
+    }));
   };
 
   const handleSave = async () => {
     if (!settings) return;
     setSaving(true);
     try {
-      const response = await fetch('/api/settings/braincloud', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ braincloud: settings }),
+      const data = await api.request<{
+        success?: boolean;
+        braincloud?: Partial<BrainCloudSettings> | null;
+      }>("/api/settings/braincloud", {
+        method: "PUT",
+        body: { braincloud: settings },
       });
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err?.error || 'Erro ao salvar');
-      }
-
-      const data = await response.json();
       setSettings({ ...DEFAULT_SETTINGS, ...(data?.braincloud || {}) });
-      toast.success('Configurações salvas com sucesso');
+      toast.success("Configurações salvas com sucesso");
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : 'Falha ao salvar configurações');
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao salvar configurações"
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTest = async (mode: 'rest' | 'mcp') => {
+  const handleTest = async (mode: "rest" | "mcp") => {
     if (!settings) return;
     setTestingMode(mode);
     try {
-      const response = await fetch('/api/settings/braincloud/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ braincloud: settings, mode }),
+      const payload = await api.request<{
+        success: boolean;
+        mode: string;
+        response?: Record<string, unknown>;
+      }>("/api/settings/braincloud/test", {
+        method: "POST",
+        body: { braincloud: settings, mode },
       });
 
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || `Falha ao testar ${mode.toUpperCase()}`);
-      }
-
-      toast.success(`${mode === 'rest' ? 'REST' : 'MCP'} ok: ${payload?.response?.status || 'sucesso'}`);
+      toast.success(
+        `${mode === "rest" ? "REST" : "MCP"} ok: ${
+          payload?.response?.status || "sucesso"
+        }`
+      );
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : 'Teste falhou');
+      toast.error(error instanceof Error ? error.message : "Teste falhou");
     } finally {
       setTestingMode(null);
     }
   };
+
+  // AI Providers functions
+  const fetchProviders = useCallback(async () => {
+    setLoadingProviders(true);
+    try {
+      const response = await api.getAIProviders();
+      setProviders(response.providers);
+    } catch (error) {
+      console.error("Error fetching providers:", error);
+      toast.error("Não foi possível carregar os provedores de IA");
+    } finally {
+      setLoadingProviders(false);
+    }
+  }, []);
+
+  const handleSaveProvider = async () => {
+    try {
+      if (!newProvider.displayName || !newProvider.apiKey) {
+        toast.error("Nome e API Key são obrigatórios");
+        return;
+      }
+
+      await api.upsertAIProvider(newProvider);
+      toast.success("Provedor salvo com sucesso");
+      setShowProviderForm(false);
+      setNewProvider({
+        providerName: "openai",
+        displayName: "",
+        apiKey: "",
+      });
+      fetchProviders();
+    } catch (error) {
+      console.error("Error saving provider:", error);
+      toast.error("Erro ao salvar provedor");
+    }
+  };
+
+  const handleDeleteProvider = async (providerId: string) => {
+    if (!confirm("Tem certeza que deseja remover este provedor?")) return;
+
+    try {
+      await api.deleteAIProvider(providerId);
+      toast.success("Provedor removido");
+      fetchProviders();
+    } catch (error) {
+      console.error("Error deleting provider:", error);
+      toast.error("Erro ao remover provedor");
+    }
+  };
+
+  useEffect(() => {
+    if (open && activeSection === "aiproviders") {
+      fetchProviders();
+    }
+  }, [open, activeSection, fetchProviders]);
 
   if (!open) return null;
 
@@ -190,7 +278,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
         <div className="flex h-[75vh] overflow-hidden rounded-3xl">
           <aside className="w-60 border-r border-neutral-800 bg-neutral-950/80 p-6">
             <div className="mb-6">
-              <p className="text-sm font-medium text-emerald-300">Advanced Settings</p>
+              <p className="text-sm font-medium text-emerald-300">
+                Advanced Settings
+              </p>
               <p className="mt-1 text-xs text-zinc-500">
                 Ajuste conexões e integrações do CEO Dashboard.
               </p>
@@ -201,11 +291,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setActiveSection(item.id as typeof activeSection)}
+                    onClick={() =>
+                      setActiveSection(item.id as typeof activeSection)
+                    }
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${
                       active
-                        ? 'bg-neutral-800 text-zinc-100'
-                        : 'text-zinc-400 hover:bg-neutral-900 hover:text-zinc-200'
+                        ? "bg-neutral-800 text-zinc-100"
+                        : "text-zinc-400 hover:bg-neutral-900 hover:text-zinc-200"
                     }`}
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900">
@@ -222,10 +314,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
             <header className="flex items-start justify-between gap-4 border-b border-neutral-800 pb-4">
               <div>
                 <p className="text-lg font-semibold">
-                  {SECTIONS.find((sec) => sec.id === activeSection)?.label || 'Configurações'}
+                  {SECTIONS.find((sec) => sec.id === activeSection)?.label ||
+                    "Configurações"}
                 </p>
                 <p className="text-sm text-zinc-500">
-                  {SECTIONS.find((sec) => sec.id === activeSection)?.description || ''}
+                  {SECTIONS.find((sec) => sec.id === activeSection)
+                    ?.description || ""}
                 </p>
               </div>
               <button
@@ -237,23 +331,31 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
               </button>
             </header>
 
-            {activeSection === 'braincloud' && (
+            {activeSection === "braincloud" && (
               <div className="mt-6 space-y-6">
                 <div className="flex flex-wrap items-center gap-3">
                   <button
-                    onClick={() => handleTest('rest')}
-                    disabled={testingMode === 'rest' || loading}
+                    onClick={() => handleTest("rest")}
+                    disabled={testingMode === "rest" || loading}
                     className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-zinc-200 transition hover:border-neutral-500 disabled:cursor-wait disabled:opacity-60"
                   >
-                    <RefreshCw className={`h-4 w-4 ${testingMode === 'rest' ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`h-4 w-4 ${
+                        testingMode === "rest" ? "animate-spin" : ""
+                      }`}
+                    />
                     Testar REST
                   </button>
                   <button
-                    onClick={() => handleTest('mcp')}
-                    disabled={testingMode === 'mcp' || loading}
+                    onClick={() => handleTest("mcp")}
+                    disabled={testingMode === "mcp" || loading}
                     className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-zinc-200 transition hover:border-neutral-500 disabled:cursor-wait disabled:opacity-60"
                   >
-                    <RefreshCw className={`h-4 w-4 ${testingMode === 'mcp' ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`h-4 w-4 ${
+                        testingMode === "mcp" ? "animate-spin" : ""
+                      }`}
+                    />
                     Testar MCP
                   </button>
                   <button
@@ -274,7 +376,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                       <div className="flex items-center gap-3 text-zinc-100">
                         <Cloud className="h-5 w-5" />
                         <div>
-                          <h2 className="text-sm font-semibold">Obsidian Brain Cloud • REST</h2>
+                          <h2 className="text-sm font-semibold">
+                            Obsidian Brain Cloud • REST
+                          </h2>
                           <p className="text-xs text-zinc-400">
                             URL e credenciais para operações via API.
                           </p>
@@ -286,22 +390,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                           label="Base URL"
                           placeholder="https://braincloud.ggai.dev"
                           value={mergedSettings.baseUrl}
-                          onChange={handleChange('baseUrl')}
+                          onChange={handleChange("baseUrl")}
                         />
 
                         <Field
                           label="Token de API"
-                          type={showToken ? 'text' : 'password'}
+                          type={showToken ? "text" : "password"}
                           placeholder="••••••"
                           value={mergedSettings.apiToken}
-                          onChange={handleChange('apiToken')}
+                          onChange={handleChange("apiToken")}
                           rightAdornment={
                             <button
                               type="button"
                               onClick={() => setShowToken((prev) => !prev)}
                               className="text-zinc-400 transition hover:text-zinc-200"
                             >
-                              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              {showToken ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
                             </button>
                           }
                         />
@@ -311,13 +419,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                             label="Tenant ID (opcional)"
                             placeholder="cliente-xpto"
                             value={mergedSettings.tenantId}
-                            onChange={handleChange('tenantId')}
+                            onChange={handleChange("tenantId")}
                           />
                           <Field
                             label="Tenant Plan"
                             placeholder="enterprise"
                             value={mergedSettings.tenantPlan}
-                            onChange={handleChange('tenantPlan')}
+                            onChange={handleChange("tenantPlan")}
                           />
                         </div>
                       </div>
@@ -327,7 +435,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                       <div className="flex items-center gap-3 text-zinc-100">
                         <ShieldCheck className="h-5 w-5" />
                         <div>
-                          <h2 className="text-sm font-semibold">Model Context Protocol</h2>
+                          <h2 className="text-sm font-semibold">
+                            Model Context Protocol
+                          </h2>
                           <p className="text-xs text-zinc-400">
                             Endpoints de WebSocket e HTTP para ferramentas MCP.
                           </p>
@@ -339,13 +449,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                           label="MCP WebSocket"
                           placeholder="ws://localhost:8000/mcp"
                           value={mergedSettings.mcpWs}
-                          onChange={handleChange('mcpWs')}
+                          onChange={handleChange("mcpWs")}
                         />
                         <Field
                           label="MCP HTTP"
                           placeholder="http://localhost:8000/api/v1/mcp/http"
                           value={mergedSettings.mcpHttp}
-                          onChange={handleChange('mcpHttp')}
+                          onChange={handleChange("mcpHttp")}
                         />
 
                         <div className="grid gap-3 sm:grid-cols-2">
@@ -353,13 +463,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                             label="Habilitar features REST"
                             description="Permite que o dashboard use a API REST da Brain Cloud."
                             checked={mergedSettings.enableRest}
-                            onToggle={handleToggle('enableRest')}
+                            onToggle={handleToggle("enableRest")}
                           />
                           <ToggleField
                             label="Habilitar features MCP"
                             description="Libera uso de ferramentas MCP (semantic search, templates, etc.)."
                             checked={mergedSettings.enableMcp}
-                            onToggle={handleToggle('enableMcp')}
+                            onToggle={handleToggle("enableMcp")}
                           />
                         </div>
                       </div>
@@ -369,19 +479,186 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
               </div>
             )}
 
-            {activeSection !== 'braincloud' && (
-              <div className="mt-12 flex h-full flex-col items-center justify-center gap-4 text-center text-zinc-400">
-                <div className="rounded-full border border-neutral-800 bg-neutral-900/60 p-4">
-                  <ShieldCheck className="h-6 w-6 text-zinc-300" />
+            {activeSection === "aiproviders" && (
+              <div className="mt-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-zinc-400">
+                      Configure seus provedores de IA para usar no chat
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowProviderForm(!showProviderForm)}
+                    className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/30"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Adicionar Provedor
+                  </button>
                 </div>
-                <div>
-                  <p className="text-base font-medium text-zinc-100">Em breve</p>
-                  <p className="text-sm text-zinc-500">
-                    Estamos trazendo estas configurações para a próxima versão do dashboard.
-                  </p>
-                </div>
+
+                {showProviderForm && (
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+                    <h3 className="mb-4 text-sm font-semibold text-zinc-100">
+                      Novo Provedor de IA
+                    </h3>
+                    <div className="space-y-4">
+                      <label className="block text-sm">
+                        <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">
+                          Provedor
+                        </span>
+                        <select
+                          value={newProvider.providerName}
+                          onChange={(event) =>
+                            setNewProvider((prev) => ({
+                              ...prev,
+                              providerName:
+                                event.target.value as AIProviderCreatePayload["providerName"],
+                            }))
+                          }
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-zinc-100 focus:border-neutral-600 focus:outline-none"
+                        >
+                          <option value="openai">OpenAI</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="deepseek">DeepSeek</option>
+                          <option value="google">Google AI</option>
+                          <option value="openrouter">OpenRouter</option>
+                          <option value="azure">Azure OpenAI</option>
+                          <option value="custom">Custom</option>
+                        </select>
+                      </label>
+
+                      <Field
+                        label="Nome de Exibição"
+                        placeholder="Ex: Meu OpenAI"
+                        value={newProvider.displayName}
+                        onChange={(e) =>
+                          setNewProvider({
+                            ...newProvider,
+                            displayName: e.target.value,
+                          })
+                        }
+                      />
+
+                      <Field
+                        label="API Key"
+                        type="password"
+                        placeholder="sk-..."
+                        value={newProvider.apiKey}
+                        onChange={(e) =>
+                          setNewProvider({
+                            ...newProvider,
+                            apiKey: e.target.value,
+                          })
+                        }
+                      />
+
+                      {newProvider.providerName === "custom" && (
+                        <Field
+                          label="Base URL (opcional)"
+                          placeholder="https://api.example.com/v1"
+                          value={newProvider.baseUrl || ""}
+                          onChange={(e) =>
+                            setNewProvider({
+                              ...newProvider,
+                              baseUrl: e.target.value,
+                            })
+                          }
+                        />
+                      )}
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleSaveProvider}
+                          className="flex-1 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/30"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => setShowProviderForm(false)}
+                          className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-zinc-200 transition hover:border-neutral-500"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {loadingProviders ? (
+                  <div className="h-40 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/60" />
+                ) : providers.length === 0 ? (
+                  <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/60 text-zinc-400">
+                    <Brain className="h-8 w-8" />
+                    <p className="text-sm">Nenhum provedor configurado ainda</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {providers.map((provider) => (
+                      <div
+                        key={provider.id}
+                        className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 p-4"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
+                              provider.isActive
+                                ? "border-emerald-500/50 bg-emerald-500/10"
+                                : "border-neutral-700 bg-neutral-800"
+                            }`}
+                          >
+                            <Brain
+                              className={`h-5 w-5 ${
+                                provider.isActive
+                                  ? "text-emerald-300"
+                                  : "text-zinc-500"
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-zinc-100">
+                              {provider.displayName}
+                            </p>
+                            <p className="text-xs text-zinc-500">
+                              {provider.providerName}
+                              {provider.isDefault && (
+                                <span className="ml-2 rounded bg-emerald-500/20 px-1.5 py-0.5 text-emerald-300">
+                                  Padrão
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteProvider(provider.id)}
+                          className="rounded-lg border border-red-900/50 bg-red-500/10 p-2 text-red-400 transition hover:bg-red-500/20"
+                          title="Remover provedor"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
+
+            {activeSection !== "braincloud" &&
+              activeSection !== "aiproviders" && (
+                <div className="mt-12 flex h-full flex-col items-center justify-center gap-4 text-center text-zinc-400">
+                  <div className="rounded-full border border-neutral-800 bg-neutral-900/60 p-4">
+                    <ShieldCheck className="h-6 w-6 text-zinc-300" />
+                  </div>
+                  <div>
+                    <p className="text-base font-medium text-zinc-100">
+                      Em breve
+                    </p>
+                    <p className="text-sm text-zinc-500">
+                      Estamos trazendo estas configurações para a próxima versão
+                      do dashboard.
+                    </p>
+                  </div>
+                </div>
+              )}
           </section>
         </div>
       </div>
@@ -399,9 +676,18 @@ type FieldProps = {
   rightAdornment?: React.ReactNode;
 };
 
-const Field: React.FC<FieldProps> = ({ label, value, onChange, type = 'text', placeholder, rightAdornment }) => (
+const Field: React.FC<FieldProps> = ({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  rightAdornment,
+}) => (
   <label className="block text-sm text-zinc-300">
-    <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">{label}</span>
+    <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">
+      {label}
+    </span>
     <div className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 focus-within:border-neutral-600">
       <input
         type={type}
@@ -422,7 +708,12 @@ type ToggleFieldProps = {
   onToggle: () => void;
 };
 
-const ToggleField: React.FC<ToggleFieldProps> = ({ label, description, checked, onToggle }) => (
+const ToggleField: React.FC<ToggleFieldProps> = ({
+  label,
+  description,
+  checked,
+  onToggle,
+}) => (
   <button
     type="button"
     onClick={onToggle}
@@ -431,15 +722,17 @@ const ToggleField: React.FC<ToggleFieldProps> = ({ label, description, checked, 
     <span
       className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] ${
         checked
-          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
-          : 'border-neutral-700 text-neutral-400'
+          ? "border-emerald-500 bg-emerald-500/20 text-emerald-300"
+          : "border-neutral-700 text-neutral-400"
       }`}
     >
-      {checked ? '●' : ''}
+      {checked ? "●" : ""}
     </span>
     <span className="flex-1 text-sm text-zinc-200">
       {label}
-      {description && <p className="mt-1 text-xs text-zinc-500">{description}</p>}
+      {description && (
+        <p className="mt-1 text-xs text-zinc-500">{description}</p>
+      )}
     </span>
   </button>
 );

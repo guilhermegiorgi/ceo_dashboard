@@ -15,7 +15,7 @@ import {
   Filter
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useMCP } from '../hooks/useAPI';
+import { useMCP } from '../hooks/useMCP';
 
 const MCPIntegration: React.FC = () => {
   const { t } = useLanguage();

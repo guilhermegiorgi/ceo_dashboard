@@ -19,7 +19,8 @@ import {
   Trash2
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useInsights, useObsidian, useProjects } from '../hooks/useAPI';
+import { useInsights, useObsidian } from '../hooks/useInsightsService';
+import { useProjects } from '../hooks/useProjects';
 
 interface AIInsightProps {
   title: string;

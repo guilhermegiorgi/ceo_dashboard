@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext } from 'react';
 import apiClient, { APIClient } from '../services/apiClient';
 
@@ -16,19 +17,3 @@ export const useAPI = () => {
   }
   return context;
 };
-
-// --- Specific Hooks & Types --- //
-
-export interface Insight {
-  id: string;
-  title: string;
-  summary: string;
-  date: string;
-  type: 'data' | 'event' | 'observation';
-}
-
-export const useInsights = () => useAPI<Insight[]>('/api/insights');
-export const useObsidian = () => useAPI<any>('/api/obsidian');
-export const useProjects = () => useAPI<any[]>('/api/projects');
-export const useKnowledgeGraph = () => useAPI<any>('/api/knowledge-graph');
-export const useMCP = () => useAPI<any>('/api/mcp');
