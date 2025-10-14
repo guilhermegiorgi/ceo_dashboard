@@ -8,5 +8,22 @@
     "mcpHttp": "",
     "enableRest": true,
     "enableMcp": true
+  },
+  "dashboard": {
+    "collections": [],
+    "taskPreferences": {
+      "viewMode": "list",
+      "sortBy": "project",
+      "pinnedTaskIds": [],
+      "priorityMap": {},
+      "boardOrder": {},
+      "lastContextId": null,
+      "contextTemplate": {
+        "workDescription": "",
+        "shortTermFocus": "",
+        "longTermGoals": "",
+        "otherContext": ""
+      }
+    }
   }
 }

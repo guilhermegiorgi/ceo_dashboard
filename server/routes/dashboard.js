@@ -5,7 +5,9 @@ const router = Router();
 
 router.get('/today', async (req, res, next) => {
   try {
-    const snapshot = await getDashboardSnapshot();
+    const snapshot = await getDashboardSnapshot({
+      context: req.user,
+    });
     res.json(snapshot);
   } catch (error) {
     next(error);
