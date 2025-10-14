@@ -1344,6 +1344,24 @@ export class APIClient {
   }
 
   /**
+   * Synchronize models from provider API
+   */
+  public async syncProviderModels(
+    providerId: string
+  ): Promise<{ models: AIModel[] }> {
+    const response = await this.request<{ models: AIModelResponse[] }>(
+      `/api/ai-providers/${providerId}/models/sync`,
+      {
+        method: "POST",
+      }
+    );
+
+    return {
+      models: (response.models || []).map(mapAIModel),
+    };
+  }
+
+  /**
    * Get all available models across all active providers
    */
   public async getAvailableModels(): Promise<{ models: AIModel[] }> {

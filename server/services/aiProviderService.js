@@ -6,6 +6,7 @@
 import { query } from "../database/pg-pool.js";
 import { logger } from "../src/utils/logger.js";
 import crypto from "crypto";
+import fetch from "node-fetch";
 
 // Encryption key from environment
 const ENCRYPTION_KEY =
@@ -261,6 +262,19 @@ export async function getProviders(userId) {
     logger.error("Error fetching providers:", error);
     throw error;
   }
+}
+
+export async function getProviderById(providerId, userId) {
+  const { rows } = await query(
+    `SELECT * FROM ai_providers WHERE id = $1 AND user_id = $2`,
+    [providerId, userId]
+  );
+
+  if (rows.length === 0) {
+    throw new Error("Provider not found or unauthorized");
+  }
+
+  return rows[0];
 }
 
 /**
@@ -634,6 +648,221 @@ export async function updateModelUsage(modelId, tokensUsed) {
   }
 }
 
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
+const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
+function buildUrl(baseUrl, path) {
+  const sanitizedBase = (baseUrl || "").replace(/\/$/, "");
+  const sanitizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${sanitizedBase}${sanitizedPath}`;
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Request failed ${response.status}: ${text}`);
+  }
+  return response.json();
+}
+
+async function fetchOpenAIModels({ apiKey, baseUrl }) {
+  const url = buildUrl(baseUrl || OPENAI_BASE_URL, "/models");
+  const data = await fetchJson(url, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  const models = Array.isArray(data?.data) ? data.data : [];
+  return models
+    .filter((model) => typeof model?.id === "string")
+    .map((model) => {
+      const id = model.id;
+      const description = model.root || model.owned_by || "Modelo OpenAI";
+      const supportsFunctionCalling = /gpt-4|gpt-3.5|gpt-4o/i.test(id);
+      const supportsVision = /gpt-4o|gpt-4\.1|vision/i.test(id);
+
+      return {
+        modelId: id,
+        displayName: id,
+        description,
+        supportsStreaming: true,
+        supportsFunctionCalling,
+        supportsVision,
+      };
+    });
+}
+
+async function fetchAnthropicModels({ apiKey, baseUrl }) {
+  const url = buildUrl(baseUrl || ANTHROPIC_BASE_URL, "/v1/models");
+  const data = await fetchJson(url, {
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": process.env.ANTHROPIC_API_VERSION || "2023-06-01",
+    },
+  });
+
+  const models = Array.isArray(data?.models) ? data.models : data?.data || [];
+  return models
+    .filter((model) => typeof model?.id === "string")
+    .map((model) => {
+      const id = model.id;
+      const displayName = model.display_name || id;
+      const description = model.description || "Modelo Anthropic";
+      const contextWindow = model.context_length || model.context_window;
+
+      return {
+        modelId: id,
+        displayName,
+        description,
+        supportsStreaming: true,
+        supportsFunctionCalling: true,
+        supportsVision: /opus|sonnet|vision/i.test(id),
+        contextWindow,
+        maxTokens: model.max_output_tokens || null,
+      };
+    });
+}
+
+async function fetchDeepSeekModels({ apiKey, baseUrl }) {
+  const url = buildUrl(baseUrl || DEEPSEEK_BASE_URL, "/models");
+  const data = await fetchJson(url, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  const models = Array.isArray(data?.data) ? data.data : [];
+  return models.map((model) => {
+    const id = model.id || model.name;
+    return {
+      modelId: id,
+      displayName: model.display_name || id,
+      description: model.description || "Modelo DeepSeek",
+      supportsStreaming: true,
+      supportsFunctionCalling: /coder/i.test(id) ? false : true,
+      supportsVision: false,
+      maxTokens: model.max_tokens || null,
+      contextWindow: model.context_window || null,
+    };
+  });
+}
+
+async function fetchOpenRouterModels({ apiKey, baseUrl }) {
+  const url = buildUrl(baseUrl || OPENROUTER_BASE_URL, "/models");
+  const data = await fetchJson(url, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  const models = Array.isArray(data?.data) ? data.data : [];
+  return models.map((model) => {
+    const pricing = model.pricing || {};
+    const id = model.id || model.slug;
+
+    return {
+      modelId: id,
+      displayName: model.name || id,
+      description: model.description || model.top_provider?.description || "Modelo OpenRouter",
+      supportsStreaming: true,
+      supportsFunctionCalling: true,
+      supportsVision: Boolean(model.capabilities?.vision),
+      costPerInputToken: pricing?.prompt || null,
+      costPerOutputToken: pricing?.completion || null,
+    };
+  });
+}
+
+const MODEL_FETCHERS = {
+  openai: fetchOpenAIModels,
+  anthropic: fetchAnthropicModels,
+  deepseek: fetchDeepSeekModels,
+  openrouter: fetchOpenRouterModels,
+};
+
+async function disableMissingModels(providerId, activeModelIds) {
+  const ids = activeModelIds.length ? activeModelIds : ["__none__"];
+  await query(
+    `UPDATE ai_models
+    SET is_active = false
+    WHERE provider_id = $1
+      AND model_id <> ALL($2::text[])`,
+    [providerId, ids]
+  );
+}
+
+export async function syncProviderModels(userId, providerId) {
+  try {
+    const provider = await getProviderById(providerId, userId);
+    const fetcher = MODEL_FETCHERS[provider.provider_name];
+
+    if (!fetcher) {
+      throw new Error("Modelo de sincronia não suportado para este provedor");
+    }
+
+    const { apiKey, baseUrl } = await getProviderApiKey(userId, providerId);
+    const remoteModels = await fetcher({ apiKey, baseUrl });
+
+    if (!remoteModels.length) {
+      logger.warn(`Nenhum modelo retornado pelo provedor ${provider.provider_name}`);
+    }
+
+    const existing = await query(
+      `SELECT id, model_id, is_default
+      FROM ai_models
+      WHERE provider_id = $1`,
+      [providerId]
+    );
+
+    const existingDefault = existing.rows.find((row) => row.is_default)?.model_id;
+    const activeIds = [];
+
+    let defaultAssigned = Boolean(existingDefault);
+
+    for (const remote of remoteModels) {
+      const isDefault = remote.modelId === existingDefault || (!defaultAssigned && remoteModels[0] === remote);
+      if (!existingDefault && remoteModels[0] === remote) {
+        defaultAssigned = true;
+      }
+
+      await upsertModel(providerId, {
+        modelId: remote.modelId,
+        displayName: remote.displayName,
+        description: remote.description,
+        supportsStreaming: remote.supportsStreaming,
+        supportsFunctionCalling: remote.supportsFunctionCalling,
+        supportsVision: remote.supportsVision,
+        maxTokens: remote.maxTokens,
+        contextWindow: remote.contextWindow,
+        costPerInputToken: remote.costPerInputToken,
+        costPerOutputToken: remote.costPerOutputToken,
+        isActive: true,
+        isDefault,
+      });
+
+      activeIds.push(remote.modelId);
+    }
+
+    if (activeIds.length) {
+      await disableMissingModels(providerId, activeIds);
+    } else {
+      await query(
+        `UPDATE ai_models SET is_active = false WHERE provider_id = $1`,
+        [providerId]
+      );
+    }
+
+    return getModels(providerId);
+  } catch (error) {
+    logger.error("Error syncing provider models:", error);
+    throw error;
+  }
+}
+
 export default {
   getProviders,
   upsertProvider,
@@ -645,4 +874,6 @@ export default {
   setConversationModel,
   getConversationModel,
   updateModelUsage,
+  syncProviderModels,
+  getProviderById,
 };
