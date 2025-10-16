@@ -358,7 +358,7 @@ class BrainCloudService {
       const result = await this._mcpRequest("tools/call", {
         name: "save_conversation_history",
         arguments: {
-          source: "ceo-dashboard",
+          source: "claude",
           conversation_id: conversationId,
           messages,
           metadata,

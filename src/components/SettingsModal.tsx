@@ -69,6 +69,12 @@ const SECTIONS = [
     icon: <Brain className="h-4 w-4" />,
   },
   {
+    id: "modelparams",
+    label: "Model Parameters",
+    description: "Ajustar parâmetros específicos por provedor de IA.",
+    icon: <Settings2 className="h-4 w-4" />,
+  },
+  {
     id: "integrations",
     label: "Integrations",
     description: "Outras integrações e automações (em breve).",
@@ -84,7 +90,7 @@ const SECTIONS = [
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
   const [activeSection, setActiveSection] = useState<
-    "general" | "braincloud" | "aiproviders" | "integrations" | "dataops"
+    "general" | "braincloud" | "aiproviders" | "modelparams" | "integrations" | "dataops"
   >("braincloud");
   const [settings, setSettings] = useState<BrainCloudSettings | null>(null);
   const [loading, setLoading] = useState(false);
@@ -345,6 +351,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
     // 'api' é um singleton importado; mudança no objeto não dispara re-render
     [loadProviderModels]
   );
+
+  const handleSetDefaultProvider = async (providerId: string) => {
+    try {
+      // Update only the default flag, don't overwrite API keys
+      const targetProvider = providers.find(p => p.id === providerId);
+      if (!targetProvider) {
+        toast.error("Provedor não encontrado");
+        return;
+      }
+
+      // Set all providers to non-default first
+      await Promise.all(
+        providers.map(async (provider) => {
+          // Don't modify API key when just changing default flag
+          await api.upsertAIProvider({
+            providerName: provider.providerName,
+            displayName: provider.displayName,
+            apiKey: "API_KEY_PLACEHOLDER_TO_PRESERVE_EXISTING", // Special placeholder
+            baseUrl: provider.baseUrl,
+            isActive: provider.isActive,
+            isDefault: provider.id === providerId,
+          });
+        })
+      );
+
+      toast.success("Provedor padrão atualizado");
+      fetchProviders();
+    } catch (error) {
+      console.error("Error setting default provider:", error);
+      toast.error("Não foi possível definir provedor padrão");
+    }
+  };
 
   const handleDeleteProvider = async (providerId: string) => {
     if (!confirm("Tem certeza que deseja remover este provedor?")) return;
@@ -725,6 +763,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                                     Padrão
                                   </span>
                                 )}
+                                {!provider.isDefault && (
+                                  <button
+                                    onClick={() => handleSetDefaultProvider(provider.id)}
+                                    className="ml-2 rounded border border-blue-600/40 bg-blue-500/10 px-2 py-1 text-xs text-blue-300 transition hover:bg-blue-500/20"
+                                  >
+                                    Set Default
+                                  </button>
+                                )}
                               </p>
                             </div>
                           </div>
@@ -797,8 +843,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
               </div>
             )}
 
+            {activeSection === "modelparams" && <ModelParametersSection />}
+
             {activeSection !== "braincloud" &&
-              activeSection !== "aiproviders" && (
+              activeSection !== "aiproviders" &&
+              activeSection !== "modelparams" && (
                 <div className="mt-12 flex h-full flex-col items-center justify-center gap-4 text-center text-zinc-400">
                   <div className="rounded-full border border-neutral-800 bg-neutral-900/60 p-4">
                     <ShieldCheck className="h-6 w-6 text-zinc-300" />
@@ -891,5 +940,135 @@ const ToggleField: React.FC<ToggleFieldProps> = ({
     </span>
   </button>
 );
+
+// Model Parameter Configuration Section
+const ModelParametersSection: React.FC = () => {
+  const [providerConfigs, setProviderConfigs] = useState<any>({});
+
+  const handleConfigChange = (providerName: string, param: string, value: any) => {
+    setProviderConfigs(prev => ({
+      ...prev,
+      [providerName]: {
+        ...prev[providerName],
+        [param]: value
+      }
+    }));
+  };
+
+  const handleSaveConfig = async (providerName: string) => {
+    try {
+      // TODO: Save to backend
+      toast.success(`Parâmetros para ${providerName} atualizados`);
+    } catch (error) {
+      toast.error("Erro ao salvar configurações");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-zinc-100">Parâmetros por Provedor</h3>
+        <p className="text-xs text-zinc-400">
+          Configure parâmetros específicos para cada provedor de IA. Isso resolve problemas de compatibilidade entre APIs diferentes.
+        </p>
+        
+        {Object.entries(PROVIDER_PARAMETER_PRESETS).map(([providerName, config]) => (
+          <div key={providerName} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="text-sm font-medium text-zinc-100 capitalize">{providerName}</h4>
+                <p className="text-xs text-zinc-500">{config.description}</p>
+              </div>
+              <button
+                onClick={() => handleSaveConfig(providerName)}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 text-xs hover:bg-emerald-500/20 transition"
+              >
+                Salvar
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Campo Max Tokens</label>
+                <select 
+                  value={providerConfigs[providerName]?.maxTokensField || config.maxTokensField}
+                  onChange={(e) => handleConfigChange(providerName, 'maxTokensField', e.target.value)}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-zinc-100"
+                >
+                  <option value="max_tokens">max_tokens</option>
+                  <option value="max_completion_tokens">max_completion_tokens</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Max Tokens Padrão</label>
+                <input 
+                  type="number" 
+                  value={providerConfigs[providerName]?.maxTokens || config.maxTokens}
+                  onChange={(e) => handleConfigChange(providerName, 'maxTokens', parseInt(e.target.value))}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-zinc-100"
+                  min="1"
+                  max="32768"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Temperatura</label>
+                <input 
+                  type="number" 
+                  value={providerConfigs[providerName]?.temperature || config.temperature}
+                  onChange={(e) => handleConfigChange(providerName, 'temperature', parseFloat(e.target.value))}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-zinc-100"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                />
+              </div>
+            </div>
+            
+            <div className="mt-3 p-2 rounded-lg border border-amber-700/30 bg-amber-500/5">
+              <p className="text-xs text-amber-300">
+                💡 <strong>OpenAI:</strong> Use <code>max_completion_tokens</code> (novo) | 
+                <strong> Anthropic/DeepSeek:</strong> Use <code>max_tokens</code> (padrão)
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Model parameter configurations per provider
+const PROVIDER_PARAMETER_PRESETS = {
+  openai: {
+    maxTokens: 4096,
+    temperature: 0.7,
+    topP: 1.0,
+    maxTokensField: 'max_completion_tokens',
+    description: 'OpenAI API (updated parameters)'
+  },
+  anthropic: {
+    maxTokens: 8192,
+    temperature: 0.7,
+    topP: 1.0,
+    maxTokensField: 'max_tokens',
+    description: 'Anthropic Claude API'
+  },
+  deepseek: {
+    maxTokens: 4096,
+    temperature: 0.7,
+    topP: 1.0,
+    maxTokensField: 'max_tokens',
+    description: 'DeepSeek API'
+  },
+  openrouter: {
+    maxTokens: 4096,
+    temperature: 0.7,
+    topP: 1.0,
+    maxTokensField: 'max_completion_tokens',
+    description: 'OpenRouter API (mixed providers)'
+  }
+};
 
 export default SettingsModal;

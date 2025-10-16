@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   LogOut,
   Menu,
+  MessageSquare,
   Mic,
   Settings,
   Sparkles,
@@ -16,9 +17,11 @@ import {
   ChevronDown,
   Plus,
   X,
+  FolderKanban,
 } from 'lucide-react';
 import { useSettingsModal } from '../contexts/SettingsModalContext';
 import apiClient, { DashboardCollection } from '../services/apiClient';
+import ConversationHistory from './ConversationHistory';
 
 type NavItem = {
   label: string;
@@ -34,10 +37,17 @@ type NavSection = {
 
 const navSections: NavSection[] = [
   {
-    label: 'Focus',
+    label: 'Main',
     items: [
-      { label: 'Today', path: '/', icon: Flame },
-      { label: 'Chat', path: '/chat', icon: Command },
+      { label: 'Dashboard', path: '/', icon: Flame },
+    ],
+  },
+  {
+    label: 'Workspace',
+    items: [
+      { label: 'Projects', path: '/projects', icon: FolderKanban },
+      { label: 'Knowledge', path: '/knowledge-graph', icon: Sparkles },
+      { label: 'Journal', path: '/decision-journal', icon: Command },
     ],
   },
 ];
@@ -143,9 +153,9 @@ const NavigationSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`relative flex h-full flex-col border-r border-neutral-800/80 bg-neutral-950/95 backdrop-blur ${
+      className={`relative flex h-screen flex-col border-r border-neutral-800/80 bg-neutral-950/95 backdrop-blur ${
         collapsed ? 'w-20' : 'w-72 max-w-xs'
-      } transition-all duration-300`}
+      } transition-all duration-300 overflow-hidden`}
     >
       <div className="flex items-center gap-3 px-4 py-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900">
@@ -223,6 +233,15 @@ const NavigationSidebar: React.FC = () => {
             </div>
           </div>
         ))}
+
+        {/* Conversation History - Temporarily disabled for testing */}
+        {/* <ConversationHistory 
+          collapsed={collapsed}
+          onSelect={(conversationId) => {
+            navigate(`/chat?conversation=${conversationId}`);
+            setUserMenuOpen(false);
+          }}
+        /> */}
 
         <div className="mt-8">
           <div
@@ -337,6 +356,25 @@ const NavigationSidebar: React.FC = () => {
           </div>
         )}
       </nav>
+
+      {/* Conversation History Sidebar */}
+      <div className={`border-t border-zinc-800 ${collapsed ? '' : 'pt-2 mt-2'}`}>
+        {!collapsed && (
+          <div className="px-2 pb-2">
+            <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Conversations
+            </div>
+            <ConversationHistory
+              onSelect={(conversationId) => {
+                navigate(`/chat-centered?conversation=${conversationId}`);
+                setUserMenuOpen(false);
+              }}
+              collapsed={false}
+            />
+          </div>
+        )}
+      </div>
 
       <div className="relative border-t border-neutral-800/80 px-4 py-5" ref={menuRef}>
         <button

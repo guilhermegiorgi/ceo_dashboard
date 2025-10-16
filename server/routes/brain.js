@@ -178,4 +178,197 @@ router.get("/tasks", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/brain/context
+ * Obtém contexto histórico para query
+ */
+router.post("/context", async (req, res) => {
+  try {
+    const { query, limit = 5 } = req.body;
+
+    const context = await brainService.getHistoricalContext(
+      {
+        query,
+        limit,
+      },
+      { req }
+    );
+
+    res.json({
+      success: true,
+      ...context,
+    });
+  } catch (error) {
+    logger.error("Erro ao obter contexto histórico", {
+      error: error.message,
+      query: req.body.query,
+    });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/brain/conversation/save
+ * Salva histórico de conversa
+ */
+router.post("/conversation/save", async (req, res) => {
+  try {
+    const {
+      source,
+      conversation_id,
+      messages,
+      metadata = {},
+      chunking_strategy = "auto",
+      auto_tag = true,
+      save_to_vault = null
+    } = req.body;
+
+    if (!conversation_id || !messages || !Array.isArray(messages)) {
+      return res.status(400).json({
+        success: false,
+        error: "conversation_id and messages are required",
+      });
+    }
+
+    const result = await brainService.saveConversationHistory({
+      source,
+      conversation_id,
+      messages,
+      metadata,
+      chunking_strategy,
+      auto_tag,
+      save_to_vault,
+    }, { req });
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    logger.error("Erro ao salvar conversa", {
+      error: error.message,
+      conversation_id: req.body.conversation_id,
+    });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/brain/conversation/search
+ * Busca em conversas históricas
+ */
+router.post("/conversation/search", async (req, res) => {
+  try {
+    const {
+      query,
+      limit = 5,
+      return_full_context = false,
+      filters = {}
+    } = req.body;
+
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        error: "Query is required",
+      });
+    }
+
+    const results = await brainService.searchConversations({
+      query,
+      limit,
+      return_full_context,
+      filters,
+    }, { req });
+
+    res.json({
+      success: true,
+      ...results,
+    });
+  } catch (error) {
+    logger.error("Erro ao buscar conversas", {
+      error: error.message,
+      query: req.body.query,
+    });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/brain/conversations/recent
+ * Busca conversas recentes para o histórico
+ */
+router.get("/conversations/recent", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    
+    // Para buscar conversas recentes sem query específica, usamos "." como query
+    const results = await brainService.searchConversations({
+      query: "conversas", // Query genérica para buscar conversas recentes
+      limit,
+      return_full_context: false,
+      filters: {
+        recent_days: 30 // Últimos 30 dias
+      }
+    }, { req });
+
+    res.json({
+      success: true,
+      conversations: results.results || [],
+      total: results.results?.length || 0
+    });
+  } catch (error) {
+    logger.error("Erro ao buscar conversas recentes", {
+      error: error.message,
+      limit: req.query.limit
+    });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/brain/conversation/:id
+ * Busca uma conversa específica pelo ID
+ */
+router.get("/conversation/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const results = await brainService.searchConversations({
+      query: "",
+      limit: 100,
+      return_full_context: true,
+      filters: {
+        conversation_id: id
+      }
+    }, { req });
+
+    res.json({
+      success: true,
+      conversation: results.results || [],
+      total: results.results?.length || 0
+    });
+  } catch (error) {
+    logger.error("Erro ao buscar conversa específica", {
+      error: error.message,
+      conversationId: req.params.id
+    });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;

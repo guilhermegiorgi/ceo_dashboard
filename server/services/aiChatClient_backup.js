@@ -162,7 +162,7 @@ const PROVIDER_PARAMETER_CONFIGS = {
   }
 };
 
-async function callOpenAI({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream = false, tools = null, tool_choice = 'auto' }) {
+async function callOpenAI({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream = false }) {
   const url = buildUrl(baseUrl || OPENAI_DEFAULT_BASE_URL, "/chat/completions");
   const config = PROVIDER_PARAMETER_CONFIGS.openai;
   
@@ -170,12 +170,6 @@ async function callOpenAI({ baseUrl, apiKey, messages, model, temperature, maxTo
     model,
     messages: toOpenAIMessages(messages, systemPrompt),
   };
-
-  // Adiciona tools se fornecidos
-  if (tools && tools.length > 0) {
-    body.tools = tools;
-    body.tool_choice = tool_choice;
-  }
 
   // Apply provider-specific parameters
   if (typeof temperature === "number") {
@@ -540,72 +534,7 @@ async function openAiStreamRequest({ url, apiKey, body, headers = {} }) {
       throw new Error("OpenAI Streaming: No response body");
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    async function* generator() {
-      let buffer = '';
-      
-      // Handle both WebStream reader and Node.js async iterator
-      const readChunk = async () => {
-        if (reader.getReader || reader.read) {
-          // WebStream API
-          return await reader.read();
-        } else {
-          // Node.js async iterator
-          const { value, done } = await reader.next();
-          return { done, value };
-        }
-      };
-      
-      while (true) {
-        const { done, value } = await readChunk();
-        if (done) {
-          if (buffer.length > 0) {
-            // Process any remaining data in the buffer
-            try {
-              const parsed = JSON.parse(buffer);
-              const yieldValue = {};
-              if (parsed.choices?.[0]?.delta?.content) yieldValue.content = parsed.choices[0].delta.content;
-              if (parsed.choices?.[0]?.delta?.tool_calls) yieldValue.function_calls = parsed.choices[0].delta.tool_calls;
-              if (Object.keys(yieldValue).length > 0) yield yieldValue;
-            } catch (e) {
-              logger.warn('[generator] Failed to parse final stream chunk', e);
-            }
-          }
-          break;
-        }
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // Keep the last partial line in the buffer
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.substring(6).trim();
-            if (data === '[DONE]') {
-              return;
-            }
-            if (data) {
-              try {
-                const parsed = JSON.parse(data);
-                const yieldValue = {};
-                if (parsed.choices?.[0]?.delta?.content) yieldValue.content = parsed.choices[0].delta.content;
-                if (parsed.choices?.[0]?.delta?.tool_calls) yieldValue.function_calls = parsed.choices[0].delta.tool_calls;
-                
-                if (Object.keys(yieldValue).length > 0) {
-                  yield yieldValue;
-                }
-              } catch (e) {
-                logger.warn(`[generator] Failed to parse stream chunk: ${data}`, e);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return generator();
+    return response.body;
   } finally {
     clearTimeout(timeout);
   }
@@ -616,7 +545,6 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
   const timeout = setTimeout(() => controller.abort(), 60000);
 
   try {
-    logger.info('[openRouterStreamRequest] Fetch function source:', fetch.toString());
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -627,7 +555,6 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
       body: JSON.stringify({ ...body, stream: true }),
       signal: controller.signal,
     });
-    logger.info('[openRouterStreamRequest] Response object constructor:', response.constructor.name);
 
     if (!response.ok) {
       const data = await response.json().catch(() => null);
@@ -689,90 +616,13 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
       throw new Error("OpenRouter Streaming: No response body");
     }
 
-    logger.info(`[openRouterStreamRequest] response.body constructor: ${response.body.constructor.name}`);
-    logger.info(`[openRouterStreamRequest] response.body keys: ${Object.keys(response.body)}`);
-
-    // Handle Node.js PassThrough stream
-    let reader;
-    if (response.body.getReader) {
-      // WebStream API (browser/fetch)
-      reader = response.body.getReader();
-    } else {
-      // Node.js PassThrough stream - need to convert
-      const stream = response.body;
-      reader = stream[Symbol.asyncIterator]();
-    }
-    const decoder = new TextDecoder();
-
-    async function* generator() {
-      let buffer = '';
-      
-      // Handle both WebStream reader and Node.js async iterator
-      const readChunk = async () => {
-        if (reader.getReader || reader.read) {
-          // WebStream API
-          return await reader.read();
-        } else {
-          // Node.js async iterator
-          const { value, done } = await reader.next();
-          return { done, value };
-        }
-      };
-      
-      while (true) {
-        const { done, value } = await readChunk();
-        if (done) {
-          if (buffer.length > 0) {
-            // Process any remaining data in the buffer
-            try {
-              const parsed = JSON.parse(buffer);
-              const yieldValue = {};
-              if (parsed.choices?.[0]?.delta?.content) yieldValue.content = parsed.choices[0].delta.content;
-              if (parsed.choices?.[0]?.delta?.tool_calls) yieldValue.function_calls = parsed.choices[0].delta.tool_calls;
-              if (Object.keys(yieldValue).length > 0) yield yieldValue;
-            } catch (e) {
-              logger.warn('[generator] Failed to parse final stream chunk', e);
-            }
-          }
-          break;
-        }
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // Keep the last partial line in the buffer
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.substring(6).trim();
-            if (data === '[DONE]') {
-              return;
-            }
-            if (data) {
-              try {
-                const parsed = JSON.parse(data);
-                const yieldValue = {};
-                if (parsed.choices?.[0]?.delta?.content) yieldValue.content = parsed.choices[0].delta.content;
-                if (parsed.choices?.[0]?.delta?.tool_calls) yieldValue.function_calls = parsed.choices[0].delta.tool_calls;
-                
-                if (Object.keys(yieldValue).length > 0) {
-                  yield yieldValue;
-                }
-              } catch (e) {
-                logger.warn(`[generator] Failed to parse stream chunk: ${data}`, e);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return generator();
+    return response.body;
   } finally {
       clearTimeout(timeout);
     }
 }
 
-async function callOpenRouter({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream = false, tools = null, tool_choice = 'auto' }) {
+async function callOpenRouter({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream = false }) {
   const url = buildUrl(baseUrl || OPENROUTER_DEFAULT_BASE_URL, "/chat/completions");
   const config = PROVIDER_PARAMETER_CONFIGS.openrouter;
   
@@ -787,12 +637,6 @@ async function callOpenRouter({ baseUrl, apiKey, messages, model, temperature, m
     model,
     messages: toOpenAIMessages(messages, systemPrompt),
   };
-
-  // Adiciona tools se fornecidos
-  if (tools && tools.length > 0) {
-    body.tools = tools;
-    body.tool_choice = tool_choice;
-  }
 
   // Apply provider-specific parameters with model restrictions
   if (typeof temperature === "number") {
@@ -887,7 +731,7 @@ async function callOpenRouter({ baseUrl, apiKey, messages, model, temperature, m
   }
 }
 
-async function callAnthropic({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream = false, tools = null, tool_choice = 'auto' }) {
+async function callAnthropic({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt }) {
   const url = buildUrl(baseUrl || ANTHROPIC_DEFAULT_BASE_URL, "/messages");
   const config = PROVIDER_PARAMETER_CONFIGS.anthropic;
 
@@ -895,12 +739,6 @@ async function callAnthropic({ baseUrl, apiKey, messages, model, temperature, ma
     model,
     messages: toAnthropicMessages(messages),
   };
-
-  // Adiciona tools se fornecidos
-  if (tools && tools.length > 0) {
-    body.tools = tools;
-    body.tool_choice = tool_choice;
-  }
 
   // Apply provider-specific parameters
   if (maxTokens && config.supportsMaxTokens) {
@@ -969,20 +807,18 @@ export async function generateChatCompletion({
   topP,
   systemPrompt,
   stream = false,
-  tools = null,
-  tool_choice = 'auto',
 }) {
   if (!messages?.length) {
     throw new Error("At least one message is required to generate a completion");
   }
 
-  logger.info(`[generateChatCompletion] Request: provider=${providerName}, model=${model}, stream=${stream}, tools=${tools?.length || 0}`);
+  logger.info(`[generateChatCompletion] Request: provider=${providerName}, model=${model}, stream=${stream}`);
 
   switch (providerName) {
     case "openai":
-      return callOpenAI({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream, tools, tool_choice });
+      return callOpenAI({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream });
     case "anthropic":
-      return callAnthropic({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream, tools, tool_choice });
+      return callAnthropic({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream });
     case "deepseek":
       return callOpenAI({
         baseUrl: baseUrl || DEEPSEEK_DEFAULT_BASE_URL,
@@ -994,138 +830,37 @@ export async function generateChatCompletion({
         topP,
         systemPrompt,
         stream,
-        tools,
-        tool_choice,
       });
     case "openrouter":
-      return callOpenRouter({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream, tools, tool_choice });
+      return callOpenRouter({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream });
     default:
       throw new Error(`Unsupported provider: ${providerName}`);
   }
 }
 
 export function buildSystemPrompt(conversation) {
-  const basePrompt = `# Your role
-
-<identity>
-- your name is Sophia (also known as CEO Dashboard Agent)
-- you are a powerful AI assistant inside of the CEO Dashboard app
-- you are an "AI Agent", a powerful LLM-powered entity that can act & make decisions, with the goal of making the User more productive
-- expert em estratégia empresarial e análise de dados para executivos
-- integrado ao Brain Cloud com acesso completo ao vault Obsidian e 38+ ferramentas MCP
-</identity>
-
-<goal>
-- THE ONLY GOAL is to make the User more productive.
-- your job is to
-  1. communicate with the User
-  2. if needed, use MCP tools para achieve what was requested by the user
-- only use MCP tools when you need to! if you have enough info to answer, just answer!
-- follow the user's instructions for outputting and formatting your message
-- the User is using CEO Dashboard in his browser, which allows him to see all the parts of the UI
-</goal>
-
-# IMPORTANT: BE DECISIVE
-
-- DO NOT OVERTHINK - trust your gut and go with the most obvious option
-- Be aggressive and decisive in your responses - don't second-guess yourself
-- When in doubt, GO WITH THE MOST OBVIOUS OPTION immediately
-- Keep responses concise and to the point
-- Do not waste the user's time. Go with the obvious option.
-- If the next step is obvious, do it.
-
-# CURRENT MODE
-
-<current_mode>
-AGENTIC
-</current_mode>
-
-# Available MCP Tools
-
-- estas ferramentas MCP podem ser usadas quando necessário
-- se você está faltando informação que uma das ferramentas pode fornecer, use para obter a info
-- quando usar ferramentas MCP, assuma que o usuário está falando sobre tarefas/notas/projetos ATIVOS, aka status=active
-- mesmo quando o usuário diz "all tasks", assuma que ele quer "all active tasks" (a menos que explicitamente mencione o contrário)
-
-## CRITICAL RULE: Always Respond Before Tool Calls
-**MANDATORY**: You MUST provide a natural response explaining what you're about to do BEFORE making any MCP tool call.
-- **NEVER** call a tool sem primeiro explicar o que você está fazendo
-- **ALWAYS** include conversational explanation antes de qualquer tool call
-- This makes the interaction feel natural and keeps the user informed
-- **ALWAYS** return human-readable information when listing. Reply com nomes de tarefas/projetos/notas em vez de IDs
-
-# Instructions
-
-<instructions>
-- make the response concise, straight to the point
-- !! NEVER DO STUFF THE USER DID NOT ASK FOR !!
-- You have to be as reliable and predictable as possible
-- Do not end with opt-in questions or hedging closers. Do **not** say: "quer que eu; posso fazer; se você quiser; gostaria que eu; deveria eu"
-- Ask AT MOST one necessary clarifying question at the start, not the end
-- if the user has attached an image, make sure to analyze it FIRST
-- you cannot do multiple things at once, when situation required multiple steps, start with the first step
-- **CRITICAL BATCHING RULE**: When user requests multiple operations, batch into single tool call
-- **TASK STATUS DEFAULT RULE**: Always work with ACTIVE tasks only unless user explicitly mentions completed/archived/deleted tasks
-- **MCP INTEGRATION**: Use Brain Cloud tools para enriquecer respostas com dados reais do vault
-- **EXECUTIVE CONTEXT**: Adapte o nível de detalhe ao contexto executivo do CEO Dashboard
-</instructions>
-
-# Response format
-
-## MANDATORY: MCP Tool Usage Flow
-1. **FIRST**: Always provide response explaining what you're about to do
-2. **THEN**: Call the necessary MCP tool(s)
-3. **FINALLY**: After tools complete, provide final response with results
-
-Your response MUST always have content, especially when using MCP tools:
-- Before tools: Explain what you're about to do
-- After tools: Provide the results or confirmation
-
-# Thinking Mode Protocol
-When thinking mode is enabled, structure your response in two clear parts:
-1. **PROCESSO DE RACIOCÍNIO**: Step-by-step analysis, premises, sources
-2. **RESPOSTA FINAL**: Direct, actionable answer
-
-Use format:
----
-🧠 **PROCESSO DE RACIOCÍNIO:**
-[Detailed reasoning process]
-
-📝 **RESPOSTA FINAL:**
-[Direct answer]
----`;
-
   if (!conversation) {
-    return basePrompt;
+    return null;
   }
 
-  const contextualParts = [basePrompt];
+  const parts = [
+    "Você é o assistente estratégico do CEO Dashboard.",
+    "Responda em português claro, com foco em ações práticas e contexto executivo.",
+  ];
 
   if (conversation.context_type === "project" && conversation.project_name) {
-    contextualParts.push(
-      `\n**Contexto do Projeto:** Esta conversa está associada ao projeto "${conversation.project_name}". Use este contexto para personalizar suas respostas.`
+    parts.push(
+      `Contexto: esta conversa está associada ao projeto \"${conversation.project_name}\".`
     );
   }
 
   if (conversation.context_type === "note" && conversation.context_note_path) {
-    contextualParts.push(
-      `\n**Contexto da Nota:** Referência à nota ${conversation.context_note_path}. Considere este documento como background relevante.`
+    parts.push(
+      `Contexto: referencia a nota ${conversation.context_note_path}.`
     );
   }
 
-  if (conversation.availableTools && conversation.availableTools.length > 0) {
-    contextualParts.push(
-      `\n**Ferramentas MCP Disponíveis:**\n${conversation.availableTools.map(tool => `- ${tool}`).join('\n')}`
-    );
-  }
-
-  if (conversation.toolsEnabled) {
-    contextualParts.push(
-      `\n**Instruções de Tools:** Use as ferramentas MCP proativamente quando relevantes. Priorize semantic_search para buscar conhecimento existente.`
-    );
-  }
-
-  return contextualParts.join('\n');
+  return parts.join(" ");
 }
 
 export function convertMessagesForLLM(messages) {

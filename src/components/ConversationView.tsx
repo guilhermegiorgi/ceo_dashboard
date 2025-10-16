@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import { ChevronDown, ChevronLeft, Send, Loader2 } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, Send, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
@@ -22,7 +22,9 @@ interface ConversationViewProps {
   conversation: Conversation | null;
   messages: ChatMessage[];
   streamingMessage: string;
+  thinkingMessage: string;
   isLoading: boolean;
+  isThinking: boolean;
   onSendMessage: (content: string) => void;
   onBackToTimeline: () => void;
   models: ConversationModelOption[];
@@ -36,7 +38,9 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
   conversation,
   messages,
   streamingMessage,
+  thinkingMessage,
   isLoading,
+  isThinking,
   onSendMessage,
   onBackToTimeline,
   models,
@@ -51,7 +55,7 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMessage]);
+  }, [messages, streamingMessage, thinkingMessage]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -169,6 +173,11 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
+          {isThinking && (
+            <ThinkingBubble 
+              message={thinkingMessage}
+            />
+          )}
           {streamingMessage && (
             <MessageBubble
               message={{
@@ -234,6 +243,83 @@ interface MessageBubbleProps {
   message: ChatMessage;
   streaming?: boolean;
 }
+
+const ThinkingBubble: React.FC<{message: string; onComplete?: () => void}> = ({ message, onComplete }) => {
+  const [dots, setDots] = useState('.');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '.' : prev + '.');
+    }, 500);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Check if thinking is complete (has conclusion markers)
+    if (message.includes("📝 **RESPOSTA FINAL:") || 
+        message.includes("Conclusão:") || 
+        message.includes("Resposta:")) {
+      setIsComplete(true);
+    }
+  }, [message]);
+
+  const displayMessage = message.replace(/<thinking[^>]*>|<\/thinking>/g, '').trim();
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[80%] rounded-2xl border border-amber-500/40 bg-amber-950/20 text-zinc-100">
+        {/* Header */}
+        <div 
+          className="px-4 py-2 flex items-center justify-between cursor-pointer border-b border-amber-500/30"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <div className={`w-2 h-2 bg-amber-400 rounded-full ${!isComplete ? 'animate-pulse' : ''}`}></div>
+              <div className={`w-2 h-2 bg-amber-400 rounded-full ${!isComplete ? 'animate-pulse delay-75' : ''}`}></div>
+              <div className={`w-2 h-2 bg-amber-400 rounded-full ${!isComplete ? 'animate-pulse delay-150' : ''}`}></div>
+            </div>
+            <span className="text-xs text-amber-400 font-medium">
+              {isComplete ? 'Raciocínio Completo' : 'Pensando'}
+            </span>
+            <span className="text-xs text-amber-400">{dots}</span>
+          </div>
+          <button className="text-amber-400 hover:text-amber-300 transition-colors">
+            {isExpanded ? (
+              <ChevronRight className="w-4 h-4 rotate-90" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+
+        {/* Content */}
+        {(isExpanded || !isComplete) && displayMessage && (
+          <div className="px-4 pb-3">
+            <div className="text-sm text-amber-200/90 whitespace-pre-wrap max-h-96 overflow-y-auto">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {displayMessage}
+              </ReactMarkdown>
+            </div>
+            <div className="mt-2 text-xs text-amber-400/60">
+              {isComplete ? '🧠 Raciocínio finalizado' : '🔍 Analisando contexto e elaborando resposta...'}
+            </div>
+          </div>
+        )}
+
+        {/* Collapsed hint */}
+        {!isExpanded && isComplete && (
+          <div className="px-4 py-2 text-xs text-amber-400/60 italic">
+            Clique para ver o raciocínio completo ({displayMessage.length} caracteres)
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,

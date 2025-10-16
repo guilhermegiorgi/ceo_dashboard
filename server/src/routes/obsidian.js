@@ -37,4 +37,22 @@ router.post('/search', async (req, res, next) => {
   }
 });
 
+router.get('/graph', async (req, res, next) => {
+  try {
+    // Para agora, vai usar o Brain Cloud MCP para obter o grafo
+    // Futuramente podemos implementar cache específico para esta rota
+    res.json({
+      success: true,
+      data: {
+        nodes: [],
+        edges: [],
+        message: 'Grafo do Brain Cloud - método não implementado'
+      }
+    });
+  } catch (error) {
+    logger.error('Erro ao buscar grafo:', error);
+    next(error);
+  }
+});
+
 export default router;

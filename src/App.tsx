@@ -4,9 +4,10 @@ import LoginPage from "./pages/LoginPage";
 import AuthCallbackPage from "./pages/AuthCallbackPage";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import BusinessIntelligenceHub from "./components/BusinessIntelligenceHub";
-import ChatPage from "./pages/ChatPage";
+
 import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import DecisionJournalPage from "./pages/DecisionJournalPage";
+import ProjectsPage from "./pages/ProjectsPage";
 import StrategicSessionPlanner from "./components/StrategicSessionPlanner";
 import AgentsPage from "./pages/AgentsPage";
 import { Toaster } from "react-hot-toast";
@@ -37,12 +38,13 @@ function App() {
             >
               {/* Rotas aninhadas que serão renderizadas dentro do Outlet do DashboardLayout */}
               <Route index element={<BusinessIntelligenceHub />} />
-              <Route path="chat" element={<ChatPage />} />
+              
               <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
               <Route
                 path="decision-journal"
                 element={<DecisionJournalPage />}
               />
+              <Route path="projects" element={<ProjectsPage />} />
               <Route
                 path="session-planner"
                 element={<StrategicSessionPlanner />}

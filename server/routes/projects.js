@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDatabase, dbAll, dbRun, dbGet } from '../services/database.js';
+import { getDatabase, dbAll, dbRun, dbGet, ensureDbHelpers } from '../services/database.js';
 import { cacheGet, cacheSet, cacheDel } from '../services/cache.js';
 
 const router = express.Router();
@@ -7,6 +7,7 @@ const router = express.Router();
 // Get all projects
 router.get('/', async (req, res) => {
   try {
+    ensureDbHelpers(); // Inicializa helpers do SQLite
     const cacheKey = 'projects:all';
     const cached = await cacheGet(cacheKey);
     if (cached) {

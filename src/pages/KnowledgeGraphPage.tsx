@@ -289,7 +289,7 @@ const KnowledgeGraphPage: React.FC = () => {
                         onClick={() =>
                           setSelectedNode({
                             id: node.id,
-                            title: node.label,
+                            title: node?.label || "Node",
                             type: "note",
                             content: "",
                             connections: [],
@@ -307,7 +307,7 @@ const KnowledgeGraphPage: React.FC = () => {
                         onClick={() =>
                           setSelectedNode({
                             id: node.id,
-                            title: node.label,
+                            title: node?.label || "Node",
                             type: "note",
                             content: "",
                             connections: [],
@@ -317,9 +317,9 @@ const KnowledgeGraphPage: React.FC = () => {
                           })
                         }
                       >
-                        {node.label.length > 15
+                        {node?.label && node.label.length > 15
                           ? node.label.substring(0, 15) + "..."
-                          : node.label}
+                          : node?.label || "Node"}
                       </text>
                     </g>
                   );

@@ -13,9 +13,11 @@
     "collections": [],
     "taskPreferences": {
       "viewMode": "list",
-      "sortBy": "project",
+      "sortBy": "natural",
       "pinnedTaskIds": [],
-      "priorityMap": {},
+      "priorityMap": {
+        "5 - INSIGHTS-IA/Reunioes/ATA - REUNIÃO - 24-09-2025 - Planejamento Estratégico do Aplicativo de Finanças Pessoais com IA.md:87": "p1"
+      },
       "boardOrder": {},
       "lastContextId": null,
       "contextTemplate": {

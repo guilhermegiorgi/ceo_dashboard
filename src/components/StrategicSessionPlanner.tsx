@@ -35,7 +35,7 @@ interface StrategicSession {
 
 const StrategicSessionPlanner: React.FC = () => {
   const { t } = useLanguage();
-  const { apiClient } = useAPI();
+  const api = useAPI();
   
   const [sessions, setSessions] = useState<StrategicSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +99,7 @@ const StrategicSessionPlanner: React.FC = () => {
   const fetchSessions = async () => {
     try {
       setLoading(true);
-      const data = await apiClient.request('/api/sessions');
+      const data = await api.apiClient.request('/api/sessions');
       setSessions(data);
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
@@ -115,7 +115,7 @@ const StrategicSessionPlanner: React.FC = () => {
     }
 
     try {
-      await apiClient.request(`/api/sessions/${sessionId}/schedule`, {
+      await api.apiClient.request(`/api/sessions/${sessionId}/schedule`, {
         method: 'POST',
         body: { date: scheduleDate }
       });
@@ -137,7 +137,7 @@ const StrategicSessionPlanner: React.FC = () => {
     }
 
     try {
-      await apiClient.request('/api/sessions', {
+      await api.apiClient.request('/api/sessions', {
         method: 'POST',
         body: newSession
       });
@@ -158,7 +158,7 @@ const StrategicSessionPlanner: React.FC = () => {
     }
 
     try {
-      await apiClient.request(`/api/sessions/${sessionId}`, {
+      await api.apiClient.request(`/api/sessions/${sessionId}`, {
         method: 'DELETE'
       });
       
@@ -172,8 +172,8 @@ const StrategicSessionPlanner: React.FC = () => {
 
   const handleGenerateAISessions = async () => {
     try {
-      const insights = await apiClient.request('/api/insights');
-      await apiClient.request('/api/sessions/generate', {
+      const insights = await api.apiClient.request('/api/insights');
+      await api.apiClient.request('/api/sessions/generate', {
         method: 'POST',
         body: { insights: insights.slice(0, 3) }
       });
