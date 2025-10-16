@@ -175,7 +175,7 @@ class BrainCloudProxy {
    */
   async saveConversation(conversationId, messages, metadata = {}) {
     const params = {
-      source: "ceo-dashboard",
+      source: "claude",
       conversation_id: conversationId,
       messages,
       metadata,

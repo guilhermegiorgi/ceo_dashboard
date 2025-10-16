@@ -246,7 +246,7 @@ class BrainCloudREST {
       const result = await this._request("/api/v1/memory/conversation/save", {
         method: "POST",
         body: JSON.stringify({
-          source: "ceo-dashboard",
+          source: "claude",
           conversation_id: conversationId,
           messages,
           metadata,

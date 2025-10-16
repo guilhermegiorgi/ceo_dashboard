@@ -291,7 +291,30 @@ export async function upsertProvider(userId, providerData) {
   } = providerData;
 
   try {
-    const encryptedKey = encryptApiKey(apiKey);
+    // Check if this is an existing provider update (don't overwrite API key)
+    let encryptedKey;
+    if (apiKey === "API_KEY_PLACEHOLDER_TO_PRESERVE_EXISTING") {
+      // Get existing provider to preserve API key
+      const existing = await query(
+        `SELECT api_key_encrypted FROM ai_providers 
+         WHERE user_id = $1 AND provider_name = $2 AND is_active = true`,
+        [userId, providerName]
+      );
+      
+      logger.info(`[upsertProvider] Looking for existing provider ${providerName} for user ${userId}`);
+      logger.info(`[upsertProvider] Found ${existing.rows.length} existing providers`);
+      
+      if (existing.rows.length > 0) {
+        encryptedKey = existing.rows[0].api_key_encrypted;
+        logger.info(`[upsertProvider] Preserving existing API key, encrypted length: ${encryptedKey?.length || 0}`);
+      } else {
+        logger.error(`[upsertProvider] Cannot find existing provider ${providerName} to preserve API key`);
+        throw new Error(`Cannot find existing provider ${providerName} to preserve API key`);
+      }
+    } else {
+      encryptedKey = encryptApiKey(apiKey);
+      logger.info(`[upsertProvider] Creating new API key for provider ${providerName}`);
+    }
 
     // If setting as default, unset other defaults
     if (isDefault) {
@@ -352,19 +375,45 @@ export async function upsertProvider(userId, providerData) {
  */
 export async function deleteProvider(userId, providerId) {
   try {
-    const result = await query(
-      `DELETE FROM ai_providers
-      WHERE id = $1 AND user_id = $2
-      RETURNING id`,
-      [providerId, userId]
-    );
+    // Start transaction to handle foreign key constraints
+    await query("BEGIN");
 
-    if (result.rows.length === 0) {
-      throw new Error("Provider not found or unauthorized");
+    try {
+      // First, delete associated conversation model configs
+      await query(`
+        DELETE FROM conversation_model_config 
+        WHERE model_id IN (
+          SELECT id FROM ai_models WHERE provider_id = $1
+        )
+      `, [providerId]);
+
+      // Then delete associated models
+      await query(
+        `DELETE FROM ai_models WHERE provider_id = $1`,
+        [providerId]
+      );
+
+      // Finally delete the provider
+      const result = await query(
+        `DELETE FROM ai_providers
+        WHERE id = $1 AND user_id = $2
+        RETURNING id`,
+        [providerId, userId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error("Provider not found or unauthorized");
+      }
+
+      await query("COMMIT");
+      logger.info(`Provider deleted: ${providerId}`);
+      return true;
+
+    } catch (deleteError) {
+      await query("ROLLBACK");
+      throw deleteError;
     }
 
-    logger.info(`Provider deleted: ${providerId}`);
-    return true;
   } catch (error) {
     logger.error("Error deleting provider:", error);
     throw error;
@@ -377,7 +426,7 @@ export async function deleteProvider(userId, providerId) {
 export async function getProviderApiKey(userId, providerId) {
   try {
     const result = await query(
-      `SELECT api_key_encrypted, base_url
+      `SELECT api_key_encrypted, base_url, provider_name, display_name
       FROM ai_providers
       WHERE id = $1 AND user_id = $2 AND is_active = true`,
       [providerId, userId]
@@ -387,10 +436,29 @@ export async function getProviderApiKey(userId, providerId) {
       throw new Error("Provider not found or inactive");
     }
 
-    const { api_key_encrypted, base_url } = result.rows[0];
+    const { api_key_encrypted, base_url, provider_name, display_name } = result.rows[0];
+    
+    logger.info(`[getProviderApiKey] Provider: ${provider_name} (${providerId})`);
+    logger.info(`[getProviderApiKey] Encrypted key length: ${api_key_encrypted?.length || 0}`);
+    
+    // Check if the encrypted data looks like "dummy" (unencrypted)
+    if (api_key_encrypted === "dummy") {
+      logger.error(`[getProviderApiKey] ERROR: API key stored as unencrypted "dummy" for provider ${provider_name}`);
+      throw new Error(`API key for provider ${provider_name} was corrupted during default setting. Please reconfigure the provider.`);
+    }
+
+    let decryptedKey;
+    try {
+      decryptedKey = decryptApiKey(api_key_encrypted);
+    } catch (decryptError) {
+      logger.error(`[getProviderApiKey] Failed to decrypt API key for ${provider_name}:`, decryptError);
+      throw new Error(`Failed to decrypt API key for provider ${provider_name}. Please reconfigure the provider.`);
+    }
+    
+    logger.info(`[getProviderApiKey] Successfully decrypted API key for ${provider_name}, length: ${decryptedKey?.length || 0}`);
 
     return {
-      apiKey: decryptApiKey(api_key_encrypted),
+      apiKey: decryptedKey,
       baseUrl: base_url,
     };
   } catch (error) {
@@ -860,6 +928,42 @@ export async function syncProviderModels(userId, providerId) {
   } catch (error) {
     logger.error("Error syncing provider models:", error);
     throw error;
+  }
+}
+
+export async function getDefaultProvider() {
+  try {
+    const { rows } = await query(`
+      SELECT id, provider_name, display_name, base_url, is_active
+      FROM ai_providers 
+      WHERE is_active = true 
+      ORDER BY is_default DESC, display_name ASC 
+      LIMIT 1
+    `);
+
+    return rows[0] || null;
+  } catch (error) {
+    logger.error("Error getting default provider:", error);
+    return null;
+  }
+}
+
+export async function getDefaultModel() {
+  try {
+    const { rows } = await query(`
+      SELECT m.id, m.model_id, m.display_name, m.is_active, m.is_default,
+             p.provider_name, p.display_name as provider_display_name
+      FROM ai_models m
+      JOIN ai_providers p ON m.provider_id = p.id
+      WHERE m.is_active = true AND p.is_active = true
+      ORDER BY m.is_default DESC, p.display_name ASC, m.display_name ASC
+      LIMIT 1
+    `);
+
+    return rows[0] || null;
+  } catch (error) {
+    logger.error("Error getting default model:", error);
+    return null;
   }
 }
 

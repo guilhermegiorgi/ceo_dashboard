@@ -322,6 +322,58 @@ class BrainCloudHybrid {
       },
     };
   }
+
+  /**
+   * Salva histórico de conversação no Brain Cloud
+   * @param {Object} conversationData - Dados da conversação
+   * @returns {Promise<Object>}
+   */
+  async saveConversationHistory(conversationData) {
+    try {
+      logger.info("Salvando conversação no Brain Cloud...");
+      
+      // Para agora, vamos implementar via REST API
+      // Futuramente podemos usar MCP se já estiver em contexto MCP
+      const { conversation_id, messages, metadata } = conversationData;
+      const result = await this.restService.saveConversation(conversation_id, messages, metadata);
+      
+      logger.info("Conversação salva com sucesso:", result);
+      return result;
+    } catch (error) {
+      logger.error("Erro ao salvar conversação:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Busca em conversas históricas
+   * @param {Object} params - Parâmetros da busca
+   * @returns {Promise<Object>}
+   */
+  async searchConversations(params) {
+    try {
+      logger.info("Buscando conversas históricas...");
+      
+      const { query, limit = 5, return_full_context = false, filters = {} } = params;
+      
+      // Para busca de conversas, usamos REST API
+      const result = await this.restService.searchConversations(query, limit, return_full_context);
+      
+      logger.info("Conversas encontradas:", {
+        query,
+        limit,
+        resultsCount: result.results?.length || 0
+      });
+      
+      return result;
+    } catch (error) {
+      logger.error("Erro ao buscar conversas:", {
+        error: error.message,
+        query: params.query
+      });
+      throw error;
+    }
+  }
 }
 
 export default new BrainCloudHybrid();

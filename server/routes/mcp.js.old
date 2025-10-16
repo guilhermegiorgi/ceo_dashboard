@@ -1,0 +1,192 @@
+import { Router } from 'express';
+import {
+  generateChatCompletion,
+  buildSystemPrompt,
+  convertMessagesForLLM,
+} from '../services/aiChatClient.js';
+import {
+  getConversationModel,
+  getProviderApiKey,
+  updateModelUsage,
+} from '../services/aiProviderService.js';
+import brainCloudHybrid from '../services/brainCloudHybrid.js';
+import { logger } from '../src/utils/logger.js';
+
+const router = Router();
+
+// Endpoint legacy - mantido para compatibilidade
+router.post('/query-stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  res.write(`data: ${JSON.stringify({ error: "Legacy endpoint disabled. Use /api/mcp/chat/stream" })}\n\n`);
+  res.end();
+});
+
+// Endpoint REAL com LLM + MCP Tools  
+router.post('/chat/stream', async (req, res) => {
+  const { messages, sessionId, tools = true } = req.body;
+
+  if (!messages || messages.length === 0) {
+    return res.status(400).json({ error: 'messages are required' });
+  }
+
+  try {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    console.log(`[CognitoAgent] Processando ${messages.length} mensagens com tools=${tools}`);
+
+    // Inicializa sessão MCP conforme documentação do OBC
+    let mcpSessionId = null;
+    
+    if (tools) {
+      try {
+        const initResponse = await fetch(`${process.env.VITE_BRAINCLOUD_BASE_URL || 'https://obsidian-mcp.ggailabs.com'}/api/v1/mcp/http`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.VITE_BRAINCLOUD_API_TOKEN || ''}`
+          },
+          body: JSON.stringify({
+            method: 'initialize',
+            params: {
+              name: 'Cognito Agent',
+              version: '1.0.0'
+            }
+          })
+        });
+        
+        const initData = await initResponse.json();
+        mcpSessionId = initData.mcpSessionId;
+        
+        res.setHeader('mcp-session-id', mcpSessionId);
+        logger.info(`[CognitoAgent] MCP Session initialized: ${mcpSessionId}`);
+        
+      } catch (initError) {
+        logger.error('[CognitoAgent] Failed to initialize MCP session:', initError);
+      }
+    }
+
+    // Prepara tools MCP seguindo nomes curtos do OBC
+    const mcpTools = mcpSessionId ? [
+      {
+        type: "function",
+        function: {
+          name: "semantic_search",
+          description: "Busca semântica no vault do Brain Cloud",
+          parameters: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
+              limit: { type: "integer", default: 10 }
+            },
+            required: ["query"]
+          }
+        }
+      },
+      {
+        type: "function", 
+        function: {
+          name: "search_files",
+          description: "Lista arquivos no vault do Brain Cloud",
+          parameters: {
+            type: "object",
+            properties: {
+              pattern: { type: "string", default: "*.md" },
+              limit: { type: "integer", default: 20 }
+            }
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_graph_data", 
+          description: "Obtém dados do grafo de conhecimento",
+          parameters: {
+            type: "object",
+            properties: {
+              directory: { type: "string", default: "" },
+              include_orphans: { type: "boolean", default: true }
+            }
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_due_tasks",
+          description: "Busca tarefas com prazo do Brain Cloud",
+          parameters: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["active", "pending", "completed", "all"] },
+              window: { type: "string", enum: ["current", "week", "month", "year"] },
+              limit: { type: "integer", default: 10 }
+            }
+          }
+        }
+      }
+    ] : [];
+
+    // Adiciona system prompt com tools disponíveis
+    const enhancedMessages = [
+      {
+        role: "system",
+        content: buildSystemPrompt({
+          agentName: "Cognito Agent",
+          agentDescription: "You are Cognito Agent, a powerful AI assistant inside the CEO Dashboard app. You are an 'AI Agent', a powerful LLM-powered entity that can act & make decisions, with the goal of making the User more productive.",
+          availableTools: mcpTools.map(t => `${t.name}: ${t.description}`),
+          toolsEnabled: tools,
+          userId: req.user?.id
+        })
+      },
+      ...messages
+    ];
+
+    // Gera resposta com a LLM configurada usando formato MCP tools
+    const completion = await generateChatCompletion({
+      providerName: 'openai',
+      baseUrl: null,
+      apiKey: process.env.OPENAI_API_KEY,
+      model: 'gpt-4o', // Suporta function calling
+      messages: enhancedMessages,
+      temperature: 0.7,
+      maxTokens: 2000,
+      tools: mcpTools,
+      stream: true,
+      requestId: `cognito-${sessionId}-${Date.now()}`,
+      // Configuração específica para MCP
+      tool_choice: 'auto'
+    });
+
+    // Se for streaming, envia chunks
+    if (completion.stream) {
+      for await (const chunk of completion) {
+        if (chunk.content) {
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk.content } }] })}\n\n`);
+        }
+      }
+      
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      // Resposta não-streaming
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: completion.content || '❌ Não consegui processar sua mensagem.' } }] })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+
+  } catch (error) {
+    logger.error('[CognitoAgent] Chat error:', error);
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: '\n⚠️ Erro ao processar chat. Por favor, tente novamente mais tarde.' } }] })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+});
+
+export default router;

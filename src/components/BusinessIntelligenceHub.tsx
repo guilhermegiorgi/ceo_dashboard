@@ -431,7 +431,9 @@ const BusinessIntelligenceHub: React.FC = () => {
     useState<Conversation | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [streamingMessage, setStreamingMessage] = useState("");
+  const [thinkingMessage, setThinkingMessage] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [modelOptions, setModelOptions] = useState<ConversationModelOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelUpdating, setModelUpdating] = useState(false);
@@ -465,6 +467,11 @@ const BusinessIntelligenceHub: React.FC = () => {
     taskId: string;
     fromColumn: string;
   } | null>(null);
+  
+  // ✨ Brain Cloud Semantic Insights
+  const [semanticInsights, setSemanticInsights] = useState<any[]>([]);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const [lastSemanticQuery, setLastSemanticQuery] = useState<string | null>(null);
 
   const applyTaskPreferences = useCallback((prefs: TaskPreferences) => {
     if (!prefs) return;
@@ -507,6 +514,78 @@ const BusinessIntelligenceHub: React.FC = () => {
       otherContext: template.otherContext || "",
     });
   }, []);
+
+  const tasksList = useMemo<Task[]>(() => {
+    const simplified = snapshot?.data?.tasks?.simplified;
+    if (simplified && simplified.length > 0) {
+      return simplified.map((item) => ({
+        id: item.id,
+        title: item.title,
+        status: (item.status as Task["status"]) || "upcoming",
+        dueDate: item.dueDate,
+        dueTime: item.dueTime,
+        project: item.project,
+        priority: item.priority as Task["priority"],
+        tags: item.tags,
+        filePath: item.filePath,
+        sourceType: item.sourceType,
+        headingContext: item.headingContext,
+        lineNumber: item.lineNumber,
+      }));
+    }
+    return FALLBACK_TASKS;
+  }, [snapshot]);
+
+  // ✨ Brain Cloud: Buscar insights semânticos baseados no contexto
+  const fetchSemanticInsights = useCallback(async () => {
+    if (semanticLoading) return;
+    
+    // Construir query baseada no contexto atual
+    const contextParts = [];
+    
+    // Adicionar foco semanal se existir
+    if (snapshot?.data?.focus?.weekly_focus?.title) {
+      contextParts.push(snapshot.data.focus.weekly_focus.title);
+    }
+    
+    // Adicionar tarefas críticas
+    if (tasksList.length > 0) {
+      const criticalTasks = tasksList.slice(0, 3).map(t => t.title).join(' ');
+      contextParts.push(criticalTasks);
+    }
+    
+    // Adicionar metadados de projetos
+    const activeProjects = collections?.filter(c => c.active).slice(0, 2).map(c => c.name).join(' ');
+    if (activeProjects) {
+      contextParts.push(activeProjects);
+    }
+    
+    const query = contextParts.join(' ');
+    if (!query || query === lastSemanticQuery) return;
+    
+    try {
+      setSemanticLoading(true);
+      const response = await api.semanticSearch(query, 3);
+      setSemanticInsights(response.results || []);
+      setLastSemanticQuery(query);
+    } catch (error) {
+      console.error('Erro ao buscar insights semânticos:', error);
+      setSemanticInsights([]);
+    } finally {
+      setSemanticLoading(false);
+    }
+  }, [snapshot, tasksList, collections, semanticLoading, lastSemanticQuery, api]);
+
+  // Buscar insights quando o contexto mudar
+  useEffect(() => {
+    if (snapshot && tasksList.length > 0) {
+      const timer = setTimeout(() => {
+        fetchSemanticInsights();
+      }, 1000); // Delay para evitar muitas requisições
+      
+      return () => clearTimeout(timer);
+    }
+  }, [snapshot, tasksList, fetchSemanticInsights]);
 
   const persistTaskPreferences = useCallback(
     async (
@@ -947,17 +1026,176 @@ const BusinessIntelligenceHub: React.FC = () => {
           )
         );
 
+        // 🔗 Salvar conversa no Brain Cloud (só se tiver conteúdo)
+        try {
+          const conversationContent = [...chatMessages, savedMessage].map(m => m.content).join(' ');
+          if (conversationContent && conversationContent.trim()) {
+            await api.saveConversation(
+              activeConversation.id,
+              [...chatMessages, savedMessage],
+              {
+                source: 'claude',
+                modelId: selectedModelId,
+                timestamp: new Date().toISOString()
+              }
+            );
+          }
+        } catch (brainError) {
+          console.warn("Erro ao salvar conversation no Brain Cloud:", brainError);
+          // Não bloqueia a conversa se o Brain Cloud falhar
+        }
+
         setStreamingMessage("Gerando resposta...");
 
-        const response = await api.respondToConversation(
-          activeConversation.id,
-          {
-            modelId: selectedModelId,
-          }
-        );
+        // 🔍 Buscar contexto relevante no Brain Cloud
+        let contextData = null;
+        try {
+          contextData = await api.semanticSearch(trimmedContent, 3);
+        } catch (searchError) {
+          console.warn("Erro na busca semântica:", searchError);
+        }
 
-        setChatMessages((prev) => [...prev, response.message]);
-        setStreamingMessage("");
+        // 🔥 USAR STREAMING REAL COM MCP TOOLS
+        let streamedContent = "";
+        let thinkingContent = "";
+        let isInThinkingPhase = false;
+        
+        await api.chatStream(
+          [
+            { role: "system", content: "Você é um assistente IA com acesso às ferramentas MCP. Sempre use as ferramentas quando disponíveis para ajudar o usuário. Quando estiver pensando, compartilhe seu processo de raciocínio para que o usuário possa acompanhar seu desenvolvimento." },
+            ...chatMessages.map(msg => ({ role: msg.role, content: msg.content })),
+            { role: "user", content: trimmedContent }
+          ],
+          activeConversation.id,
+          (chunk) => {
+            // Handle different chunk types
+            if (typeof chunk === 'object' && chunk.thinking) {
+              // Chunk is thinking content
+              thinkingContent += chunk.content;
+              setThinkingMessage(thinkingContent);
+              setIsThinking(true);
+            } else if (typeof chunk === 'string') {
+              // Chunk is plain string - apply detection logic
+              if (chunk.includes("<thinking") || chunk.includes("Pensando:") || chunk.includes("Vou analisar") || chunk.includes("🧠")) {
+                if (!isInThinkingPhase) {
+                  isInThinkingPhase = true;
+                  setIsThinking(true);
+                  thinkingContent = "";
+                }
+              }
+              
+              if (chunk.includes("📝 **RESPOSTA FINAL:") || chunk.includes("Conclusão:") || chunk.includes("Resposta:")) {
+                if (isInThinkingPhase) {
+                  isInThinkingPhase = false;
+                  setIsThinking(false);
+                  // Don't clear thinking message - keep it for viewing
+                }
+              }
+              
+              // Processa chunk
+              if (isInThinkingPhase) {
+                thinkingContent += chunk;
+                setThinkingMessage(thinkingContent);
+              } else {
+                streamedContent += chunk;
+                setStreamingMessage(prev => prev + chunk);
+              }
+            } else {
+              // Check for additional reasoning content
+              if (chunk.includes("🧠") || chunk.includes("Analisando:") || chunk.includes("Vou considerar:") || 
+                  chunk.includes("Vou verificar:") || chunk.includes("Preciso analisar:") || 
+                  chunk.includes("Vou pesquisar:") || chunk.includes("Vou usar o")) {
+                thinkingContent += chunk + "\n";
+                setThinkingMessage(thinkingContent);
+                setIsThinking(true);
+              } else {
+                streamedContent += chunk;
+                setStreamingMessage(prev => prev + chunk);
+              }
+            }
+          },
+          (error) => {
+            console.error("Streaming error:", error);
+            toast.error("Erro no streaming da resposta");
+            setChatMessages((prev) =>
+              prev.filter((message) => message.id !== tempMessage.id)
+            );
+            setIsThinking(false);
+            setThinkingMessage("");
+          },
+          async () => {
+            // Salvar thinking no histórico se tiver conteúdo
+            if (thinkingContent.trim()) {
+              const thinkingMessage: ChatMessage = {
+                id: `thinking-${Date.now()}`,
+                role: "assistant",
+                content: `🧠 **PROCESSO DE RACIOCÍNIO:**\n\n${thinkingContent.trim()}`,
+                createdAt: new Date().toISOString(),
+              };
+              
+              try {
+                const savedThinking = await api.addMessage(activeConversation.id, {
+                  role: "assistant", 
+                  content: thinkingMessage.content
+                });
+                
+                setChatMessages((prev) => [...prev, savedThinking]);
+              } catch (saveError) {
+                console.error("Error saving thinking to history:", saveError);
+              }
+            }
+            
+            // Marcar thinking como complete mas não limpar ainda (deixa usuário controlar)
+            if (isInThinkingPhase) {
+              setIsThinking(false);
+            }
+            
+            // Streaming completo - usar conteúdo acumulado local
+            if (streamedContent.trim()) {
+              const assistantMessage: ChatMessage = {
+                id: `assistant-${Date.now()}`,
+                role: "assistant",
+                content: streamedContent,
+                createdAt: new Date().toISOString(),
+              };
+              
+              try {
+                const savedResponse = await api.addMessage(activeConversation.id, {
+                  role: "assistant",
+                  content: streamedContent,
+                });
+                
+                setChatMessages((prev) => [...prev, savedResponse]);
+                
+                // 🔗 Salvar conversa completa no Brain Cloud (com tratamento de erro)
+                try {
+                  await api.saveConversation(
+                    activeConversation.id,
+                    [...chatMessages, tempMessage, savedResponse],
+                    {
+                      source: 'claude',
+                      modelId: selectedModelId,
+                      timestamp: new Date().toISOString()
+                    }
+                  );
+                } catch (brainError) {
+                  console.warn("Erro ao salvar conversation no Brain Cloud (continuando normalmente):", brainError);
+                  // Não falha a conversa se o Brain Cloud salvar falhar
+                }
+              } catch (saveError) {
+                console.error("Error saving streaming response:", saveError);
+                // Adicionar mensagem local mesmo se falhar save
+                setChatMessages((prev) => [...prev, assistantMessage]);
+              }
+            } else {
+              console.log("Skipping save - empty streaming response");
+            }
+            
+            // Limpar streaming state
+            setStreamingMessage("");
+          },
+          selectedModelId
+        );
       } catch (error) {
         console.error("Error sending message:", error);
         toast.error("Erro ao processar a resposta da IA");
@@ -969,7 +1207,7 @@ const BusinessIntelligenceHub: React.FC = () => {
         setChatLoading(false);
       }
     },
-    [activeConversation, api, selectedModelId]
+    [activeConversation, api, selectedModelId, chatMessages]
   );
 
   const handleBackToTimeline = useCallback(() => {
@@ -1213,27 +1451,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     return FALLBACK_FOCUS_SUMMARY;
   }, [snapshot]);
 
-  const tasksList = useMemo<Task[]>(() => {
-    const simplified = snapshot?.data?.tasks?.simplified;
-    if (simplified && simplified.length > 0) {
-      return simplified.map((item) => ({
-        id: item.id,
-        title: item.title,
-        status: (item.status as Task["status"]) || "upcoming",
-        dueDate: item.dueDate,
-        dueTime: item.dueTime,
-        project: item.project,
-        priority: item.priority as Task["priority"],
-        tags: item.tags,
-        filePath: item.filePath,
-        sourceType: item.sourceType,
-        headingContext: item.headingContext,
-        lineNumber: item.lineNumber,
-      }));
-    }
-    return FALLBACK_TASKS;
-  }, [snapshot]);
-
   const tasksWithPreferences = useMemo(() => {
     return tasksList.map((task, index) => {
       const overridePriority = priorityMap?.[task.id];
@@ -1356,39 +1573,74 @@ const BusinessIntelligenceHub: React.FC = () => {
     const cards: TimelineCard[] = [];
     const focus = snapshot.data?.focus;
     const timeContext = snapshot.data?.timeContext;
+    const tasksData = snapshot.data?.tasks;
 
-    // Daily Notes foram movidas para o Utility Dock (painel direito)
-    // Mantemos apenas insights e contexto temporal na Timeline
+    // 🧠 PRIORIDADE 1: Insights de Tarefas com Inteligência
+    if (tasksData?.summary?.recommendations && tasksData.summary.recommendations.length > 0) {
+      const topRecommendation = tasksData.summary.recommendations[0];
+      cards.push({
+        id: "ai-insight-tasks",
+        type: "insight",
+        title: "💡 Insight de Prioridades",
+        body: topRecommendation,
+        impact: "Tarefas Brain Cloud",
+        confidence: 0.85,
+        tags: ["#prioridades", "#produtividade", "#braincloud"],
+        timestamp: "Agora",
+      });
+    }
 
+    // 🎯 PRIORIDADE 2: Foco Semanal do Vault
     if (focus?.weekly_focus) {
       cards.push({
         id: "focus-weekly",
         type: "insight",
-        title: focus.weekly_focus.title || "Foco semanal",
+        title: "🎯 Foco Semanal",
         body: focus.weekly_focus.excerpt || "Resumo não disponível.",
         impact: (focus.metadata?.weekly_goal as string) || "Prioridade semanal",
-        confidence: 0.75,
-        tags: focus.weekly_focus.tags || [],
+        confidence: 0.90,
+        tags: focus.weekly_focus.tags || ["#semana", "#foco"],
         timestamp: focus.weekly_focus.modified
           ? new Date(focus.weekly_focus.modified).toLocaleString()
           : "Esta semana",
       });
     }
 
-    const activities = timeContext?.recent_activities || [];
-    activities.slice(0, 4).forEach((activity, index) => {
+    // 📋 PRIORIDADE 3: Tarefas Críticas
+    if (tasksData?.metrics && (tasksData.metrics.overdue > 0 || tasksData.metrics.dueToday > 0)) {
+      const criticalCount = tasksData.metrics.overdue + tasksData.metrics.dueToday;
       cards.push({
-        id: `recent-activity-${index}`,
-        type: "note",
-        title: activity.title || "Atualização recente",
-        snippet: activity.summary || activity.path || "Alteração registrada.",
-        related: activity.tags || [],
-        timestamp: activity.modified
-          ? new Date(activity.modified).toLocaleString()
-          : "Recente",
+        id: "critical-tasks",
+        type: "message",
+        author: "assistant",
+        title: "⚠️ Tarefas Críticas",
+        body: `Você tem **${tasksData.metrics.overdue} tarefa(s) atrasada(s)** e **${tasksData.metrics.dueToday} para hoje**. Estão priorizadas no painel de tarefas.`,
+        timestamp: formatTimestampLabel(snapshot.generatedAt),
+        actions: [
+          { label: "Ver tarefas", icon: <ListTodo className="h-4 w-4" /> },
+          { label: "Organizar por prioridade", icon: <Sparkles className="h-4 w-4" /> },
+        ],
       });
-    });
+    }
 
+    // 📅 PRIORIDADE 4: Contexto Temporal
+    const activities = timeContext?.recent_activities || [];
+    if (activities.length > 0) {
+      activities.slice(0, 2).forEach((activity, index) => {
+        cards.push({
+          id: `recent-activity-${index}`,
+          type: "note",
+          title: activity.title || "Atualização recente",
+          snippet: activity.summary || activity.path || "Alteração registrada.",
+          related: activity.tags || [],
+          timestamp: activity.modified
+            ? new Date(activity.modified).toLocaleString()
+            : "Recente",
+        });
+      });
+    }
+
+    // 📋 PRIORIDADE 5: Próximos Prazos
     const deadlines = timeContext?.upcoming_deadlines || [];
     if (deadlines.length > 0) {
       const summary = deadlines
@@ -1412,7 +1664,7 @@ const BusinessIntelligenceHub: React.FC = () => {
       cards.push({
         id: "upcoming-deadlines",
         type: "agent",
-        title: "Prazos monitorados",
+        title: "📅 Próximos Compromissos",
         status: "scheduled",
         description: summary,
         timestamp: formatTimestampLabel(snapshot.generatedAt),
@@ -1420,32 +1672,57 @@ const BusinessIntelligenceHub: React.FC = () => {
       });
     }
 
+    // ⚠️ Avisos do Sistema
     snapshot.warnings?.forEach((warning, index) => {
       cards.push({
         id: `warning-${index}`,
         type: "message",
         author: "assistant",
-        title: `Ajuste necessário • ${warning.scope || "Integração"}`,
+        title: `⚠️ Ajuste necessário • ${warning.scope || "Integração"}`,
         body: warning.message,
         timestamp: formatTimestampLabel(snapshot.generatedAt),
       });
     });
 
+    // Se não houver conteúdo, retorna o fallback
     return cards.length > 0 ? cards : FALLBACK_TIMELINE;
   }, [snapshot]);
 
   const pinnedInsights = useMemo(() => {
+    const insights = [];
+    
+    // 1️⃣ Prioridade: Insights semânticos do Brain Cloud
+    if (semanticInsights.length > 0) {
+      semanticInsights.slice(0, 2).forEach((insight, index) => {
+        insights.push({
+          id: `semantic-${index}`,
+          title: `🧠 ${insight.path?.split('/').pop() || 'Insight'}`,
+          description: insight.excerpt?.substring(0, 120) + (insight.excerpt?.length > 120 ? '...' : ''),
+          source: `Busca semântica • Score: ${(insight.score * 100).toFixed(0)}%`,
+        });
+      });
+    }
+    
+    // 2️⃣ Recomendações de tarefas
     const recommendations = snapshot?.data?.tasks?.summary?.recommendations;
     if (recommendations && recommendations.length > 0) {
-      return recommendations.map((recommendation, index) => ({
-        id: `recommendation-${index}`,
-        title: `Recomendação ${index + 1}`,
-        description: recommendation,
-        source: "Resumo de tarefas • Brain Cloud",
-      }));
+      recommendations.slice(0, 2).forEach((recommendation, index) => {
+        insights.push({
+          id: `recommendation-${index}`,
+          title: `📋 Recomendação ${index + 1}`,
+          description: recommendation,
+          source: "Resumo de tarefas • Brain Cloud",
+        });
+      });
     }
-    return FALLBACK_PINNED_INSIGHTS;
-  }, [snapshot]);
+    
+    // 3️⃣ Fallback se não houver conteúdo
+    if (insights.length === 0) {
+      return FALLBACK_PINNED_INSIGHTS;
+    }
+    
+    return insights.slice(0, 3); // Limitar a 3 insights pinned
+  }, [snapshot, semanticInsights]);
 
   const agentCards = useMemo<AgentCardData[]>(() => {
     const runs = snapshot?.data?.agents?.recentRuns;
@@ -3190,7 +3467,9 @@ const BusinessIntelligenceHub: React.FC = () => {
                   conversation={activeConversation}
                   messages={chatMessages}
                   streamingMessage={streamingMessage}
+                  thinkingMessage={thinkingMessage}
                   isLoading={chatLoading}
+                  isThinking={isThinking}
                   onSendMessage={handleSendMessage}
                   onBackToTimeline={handleBackToTimeline}
                   models={modelOptions}

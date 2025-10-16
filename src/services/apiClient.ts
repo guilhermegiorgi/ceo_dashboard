@@ -552,11 +552,11 @@ export class APIClient {
           if (refreshToken) {
             try {
               const refreshResponse = await fetch(
-                `${this.baseUrl}/api/auth/refresh-token`,
+                `${this.baseUrl}/api/auth/refresh`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ token: refreshToken }),
+                  body: JSON.stringify({ refreshToken: refreshToken }),
                 }
               );
               const refreshData = await refreshResponse.json();
@@ -636,38 +636,118 @@ export class APIClient {
       "/api/settings/dashboard/collections",
       {
         method: "PUT",
-        body: { collections },
+        body: { collections }
       }
     );
     return response.collections || [];
   }
 
-  public async getGraphData(): Promise<{
-    nodes: Array<{ id: string; label: string; filepath?: string }>;
-    edges: Array<{ source: string; target: string; type?: string }>;
-  }> {
-    return this.request("/api/obsidian/graph");
+  // Brain Cloud Semantic Search
+  public async semanticSearch(query: string, limit = 5): Promise<any> {
+    return this.request('/api/brain/search', {
+      method: 'POST',
+      body: { query, limit }
+    });
+  }
+
+  // Brain Cloud Graph Data
+  public async getGraphData(directory = '', includeOrphans = true): Promise<any> {
+    return this.request('/api/brain/graph', {
+      method: 'GET',
+      searchParams: { directory, include_orphans: includeOrphans }
+    });
+  }
+
+  // Brain Cloud Save Conversation
+  public async saveConversation(
+    conversationId: string, 
+    messages: any[], 
+    metadata = {}
+  ): Promise<any> {
+    return this.request('/api/brain/conversation/save', {
+      method: 'POST',
+      body: {
+        source: 'claude',
+        conversation_id: conversationId,
+        messages,
+        metadata
+      }
+    });
+  }
+
+  // Brain Cloud Search Conversations
+  public async searchConversations(
+    query: string, 
+    limit = 5, 
+    filters = {}
+  ): Promise<any> {
+    return this.request('/api/brain/conversation/search', {
+      method: 'POST',
+      body: { query, limit, filters }
+    });
+  }
+
+  // Brain Cloud Get Recent Conversations
+  public async getRecentConversations(limit = 10): Promise<any> {
+    return this.request('/api/brain/conversations/recent?limit=' + limit);
+  }
+
+  // Brain Cloud Get Specific Conversation
+  public async getBrainConversation(conversationId: string): Promise<any> {
+    return this.request('/api/brain/conversation/' + conversationId);
+  }
+
+  // Projects API
+  public async getProjects(): Promise<any[]> {
+    return this.request('/api/projects');
+  }
+
+  public async createProject(project: any): Promise<any> {
+    return this.request('/api/projects', {
+      method: 'POST',
+      body: project
+    });
+  }
+
+  public async updateProject(projectId: string, project: any): Promise<any> {
+    return this.request(`/api/projects/${projectId}`, {
+      method: 'PUT',
+      body: project
+    });
+  }
+
+  public async deleteProject(projectId: string): Promise<any> {
+    return this.request(`/api/projects/${projectId}`, {
+      method: 'DELETE'
+    });
   }
 
   public async analyzeKnowledgeGraph(): Promise<void> {
     return this.request("/api/obsidian/analyze-graph", { method: "POST" });
   }
 
-  async queryCognitoStream(
-    query: string,
+  async chatStream(
+    messages: any[],
     sessionId: string,
-    onChunk: (chunk: string) => void,
+    onChunk: (chunk: string | {content: string, thinking: boolean}) => void,
     onError: (error: Error) => void,
-    onComplete: () => void
+    onComplete: () => void,
+    modelId?: string
   ): Promise<void> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/mcp/query-stream`, {
-        method: "POST",
+      // Usa fetch direto para streaming
+      const response = await fetch(`${this.baseUrl}/api/mcp/chat/stream`, {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ query, sessionId }),
+        body: JSON.stringify({
+          messages,
+          sessionId,
+          tools: true, // Habilita ferramentas MCP
+          modelId
+        })
       });
 
       if (!response.ok) {
@@ -687,14 +767,51 @@ export class APIClient {
           break;
         }
         const chunk = decoder.decode(value);
-        onChunk(chunk);
+        
+        // Process Server-Sent Events
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta;
+              if (delta?.content) {
+                // Check for thinking metadata
+                if (delta.thinking) {
+                  onChunk({ content: delta.content, thinking: true });
+                } else {
+                  onChunk(delta.content);
+                }
+              }
+            } catch (e) {
+              // Trying to parse as plain text
+              if (data && data.trim()) {
+                onChunk(data);
+              }
+            }
+          }
+        }
       }
 
       onComplete();
     } catch (error) {
-      console.error("Streaming API request failed:", error);
+      console.error("Chat stream failed:", error);
       onError(error as Error);
     }
+  }
+
+  async queryCognitoStream(
+    query: string,
+    sessionId: string,
+    onChunk: (chunk: string) => void,
+    onError: (error: Error) => void,
+    onComplete: () => void
+  ): Promise<void> {
+    // Legacy method - redirect to chatStream
+    return this.chatStream(query, sessionId, onChunk, onError, onComplete);
   }
 
   // --- Métodos para Insights ---

@@ -41,8 +41,8 @@ class VaultService {
         console.log(`[OBC] Buscando notas: query="${query}" folder="${folder}"`);
         try {
             const rules = query && query.trim() !== ''
-                ? { regexp: [{ var: 'name' }, query] }
-                : { regexp: [{ var: 'name' }, '.+'] };
+                ? { "in": [query, { "var": "name" }] }
+                : { "in": [".md", { "var": "name" }] };
 
             const directories = folder ? [folder] : undefined;
             const resp = await brainCloudClient.complexSearch({ rules, directories, limit: 200 });

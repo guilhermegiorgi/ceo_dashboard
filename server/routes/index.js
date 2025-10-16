@@ -34,7 +34,7 @@ router.use("/brain", authenticateToken, brainRouter);
 router.use("/insights", authenticateToken, insightsRouter);
 router.use("/decisions", authenticateToken, decisionsRouter);
 router.use("/cognito", cognitoRouter);
-router.use("/mcp", mcpRouter);
+router.use("/mcp", authenticateToken, mcpRouter);
 router.use("/projects", authenticateToken, projectsRouter);
 router.use("/feedback-actions", authenticateToken, feedbackActionsRouter);
 router.use("/obsidian", authenticateToken, obsidianRouter); // Monta as rotas do Obsidian
