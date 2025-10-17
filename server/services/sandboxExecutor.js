@@ -57,7 +57,7 @@ class SandboxExecutor {
     const scriptFile = path.join(workDir, 'script.js');
 
     // Wrapper para capturar output
-    const wrappedCode = \`
+    const wrappedCode = `
       const stdout = [];
       const stderr = [];
       const originalLog = console.log;
@@ -75,14 +75,14 @@ class SandboxExecutor {
 
       try {
         (async () => {
-          \${code}
+          ${code}
         })().catch(err => {
           stderr.push(err.message);
         });
       } catch (err) {
         stderr.push(err.message);
       }
-    \`;
+    `;
 
     fs.writeFileSync(scriptFile, wrappedCode);
 
@@ -150,7 +150,7 @@ class SandboxExecutor {
         fs.rmSync(workDir, { recursive: true, force: true });
       }
     } catch (error) {
-      console.warn(\`Erro ao limpar sandbox \${workDir}:\`, error.message);
+      console.warn(`Erro ao limpar sandbox ${workDir}:`, error.message);
     }
   }
 
@@ -174,7 +174,7 @@ class SandboxExecutor {
         fs.unlinkSync(filePath);
         return { success: true };
       default:
-        throw new Error(\`Operação desconhecida: \${operation}\`);
+        throw new Error(`Operação desconhecida: ${operation}`);
     }
   }
 }

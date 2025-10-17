@@ -20,7 +20,7 @@ class MCPClientImproved extends EventEmitter {
   }
 
   async call(toolName, toolInput = {}, options = {}) {
-    const cacheKey = \`\${toolName}:\${JSON.stringify(toolInput)}\`;
+    const cacheKey = `${toolName}:${JSON.stringify(toolInput)}`;
 
     // Verificar cache
     if (options.useCache !== false && this.cache.has(cacheKey)) {
@@ -70,12 +70,12 @@ class MCPClientImproved extends EventEmitter {
   }
 
   async executeCall(toolName, toolInput) {
-    const url = \`\${this.baseUrl}/api/mcp/tools/\${toolName}\`;
+    const url = `${this.baseUrl}/api/mcp/tools/${toolName}`;
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': \`Bearer \${this.token}\`,
+        'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Cache-Control': 'no-cache'
@@ -85,7 +85,7 @@ class MCPClientImproved extends EventEmitter {
     });
 
     if (!response.ok) {
-      const error = new Error(\`MCP Request failed: \${response.status}\`);
+      const error = new Error(`MCP Request failed: ${response.status}`);
       error.status = response.status;
       error.statusText = response.statusText;
       throw error;
@@ -102,12 +102,12 @@ class MCPClientImproved extends EventEmitter {
   }
 
   async streamCall(toolName, toolInput, onChunk) {
-    const url = \`\${this.baseUrl}/api/mcp/tools/\${toolName}/stream\`;
+    const url = `${this.baseUrl}/api/mcp/tools/${toolName}/stream`;
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': \`Bearer \${this.token}\`,
+        'Authorization': `Bearer ${this.token}`,
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream'
       },
@@ -115,7 +115,7 @@ class MCPClientImproved extends EventEmitter {
     });
 
     if (!response.ok) {
-      throw new Error(\`Stream failed: \${response.status}\`);
+      throw new Error(`Stream failed: ${response.status}`);
     }
 
     const reader = response.body.getReader();
@@ -147,7 +147,7 @@ class MCPClientImproved extends EventEmitter {
       case 'mcp_semantic_search':
         return { results: [], error: 'Fallback: Busca semântica indisponível' };
       default:
-        throw new Error(\`Nenhum fallback disponível para \${toolName}\`);
+        throw new Error(`Nenhum fallback disponível para ${toolName}`);
     }
   }
 }

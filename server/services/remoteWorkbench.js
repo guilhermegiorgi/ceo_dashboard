@@ -32,8 +32,8 @@ class RemoteWorkbench {
 
     // Persistir em DB
     await db.query(
-      \`INSERT INTO workbench_sessions (id, user_id, agent_id, data) 
-       VALUES (\$1, \$2, \$3, \$4)\`,
+      `INSERT INTO workbench_sessions (id, user_id, agent_id, data) 
+       VALUES ($1, $2, $3, $4)`,
       [sessionId, userId, agentId, JSON.stringify(session)]
     );
 
@@ -43,11 +43,11 @@ class RemoteWorkbench {
   async executeCode(sessionId, code, language = 'javascript', timeout = 30000) {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error(\`Sessão \${sessionId} não encontrada\`);
+      throw new Error(`Sessão ${sessionId} não encontrada`);
     }
 
     if (session.executions.length >= session.maxExecutions) {
-      throw new Error(\`Limite de execuções (\${session.maxExecutions}) atingido\`);
+      throw new Error(`Limite de execuções (${session.maxExecutions}) atingido`);
     }
 
     const executionId = uuidv4();
@@ -85,9 +85,9 @@ class RemoteWorkbench {
 
       // Persistir execução
       await db.query(
-        \`INSERT INTO workbench_executions 
+        `INSERT INTO workbench_executions 
          (id, session_id, code, language, status, result, duration) 
-         VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7)\`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [executionId, sessionId, code, language, execution.status, 
          JSON.stringify(result), execution.duration]
       );
@@ -103,10 +103,10 @@ class RemoteWorkbench {
 
   injectSessionContext(code, session) {
     const contextVariables = Object.entries(session.variables)
-      .map(([key, value]) => \`const \${key} = \${JSON.stringify(value)};\`)
+      .map(([key, value]) => `const ${key} = ${JSON.stringify(value)};`)
       .join('\n');
 
-    return \`\${contextVariables}\n\${code}\`;
+    return `${contextVariables}\n${code}`;
   }
 
   extractState(stdout) {
@@ -124,7 +124,7 @@ class RemoteWorkbench {
   async setVariable(sessionId, key, value) {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error(\`Sessão \${sessionId} não encontrada\`);
+      throw new Error(`Sessão ${sessionId} não encontrada`);
     }
     session.variables[key] = value;
     return value;
@@ -137,7 +137,7 @@ class RemoteWorkbench {
   async listExecutions(sessionId, limit = 10) {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error(\`Sessão \${sessionId} não encontrada\`);
+      throw new Error(`Sessão ${sessionId} não encontrada`);
     }
     return session.executions.slice(-limit).reverse();
   }
@@ -146,7 +146,7 @@ class RemoteWorkbench {
     this.sessions.delete(sessionId);
     // Persistir no DB que session foi fechada
     await db.query(
-      \`UPDATE workbench_sessions SET closed_at = NOW() WHERE id = \$1\`,
+      `UPDATE workbench_sessions SET closed_at = NOW() WHERE id = $1`,
       [sessionId]
     );
   }

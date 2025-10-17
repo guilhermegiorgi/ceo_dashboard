@@ -43,8 +43,8 @@ class EnhancedChatService {
 
     // Persistir
     await db.query(
-      \`INSERT INTO chat_conversations (id, user_id, agent_id, workbench_session_id, context)
-       VALUES (\$1, \$2, \$3, \$4, \$5)\`,
+      `INSERT INTO chat_conversations (id, user_id, agent_id, workbench_session_id, context)
+       VALUES ($1, $2, $3, $4, $5)`,
       [conversationId, userId, agentId, workbenchSession.id, JSON.stringify(conversation.context)]
     );
 
@@ -54,7 +54,7 @@ class EnhancedChatService {
   async sendMessage(conversationId, userMessage, options = {}) {
     const conversation = this.conversationContexts.get(conversationId);
     if (!conversation) {
-      throw new Error(\`Conversa \${conversationId} não encontrada\`);
+      throw new Error(`Conversa ${conversationId} não encontrada`);
     }
 
     // Adicionar mensagem do usuário
@@ -99,16 +99,16 @@ class EnhancedChatService {
 
       // Persistir
       await db.query(
-        \`INSERT INTO chat_messages 
+        `INSERT INTO chat_messages 
          (conversation_id, role, content, tools_used)
-         VALUES (\$1, \$2, \$3, \$4)\`,
+         VALUES ($1, $2, $3, $4)`,
         [conversationId, 'user', userMessage, null]
       );
 
       await db.query(
-        \`INSERT INTO chat_messages 
+        `INSERT INTO chat_messages 
          (conversation_id, role, content, tools_used)
-         VALUES (\$1, \$2, \$3, \$4)\`,
+         VALUES ($1, $2, $3, $4)`,
         [conversationId, 'assistant', response, JSON.stringify(toolResults.map(r => r.tool))]
       );
 
@@ -125,7 +125,7 @@ class EnhancedChatService {
       // Adicionar erro ao histórico
       conversation.messages.push({
         role: 'system',
-        content: \`Erro: \${error.message}\`,
+        content: `Erro: ${error.message}`,
         timestamp: new Date()
       });
       throw error;
@@ -242,12 +242,12 @@ class EnhancedChatService {
 
   async generateResponse(message, intention, toolResults, context) {
     // Aqui você integraria com Claude/GPT para gerar resposta melhorada
-    let response = \`Processada intenção: \${intention}\n\n\`;
+    let response = `Processada intenção: ${intention}\n\n`;
 
     if (toolResults.length > 0) {
       response += 'Ferramentas executadas:\n';
       toolResults.forEach(r => {
-        response += \`- \${r.tool}: \${r.status}\n\`;
+        response += `- ${r.tool}: ${r.status}\n`;
       });
     }
 
@@ -257,7 +257,7 @@ class EnhancedChatService {
   async getConversationHistory(conversationId, limit = 50) {
     const conversation = this.conversationContexts.get(conversationId);
     if (!conversation) {
-      throw new Error(\`Conversa \${conversationId} não encontrada\`);
+      throw new Error(`Conversa ${conversationId} não encontrada`);
     }
     return conversation.messages.slice(-limit);
   }
@@ -281,7 +281,7 @@ class EnhancedChatService {
   async deleteConversation(conversationId) {
     this.conversationContexts.delete(conversationId);
     await db.query(
-      \`DELETE FROM chat_conversations WHERE id = \$1\`,
+      `DELETE FROM chat_conversations WHERE id = $1`,
       [conversationId]
     );
   }
