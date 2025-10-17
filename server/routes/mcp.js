@@ -356,6 +356,22 @@ router.post('/chat/stream', async (req, res) => {
         {
           type: "function",
           function: {
+            name: "get_tasks_summary",
+            description: "Resumo executivo das tarefas",
+            parameters: {
+              type: "object",
+              properties: {
+                range: { type: "string", default: "this_week" },
+                group_by: { type: "string", enum: ["priority", "project", "date", "status"] },
+                include_completed: { type: "boolean", default: false }
+              }
+            }
+          },
+          mcpToolName: "obsidian-brain-cloud__get_tasks_summary"
+        },
+        {
+          type: "function",
+          function: {
             name: "check_overdue",
             description: "Lista tarefas atrasadas por severidade",
             parameters: {

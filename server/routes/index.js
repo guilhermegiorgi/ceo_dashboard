@@ -20,6 +20,7 @@ import inboxRouter from "./inbox.js";
 import tasksRouter from "./tasks.js";
 import conversationsRouter from "./conversations.js";
 import aiProvidersRouter from "./aiProviders.js";
+import chatRouter from "./chat.js";
 
 const router = Router();
 
@@ -48,6 +49,7 @@ router.use("/inbox", authenticateToken, inboxRouter);
 router.use("/tasks", authenticateToken, tasksRouter);
 router.use("/conversations", authenticateToken, conversationsRouter);
 router.use("/ai-providers", authenticateToken, aiProvidersRouter);
+router.use("/chat", authenticateToken, chatRouter);
 
 // Rota de fallback para rotas não encontradas
 router.use("*", (req, res) => {
