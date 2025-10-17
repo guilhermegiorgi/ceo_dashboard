@@ -1,0 +1,29 @@
+{
+  "braincloud": {
+    "baseUrl": "",
+    "apiToken": "",
+    "tenantId": "",
+    "tenantPlan": "",
+    "mcpWs": "",
+    "mcpHttp": "",
+    "enableRest": true,
+    "enableMcp": true
+  },
+  "dashboard": {
+    "collections": [],
+    "taskPreferences": {
+      "viewMode": "list",
+      "sortBy": "natural",
+      "pinnedTaskIds": [],
+      "priorityMap": {},
+      "boardOrder": {},
+      "lastContextId": null,
+      "contextTemplate": {
+        "workDescription": "",
+        "shortTermFocus": "",
+        "longTermGoals": "",
+        "otherContext": ""
+      }
+    }
+  }
+}

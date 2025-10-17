@@ -91,10 +91,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting
+// Rate limiting - DESATIVADO TEMPORARIAMENTE PARA TESTES
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // Limite de 100 requisições por janela
+  max: 1000000000, // Limite muito alto para testes
   standardHeaders: true,
   legacyHeaders: false,
   message: {

@@ -100,6 +100,8 @@ class AuthService {
    * @returns {Promise<{user: Object, token: string, refreshToken: string}>} Dados do usuário, token JWT e refresh token
    */
   async login(email, password) {
+    logger.info(`[Auth Service] Tentativa de login:`, { email, hasPassword: !!password });
+    
     // Busca o usuário no banco de dados
     const result = await query(
       `SELECT id, tenant_id, email, password_hash, name, role, status
@@ -108,8 +110,13 @@ class AuthService {
       [email]
     );
 
+    logger.info(`[Auth Service] Usuário encontrado:`, { 
+      found: result.rows.length > 0,
+      email: email 
+    });
+
     if (result.rows.length === 0) {
-      logger.warn(`Tentativa de login com email não cadastrado: ${email}`);
+      logger.warn(`[Auth Service] Tentativa de login com email não cadastrado: ${email}`);
       throw new Error("Credenciais inválidas");
     }
 
@@ -125,7 +132,11 @@ class AuthService {
     const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!isMatch) {
-      logger.warn(`Tentativa de login com senha incorreta: ${email}`);
+      logger.warn(`[Auth Service] Tentativa de login com senha incorreta: ${email}`);
+      logger.warn(`[Auth Service] Senha check:`, { 
+        providedPasswordLength: password?.length || 0,
+        storedPasswordHashLength: user.password_hash?.length || 0
+      });
       throw new Error("Credenciais inválidas");
     }
 

@@ -61,7 +61,7 @@ async function openAiStyleRequest({
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
 
-  try {
+  const run = async () => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -125,8 +125,15 @@ async function openAiStyleRequest({
     }
 
     return data;
-  } finally {
+  };
+
+  try {
+    const result = await run();
     clearTimeout(timeout);
+    return result;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
   }
 }
 
@@ -218,7 +225,7 @@ async function openAiStreamRequest({ url, apiKey, body, headers = {} }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
 
-  try {
+  const run = async () => {
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -606,8 +613,15 @@ async function openAiStreamRequest({ url, apiKey, body, headers = {} }) {
     }
 
     return generator();
-  } finally {
+  };
+
+  try {
+    const result = await run();
     clearTimeout(timeout);
+    return result;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
   }
 }
 
@@ -615,7 +629,7 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
 
-  try {
+  const run = async () => {
     logger.info('[openRouterStreamRequest] Fetch function source:', fetch.toString());
     const response = await fetch(url, {
       method: "POST",
@@ -767,9 +781,16 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
     }
 
     return generator();
-  } finally {
-      clearTimeout(timeout);
-    }
+  };
+
+  try {
+    const result = await run();
+    clearTimeout(timeout);
+    return result;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
 }
 
 async function callOpenRouter({ baseUrl, apiKey, messages, model, temperature, maxTokens, topP, systemPrompt, stream = false, tools = null, tool_choice = 'auto' }) {
