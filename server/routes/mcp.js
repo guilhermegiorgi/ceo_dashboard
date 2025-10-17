@@ -5,6 +5,69 @@ import { getProviderApiKey } from '../services/aiProviderService.js';
 import { generateChatCompletion, buildSystemPrompt } from '../services/aiChatClient.js';
 import { logger } from '../src/utils/logger.js';
 
+const MCP_PROTOCOL_VERSION = '2024-11-05';
+
+const buildMcpBaseUrl = () => {
+  const baseUrl = (process.env.BRAINCLOUD_BASE_URL || 'https://obsidian-mcp.ggailabs.com').replace(/\/+$/, '');
+  return `${baseUrl}/api/v1/mcp/http/`;
+};
+
+const buildMcpHeaders = (token, sessionId = null) => {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION
+  };
+  if (sessionId) {
+    headers['Mcp-Session-Id'] = sessionId;
+  }
+  return headers;
+};
+
+const parseMcpResponse = async (response) => {
+  const raw = await response.text();
+  if (!raw) {
+    return { data: null, raw };
+  }
+
+  const sseLines = raw.split('\n').filter(line => line.startsWith('data:'));
+  for (let idx = sseLines.length - 1; idx >= 0; idx -= 1) {
+    const payload = sseLines[idx].replace(/^data:\s*/, '');
+    if (!payload) continue;
+    try {
+      return { data: JSON.parse(payload), raw };
+    } catch (err) {
+      // continue searching earlier payloads
+    }
+  }
+
+  try {
+    return { data: JSON.parse(raw), raw };
+  } catch (err) {
+    return { data: null, raw };
+  }
+};
+
+const extractSessionId = (response, parsedData) => {
+  const headerKeys = ['mcp-session-id', 'Mcp-Session-Id', 'x-mcp-session-id'];
+  for (const key of headerKeys) {
+    const value = response.headers?.get?.(key);
+    if (value) return value.trim();
+  }
+  return (
+    parsedData?.result?.serverInfo?.mcpSessionId ||
+    parsedData?.result?.sessionId ||
+    parsedData?.result?.mcpSessionId ||
+    parsedData?.result?.session?.id ||
+    parsedData?.result?.session?.sessionId ||
+    parsedData?.session_id ||
+    parsedData?.mcpSessionId ||
+    parsedData?.result?.mcp_session_id ||
+    null
+  );
+};
+
 const router = Router();
 
 // Helper para obter provider ativo do usuário
@@ -47,6 +110,7 @@ router.post('/query-stream', async (req, res) => {
 // Endpoint REAL com LLM + TODAS as ferramentas MCP dinâmicas
 router.post('/chat/stream', async (req, res) => {
   const { messages, sessionId, tools = true } = req.body;
+  const braincloudToken = process.env.BRAINCLOUD_API_TOKEN;
 
   if (!messages || messages.length === 0) {
     return res.status(400).json({ error: 'messages are required' });
@@ -62,87 +126,115 @@ router.post('/chat/stream', async (req, res) => {
 
     // 1. Inicializa sessão MCP dinamicamente
     let mcpSessionId = null;
-    let allMcpTools = [];
+    let mcpBaseUrl = null;
+  let allMcpTools = [];
+  const toolNameMap = {};
     
     if (tools) {
       try {
-        // Inicializa sessão MCP
-        const braincloudToken = process.env.BRAINCLOUD_API_TOKEN;
-        const braincloudUrl = process.env.BRAINCLOUD_BASE_URL || 'https://obsidian-mcp.ggailabs.com';
-        
-        logger.info('[CognitoAgent] MCP Base URL:', braincloudUrl);
-        logger.info('[CognitoAgent] MCP Token available:', !!braincloudToken);
-        logger.info('[CognitoAgent] MCP Token length:', braincloudToken?.length || 0);
-        
         if (!braincloudToken) {
           logger.error('[CognitoAgent] BRAINCLOUD_API_TOKEN not set in environment');
           throw new Error('BRAINCLOUD_API_TOKEN environment variable is not set');
         }
-        
+
+        mcpBaseUrl = buildMcpBaseUrl();
+
+        logger.info('[CognitoAgent] MCP Base URL:', mcpBaseUrl);
+        logger.info('[CognitoAgent] MCP Token available:', !!braincloudToken);
+        logger.info('[CognitoAgent] MCP Token length:', braincloudToken?.length || 0);
+
         const initPayload = {
+          jsonrpc: '2.0',
+          id: Date.now(),
           method: 'initialize',
           params: {
-            name: 'Cognito Agent',
-            version: '1.0.0'
+            protocolVersion: MCP_PROTOCOL_VERSION,
+            clientInfo: { name: 'Cognito Agent', version: '1.0.0' },
+            capabilities: {}
           }
         };
 
-        const fetchOptions = {
+        logger.info('[CognitoAgent] MCP Initialize Payload:', initPayload);
+
+        const initResponse = await fetch(mcpBaseUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${braincloudToken}`
-          },
+          headers: buildMcpHeaders(braincloudToken),
           body: JSON.stringify(initPayload)
-        };
+        });
 
-        logger.info('[CognitoAgent] MCP Initialize Request Options:', JSON.stringify(fetchOptions, null, 2));
-
-        const initResponse = await fetch(`${braincloudUrl}/api/v1/mcp/http`, fetchOptions);
-        
-        const initData = await initResponse.json();
-        
-        // Debug: Verificar o que o MCP retorna
-        logger.info('MCP Init Response:', JSON.stringify(initData, null, 2));
-        
-        mcpSessionId = initData.mcpSessionId;
-        
-        if (!mcpSessionId) {
-          throw new Error(`Failed to initialize MCP session: No session ID returned. Response: ${JSON.stringify(initData)}`);
+        if (!initResponse.ok) {
+          const errorPayload = await initResponse.text();
+          throw new Error(`MCP initialize failed: ${initResponse.status} ${initResponse.statusText} | ${errorPayload}`);
         }
-        
+
+        const { data: initData, raw: initRaw } = await parseMcpResponse(initResponse);
+        logger.info('[CognitoAgent] MCP Init raw response:', initRaw);
+        logger.info('[CognitoAgent] MCP Init parsed keys:', initData ? Object.keys(initData) : []);
+
+        mcpSessionId = extractSessionId(initResponse, initData);
+
+        if (!mcpSessionId) {
+          throw new Error(`Failed to initialize MCP session: No session ID returned. Response: ${initRaw}`);
+        }
+
         res.setHeader('mcp-session-id', mcpSessionId);
         logger.info(`[CognitoAgent] MCP Session initialized: ${mcpSessionId}`);
-        
-        // Obtém TODAS as ferramentas MCP
-        const toolsResponse = await fetch(`${process.env.BRAINCLOUD_BASE_URL || 'https://obsidian-mcp.ggailabs.com'}/api/v1/mcp/http`, {
+
+        const toolsPayload = {
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method: 'tools/list',
+          params: {
+            cursor: null,
+            _meta: { progressToken: null }
+          }
+        };
+
+        const toolsResponse = await fetch(mcpBaseUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.BRAINCLOUD_API_TOKEN || 'ggai_90e2c6b20c8315906f843798bbc1598df596978a2ec79457e6d00563c76d03dc'}`,
-            'mcp-session-id': mcpSessionId
-          },
-          body: JSON.stringify({
-            method: 'tools/list',
-            params: {}
-          })
+          headers: buildMcpHeaders(braincloudToken, mcpSessionId),
+          body: JSON.stringify(toolsPayload)
         });
-        
-        const toolsData = await toolsResponse.json();
-        
-        if (toolsData && toolsData.tools && toolsData.tools.length > 0) {
-          // Converte ferramentas do MCP para formato OpenAI Function Calling
-          allMcpTools = toolsData.tools.map(tool => ({
+
+        if (!toolsResponse.ok) {
+          const listError = await toolsResponse.text();
+          throw new Error(`MCP tools/list failed: ${toolsResponse.status} ${toolsResponse.statusText} | ${listError}`);
+        }
+
+        const { data: toolsData, raw: toolsRaw } = await parseMcpResponse(toolsResponse);
+        logger.info('[CognitoAgent] MCP tools/list raw response:', toolsRaw);
+
+        const toolsList = toolsData?.result?.tools || toolsData?.tools || [];
+        if (Array.isArray(toolsList) && toolsList.length > 0) {
+          allMcpTools = toolsList.map(tool => ({
             type: tool.type || 'function',
             function: {
               name: tool.name,
               description: tool.description,
-              parameters: tool.parameters || {}
+              parameters: tool.parameters || tool.inputSchema || {
+                type: 'object',
+                properties: {},
+                required: []
+              }
             }
-          }));          
+          }));
           logger.info(`[CognitoAgent] Parsed ${allMcpTools.length} tools from MCP`);
+          logger.info('[CognitoAgent] Sample MCP tools:', toolsList.slice(0, 5).map(tool => ({
+            name: tool.name,
+            description: tool.description,
+            hasInputSchema: !!tool.inputSchema
+          })));
+          for (const tool of toolsList) {
+            const toolName = tool.name;
+            if (typeof toolName === 'string') {
+              const normalizedName = toolName.replace(/^obsidian-brain-cloud__/, '');
+              toolNameMap[normalizedName] = toolName;
+              toolNameMap[toolName] = toolName;
+            }
+          }
+        } else {
+          logger.warn('[CognitoAgent] tools/list returned no tools, falling back to static definitions');
         }
-        
       } catch (mcpError) {
         logger.error('[CognitoAgent] Failed to initialize MCP session:', mcpError);
         logger.error('[CognitoAgent] MCP Error details:', {
@@ -151,170 +243,185 @@ router.post('/chat/stream', async (req, res) => {
           timestamp: new Date().toISOString()
         });
         logger.warn('[CognitoAgent] Working without MCP tools. Configure OBC credentials.');
-        
-        // Enhanced fallback with more comprehensive tool list
-        allMcpTools = [
-          {
-            type: "function",
-            function: {
-              name: "semantic_search",
-              description: "Busca semântica no vault do Brain Cloud",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: { type: "string" },
-                  limit: { type: "integer", default: 10 }
-                },
-                required: ["query"]
+      }
+    }
+
+    if (!tools || allMcpTools.length === 0) {
+      allMcpTools = [
+        {
+          type: "function",
+          function: {
+            name: "semantic_search",
+            description: "Busca semântica no vault do Brain Cloud",
+            parameters: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                limit: { type: "integer", default: 10 }
+              },
+              required: ["query"]
+            }
+          },
+          mcpToolName: "obsidian-brain-cloud__semantic_search"
+        },
+        {
+          type: "function",
+          function: {
+            name: "get_due_tasks",
+            description: "Busca tarefas com prazo do Brain Cloud",
+            parameters: {
+              type: "object",
+              properties: {
+                status: { type: "string", enum: ["active", "pending", "completed", "all"] },
+                window: { type: "string", enum: ["current", "week", "month", "year"] },
+                limit: { type: "integer", default: 10 }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "get_due_tasks",
-              description: "Busca tarefas com prazo do Brain Cloud",
-              parameters: {
-                type: "object",
-                properties: {
-                  status: { type: "string", enum: ["active", "pending", "completed", "all"] },
-                  window: { type: "string", enum: ["current", "week", "month", "year"] },
-                  limit: { type: "integer", default: 10 }
-                }
+          mcpToolName: "obsidian-brain-cloud__get_due_tasks"
+        },
+        {
+          type: "function",
+          function: {
+            name: "get_current_focus",
+            description: "Retorna foco diário e notas relevantes",
+            parameters: {
+              type: "object",
+              properties: {
+                context_type: { type: "string", enum: ["daily", "weekly", "monthly"] }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "get_focus",
-              description: "Retorna foco diário e notas relevantes",
-              parameters: {
-                type: "object",
-                properties: {
-                  context_type: { type: "string", enum: ["daily", "weekly", "monthly"] }
-                }
+          mcpToolName: "obsidian-brain-cloud__get_current_focus"
+        },
+        {
+          type: "function",
+          function: {
+            name: "get_vault_tree",
+            description: "Obtém estrutura do vault para navegação",
+            parameters: {
+              type: "object",
+              properties: {
+                directory: { type: "string" },
+                depth: { type: "number", default: 2 },
+                include_files: { type: "boolean", default: true }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "get_vault_tree",
-              description: "Obtém estrutura do vault para navegação",
-              parameters: {
-                type: "object",
-                properties: {
-                  directory: { type: "string" },
-                  depth: { type: "number", default: 2 },
-                  include_files: { type: "boolean", default: true }
-                }
+          mcpToolName: "obsidian-brain-cloud__get_vault_tree"
+        },
+        {
+          type: "function",
+          function: {
+            name: "get_graph_data",
+            description: "Obtém dados do grafo de conhecimento",
+            parameters: {
+              type: "object",
+              properties: {
+                directory: { type: "string" },
+                include_orphans: { type: "boolean", default: true }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "get_graph_data",
-              description: "Obtém dados do grafo de conhecimento",
-              parameters: {
-                type: "object",
-                properties: {
-                  directory: { type: "string" },
-                  include_orphans: { type: "boolean", default: true }
-                }
+          mcpToolName: "obsidian-brain-cloud__get_graph_data"
+        },
+        {
+          type: "function",
+          function: {
+            name: "get_main_tags",
+            description: "Retorna ranking de tags do vault",
+            parameters: {
+              type: "object",
+              properties: {
+                limit: { type: "number", default: 20 }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "get_main_tags",
-              description: "Retorna ranking de tags do vault",
-              parameters: {
-                type: "object",
-                properties: {
-                  limit: { type: "number" }
-                }
+          mcpToolName: "obsidian-brain-cloud__get_main_tags"
+        },
+        {
+          type: "function",
+          function: {
+            name: "get_main_links",
+            description: "Retorna wikilinks mais referenciados",
+            parameters: {
+              type: "object",
+              properties: {
+                limit: { type: "number", default: 20 }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "get_main_links",
-              description: "Retorna wikilinks mais referenciados",
-              parameters: {
-                type: "object",
-                properties: {
-                  limit: { type: "number" }
-                }
+          mcpToolName: "obsidian-brain-cloud__get_main_links"
+        },
+        {
+          type: "function",
+          function: {
+            name: "check_overdue",
+            description: "Lista tarefas atrasadas por severidade",
+            parameters: {
+              type: "object",
+              properties: {
+                severity: { type: "string", enum: ["all", "high", "medium", "low"] },
+                directories: { type: "array", items: { type: "string" } }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "check_overdue",
-              description: "Lista tarefas atrasadas por severidade",
-              parameters: {
-                type: "object",
-                properties: {
-                  severity: { type: "string", enum: ["all", "high", "medium", "low"] },
-                  directories: { type: "array", items: { type: "string" } }
-                }
+          mcpToolName: "obsidian-brain-cloud__check_overdue"
+        },
+        {
+          type: "function",
+          function: {
+            name: "get_time_based_context",
+            description: "Contexto temporal consolidado",
+            parameters: {
+              type: "object",
+              properties: {
+                reference_date: { type: "string" },
+                recent_days: { type: "number", default: 3 },
+                upcoming_window: { type: "string", default: "week" }
               }
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "get_time_based_context",
-              description: "Contexto temporal consolidado",
-              parameters: {
-                type: "object",
-                properties: {
-                  reference_date: { type: "string" },
-                  recent_days: { type: "number", default: 3 },
-                  upcoming_window: { type: "string", default: "week" }
-                }
-              }
+          mcpToolName: "obsidian-brain-cloud__get_time_based_context"
+        },
+        {
+          type: "function",
+          function: {
+            name: "create_note_from_template",
+            description: "Cria nota baseada em template",
+            parameters: {
+              type: "object",
+              properties: {
+                template_name: { type: "string" },
+                variables: { type: "object" },
+                target_path: { type: "string" },
+                create_directories: { type: "boolean", default: true }
+              },
+              required: ["template_name", "variables"]
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "create_note_from_template",
-              description: "Cria nota baseada em template",
-              parameters: {
-                type: "object",
-                properties: {
-                  template_name: { type: "string" },
-                  variables: { type: "object" },
-                  target_path: { type: "string" },
-                  create_directories: { type: "boolean", default: true }
-                },
-                required: ["template_name", "variables"]
-              }
+          mcpToolName: "obsidian-brain-cloud__create_note_from_template"
+        },
+        {
+          type: "function",
+          function: {
+            name: "search_files",
+            description: "Busca arquivos com padrões glob",
+            parameters: {
+              type: "object",
+              properties: {
+                patterns: { type: "array", items: { type: "string" } },
+                excludePatterns: { type: "array", items: { type: "string" } },
+                directory: { type: "string" }
+              },
+              required: ["patterns"]
             }
           },
-          {
-            type: "function",
-            function: {
-              name: "search_files",
-              description: "Busca arquivos com padrões glob",
-              parameters: {
-                type: "object",
-                properties: {
-                  patterns: { type: "array", items: { type: "string" } },
-                  excludePatterns: { type: "array", items: { type: "string" } },
-                  folder: { type: "string" }
-                },
-                required: ["patterns"]
-              }
-            }
-          }
-        ];
+          mcpToolName: "obsidian-brain-cloud__search_files"
+        }
+      ];
+      for (const tool of allMcpTools) {
+        toolNameMap[tool.function.name] = tool.mcpToolName;
       }
     }
 
@@ -410,6 +517,7 @@ router.post('/chat/stream', async (req, res) => {
       let buffer = '';
       let chunksProcessed = 0;
       let functionCallResults = []; // Separate buffer for function results
+      const pendingToolCalls = new Map();
       
       logger.info(`[CognitoAgent] Starting streaming processing with ${allMcpTools.length} MCP tools`);
       
@@ -424,35 +532,85 @@ router.post('/chat/stream', async (req, res) => {
         // Executa function calls via MCP
         if (chunk.function_calls) {
           for (const functionCall of chunk.function_calls) {
+            const callId = functionCall.id || functionCall.index || `chunk-${chunksProcessed}-${Math.random().toString(16).slice(2)}`;
+            const existingCall = pendingToolCalls.get(callId) || {
+              id: functionCall.id,
+              type: functionCall.type,
+              name: functionCall.name || functionCall.function?.name || '',
+              arguments: ''
+            };
+
+            if (functionCall.type && !existingCall.type) existingCall.type = functionCall.type;
+            if (functionCall.name) existingCall.name = functionCall.name;
+            if (functionCall.function?.name) existingCall.name = functionCall.function.name;
+            if (functionCall.function?.arguments) existingCall.arguments += functionCall.function.arguments;
+            if (typeof functionCall.arguments === 'string') existingCall.arguments += functionCall.arguments;
+
+            pendingToolCalls.set(callId, existingCall);
+
+            if (!existingCall.name) {
+              logger.info(`[CognitoAgent] Awaiting tool name for call ${callId}`);
+              continue;
+            }
+
+            let parsedArguments = {};
+            if (existingCall.arguments) {
+              try {
+                parsedArguments = JSON.parse(existingCall.arguments);
+              } catch (parseError) {
+                logger.info(`[CognitoAgent] Tool arguments for ${existingCall.name} not complete yet (length: ${existingCall.arguments.length})`);
+                continue;
+              }
+            }
+
             try {
-              const mcpResult = await fetch(`${process.env.BRAINCLOUD_BASE_URL || 'https://obsidian-mcp.ggailabs.com'}/api/v1/mcp/http`, {
+              if (!mcpSessionId || !braincloudToken) {
+                throw new Error('Missing MCP session or token');
+              }
+
+              const callUrl = mcpBaseUrl || buildMcpBaseUrl();
+              const mappedName = toolNameMap[existingCall.name] || existingCall.name;
+              const toolPayload = {
+                jsonrpc: '2.0',
+                id: Date.now(),
+                method: 'tools/call',
+                params: {
+                  name: mappedName,
+                  arguments: parsedArguments,
+                  _meta: { progressToken: null }
+                }
+              };
+
+              logger.info(`[CognitoAgent] Executing MCP tool ${mappedName} with session ${mcpSessionId}`);
+              logger.info('[CognitoAgent] MCP tool payload:', toolPayload);
+
+              const mcpResult = await fetch(callUrl, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${process.env.BRAINCLOUD_API_TOKEN || 'ggai_90e2c6b20c8315906f843798bbc1598df596978a2ec79457e6d00563c76d03dc'}`,
-                  'mcp-session-id': mcpSessionId
-                },
-                body: JSON.stringify({
-                  method: 'tools/call',
-                  params: {
-                    name: functionCall.name,
-                    arguments: functionCall.arguments
-                  }
-                })
+                headers: buildMcpHeaders(braincloudToken, mcpSessionId),
+                body: JSON.stringify(toolPayload)
               });
-              
-              const resultData = await mcpResult.json();
+
+              if (!mcpResult.ok) {
+                const errorPayload = await mcpResult.text();
+                throw new Error(`MCP tools/call failed: ${mcpResult.status} ${mcpResult.statusText} | ${errorPayload}`);
+              }
+
+              const { data: resultData, raw: resultRaw } = await parseMcpResponse(mcpResult);
+              logger.info('[CognitoAgent] MCP tool raw response:', resultRaw);
+
               functionCallResults.push({
-                name: functionCall.name,
-                result: resultData
+                name: mappedName,
+                result: resultData || { raw: resultRaw }
               });
+              pendingToolCalls.delete(callId);
               
             } catch (toolError) {
-              logger.error(`[CognitoAgent] Error executing MCP tool ${functionCall.name}:`, toolError);
+              logger.error(`[CognitoAgent] Error executing MCP tool ${existingCall.name}:`, toolError);
               functionCallResults.push({
-                name: functionCall.name,
+                name: existingCall.name,
                 error: toolError.message
               });
+              pendingToolCalls.delete(callId);
             }
           }
         }

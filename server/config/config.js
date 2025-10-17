@@ -8,6 +8,12 @@ const __dirname = path.dirname(__filename);
 // Carrega as variáveis de ambiente do arquivo .env
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
+const cognitoApiKey = process.env.COGNITO_API_KEY;
+const cognitoEnabledFlag = process.env.COGNITO_ENABLED;
+const cognitoEnabled = typeof cognitoEnabledFlag === 'string'
+  ? cognitoEnabledFlag === 'true'
+  : Boolean(cognitoApiKey && cognitoApiKey !== 'sua_chave_aqui');
+
 const config = {
   // Configurações do servidor
   env: process.env.NODE_ENV || 'development',
@@ -53,8 +59,9 @@ const config = {
   // Cognito (Serviço de IA)
   cognito: {
     apiUrl: process.env.COGNITO_API_URL || 'http://localhost:8000',
-    apiKey: process.env.COGNITO_API_KEY || 'sua_chave_aqui',
-    timeout: parseInt(process.env.COGNITO_TIMEOUT || '30000', 10) // 30 segundos
+    apiKey: cognitoApiKey || 'sua_chave_aqui',
+    timeout: parseInt(process.env.COGNITO_TIMEOUT || '30000', 10), // 30 segundos
+    enabled: cognitoEnabled
   },
   
   // Logging
@@ -100,7 +107,7 @@ if (!config.jwtSecret || config.jwtSecret === 'seu_segredo_jwt_aqui') {
   console.warn('AVISO: JWT_SECRET não configurado. Usando valor padrão inseguro.');
 }
 
-if (!config.cognito.apiKey || config.cognito.apiKey === 'sua_chave_aqui') {
+if (config.cognito.enabled && (!config.cognito.apiKey || config.cognito.apiKey === 'sua_chave_aqui')) {
   console.warn('AVISO: COGNITO_API_KEY não configurado. A integração com o Cognito não funcionará corretamente.');
 }
 
