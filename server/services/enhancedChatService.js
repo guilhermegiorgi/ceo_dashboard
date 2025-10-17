@@ -6,7 +6,7 @@
 import remoteWorkbench from './remoteWorkbench.js';
 import mcpClient from './mcpClientImproved.js';
 import { v4 as uuidv4 } from 'uuid';
-import db from './database.js';
+import { query } from '../database/pg-pool.js';
 
 class EnhancedChatService {
   constructor() {
@@ -42,7 +42,7 @@ class EnhancedChatService {
     this.conversationContexts.set(conversationId, conversation);
 
     // Persistir
-    await db.query(
+    await query(
       `INSERT INTO chat_conversations (id, user_id, agent_id, workbench_session_id, context)
        VALUES ($1, $2, $3, $4, $5)`,
       [conversationId, userId, agentId, workbenchSession.id, JSON.stringify(conversation.context)]
@@ -98,14 +98,14 @@ class EnhancedChatService {
       conversation.updatedAt = new Date();
 
       // Persistir
-      await db.query(
+      await query(
         `INSERT INTO chat_messages 
          (conversation_id, role, content, tools_used)
          VALUES ($1, $2, $3, $4)`,
         [conversationId, 'user', userMessage, null]
       );
 
-      await db.query(
+      await query(
         `INSERT INTO chat_messages 
          (conversation_id, role, content, tools_used)
          VALUES ($1, $2, $3, $4)`,
@@ -280,7 +280,7 @@ class EnhancedChatService {
 
   async deleteConversation(conversationId) {
     this.conversationContexts.delete(conversationId);
-    await db.query(
+    await query(
       `DELETE FROM chat_conversations WHERE id = $1`,
       [conversationId]
     );

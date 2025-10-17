@@ -592,8 +592,7 @@ router.post('/chat/stream', async (req, res) => {
                 method: 'tools/call',
                 params: {
                   name: mappedName,
-                  arguments: parsedArguments,
-                  _meta: { progressToken: null }
+                  arguments: parsedArguments
                 }
               };
 

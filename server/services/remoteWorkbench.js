@@ -6,7 +6,7 @@
 
 import sandboxExecutor from './sandboxExecutor.js';
 import { v4 as uuidv4 } from 'uuid';
-import db from './database.js';
+import { query } from '../database/pg-pool.js';
 
 class RemoteWorkbench {
   constructor() {
@@ -31,7 +31,7 @@ class RemoteWorkbench {
     this.sessions.set(sessionId, session);
 
     // Persistir em DB
-    await db.query(
+    await query(
       `INSERT INTO workbench_sessions (id, user_id, agent_id, data) 
        VALUES ($1, $2, $3, $4)`,
       [sessionId, userId, agentId, JSON.stringify(session)]
@@ -84,7 +84,7 @@ class RemoteWorkbench {
       }
 
       // Persistir execução
-      await db.query(
+      await query(
         `INSERT INTO workbench_executions 
          (id, session_id, code, language, status, result, duration) 
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -145,7 +145,7 @@ class RemoteWorkbench {
   async closeSession(sessionId) {
     this.sessions.delete(sessionId);
     // Persistir no DB que session foi fechada
-    await db.query(
+    await query(
       `UPDATE workbench_sessions SET closed_at = NOW() WHERE id = $1`,
       [sessionId]
     );
