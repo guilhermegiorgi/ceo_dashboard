@@ -1,8 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
-import apiClient from '../services/apiClient';
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAPI } from "./useAPI";
+import { useAIProvider } from "./useAIProvider";
 
 interface Message {
   id: string;
@@ -27,7 +28,9 @@ type StoredMessage = {
 
 export const useChat = () => {
   const searchParams = useSearchParams();
-  const conversationId = searchParams.get('conversation');
+  const conversationId = searchParams.get("conversation");
+  const api = useAPI();
+  const { chatModel } = useAIProvider();
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState(() => 
@@ -74,7 +77,10 @@ export const useChat = () => {
   // Save messages to localStorage for cross-tab sync
   useEffect(() => {
     if (messages.length > 0) {
-      localStorage.setItem(`chat-messages-${currentConversationId}`, JSON.stringify(messages));
+      localStorage.setItem(
+        `chat-messages-${currentConversationId}`,
+        JSON.stringify(messages)
+      );
     }
   }, [messages, currentConversationId]);
 
@@ -86,7 +92,7 @@ export const useChat = () => {
   const loadConversation = useCallback(async (convId: string) => {
     try {
       setIsLoading(true);
-      const response = await apiClient.getBrainConversation(convId);
+      const response = await api.getBrainConversation(convId);
       
       if (response.success && response.conversation) {
         const loadedMessages = response.conversation.map((msg: Conversation) => ({
@@ -110,7 +116,7 @@ export const useChat = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [api]);
 
   const generateConversationTitle = useCallback(async () => {
     const lastUserMessage = messages.filter(m => m.role === 'user').pop();
@@ -144,20 +150,26 @@ export const useChat = () => {
     }
   }, [messages, conversationTitle, currentConversationId]);
 
-  const addMessage = useCallback((message: Omit<Message, 'id' | 'timestamp'>) => {
-    const newMessage: Message = {
-      ...message,
-      id: `${message.role}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, newMessage]);
-    
-    // Generate title after user message
-    if (message.role === 'user' && messages.length === 0) {
-      setTimeout(generateConversationTitle, 1000);
-    }
-  }, [messages.length, generateConversationTitle]);
+  const addMessage = useCallback(
+    (message: Omit<Message, "id" | "timestamp">) => {
+      const newMessage: Message = {
+        ...message,
+        id: `${message.role}-${Date.now()}-${Math.random()
+          .toString(36)
+          .substr(2, 6)}`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => {
+        const next = [...prev, newMessage];
+        if (message.role === "user" && prev.length === 0) {
+          setTimeout(generateConversationTitle, 1000);
+        }
+        return next;
+      });
+    },
+    [generateConversationTitle]
+  );
 
   const clearConversation = useCallback(() => {
     setMessages([]);
@@ -170,13 +182,13 @@ export const useChat = () => {
     if (messages.length === 0) return;
 
     try {
-      const brainMessages = messages.map(msg => ({
+      const brainMessages = messages.map((msg) => ({
         role: msg.role,
         content: msg.text,
         timestamp: msg.timestamp.toISOString(),
       }));
 
-      await apiClient.saveConversation(
+      await api.saveConversation(
         currentConversationId,
         brainMessages,
         {
@@ -189,7 +201,20 @@ export const useChat = () => {
     } catch (error) {
       console.warn("Failed to save conversation to Brain Cloud:", error);
     }
-  }, [messages, currentConversationId, conversationTitle]);
+  }, [api, messages, currentConversationId, conversationTitle]);
+
+  const sendMessage = useCallback(
+    async (message: string) => {
+      const config = await api.getAIConfig();
+      const selection = config.modelSelection.chat || chatModel;
+
+      return api.sendChatWithProvider(message, {
+        provider: selection.provider,
+        model: selection.model,
+      });
+    },
+    [api, chatModel]
+  );
 
   return {
     messages,
@@ -202,6 +227,7 @@ export const useChat = () => {
     clearConversation,
     loadConversation,
     generateConversationTitle,
-    saveConversationToBrain
+    saveConversationToBrain,
+    sendMessage,
   };
 };

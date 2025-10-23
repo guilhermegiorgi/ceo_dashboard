@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import type { SetStateAction } from 'react';
 import {
   BrainCloudSettings,
   InterfacePreferences,
   AIApiKeys,
   SystemSettings,
+  AIProviderConfig,
+  ModelSelectionMap,
 } from '../types';
 
 const BRAINCLOUD_KEY = 'ggai.settings.braincloud';
 const INTERFACE_KEY = 'ggai.settings.interface';
 const AI_KEYS_KEY = 'ggai.settings.aikeys';
 const SYSTEM_KEY = 'ggai.settings.system';
+const AI_PROVIDER_KEY = 'ggai.settings.aiProvider';
 
 export const defaultBrainCloudSettings: BrainCloudSettings = {
   connectionMode: 'auto',
@@ -34,6 +38,7 @@ export const defaultAIApiKeys: AIApiKeys = {
   anthropic: '',
   google: '',
   perplexity: '',
+  openrouter: '',
 };
 
 export const defaultSystemSettings: SystemSettings = {
@@ -44,6 +49,40 @@ export const defaultSystemSettings: SystemSettings = {
   enableDebugMode: false,
 };
 
+const defaultModelSelection: ModelSelectionMap = {
+  chat: {
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    temperature: 0.7,
+    maxTokens: 2048,
+  },
+  insights: {
+    provider: 'anthropic',
+    model: 'claude-3-haiku',
+    temperature: 0.4,
+    maxTokens: 1536,
+  },
+  global: {
+    provider: 'google',
+    model: 'gemini-1.5-flash',
+    temperature: 0.5,
+    maxTokens: 2048,
+  },
+};
+
+const cloneModelSelection = (selection: ModelSelectionMap): ModelSelectionMap => ({
+  chat: { ...selection.chat },
+  insights: { ...selection.insights },
+  global: { ...selection.global },
+});
+
+const defaultAIProviderConfig: AIProviderConfig = {
+    apiKeys: { ...defaultAIApiKeys },
+    modelSelection: cloneModelSelection(defaultModelSelection),
+    customProviders: {},
+    fallbackProvider: 'openai',
+};
+
 export function useSettingsPersistence() {
   const [brainCloudSettings, setBrainCloudSettings] = useState<BrainCloudSettings>(
     defaultBrainCloudSettings
@@ -51,8 +90,27 @@ export function useSettingsPersistence() {
   const [interfacePreferences, setInterfacePreferences] = useState<InterfacePreferences>(
     defaultInterfacePreferences
   );
-  const [aiApiKeys, setAIApiKeys] = useState<AIApiKeys>(defaultAIApiKeys);
+  const [aiProviderConfig, setAIProviderConfig] = useState<AIProviderConfig>(
+    defaultAIProviderConfig
+  );
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
+
+  const setAIApiKeys = useCallback(
+    (value: SetStateAction<AIApiKeys>) => {
+      setAIProviderConfig((prev) => {
+        const current = prev.apiKeys;
+        const next =
+          typeof value === 'function'
+            ? (value as (prevState: AIApiKeys) => AIApiKeys)(current)
+            : value;
+        return {
+          ...prev,
+          apiKeys: { ...next },
+        };
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     loadSettings();
@@ -68,11 +126,24 @@ export function useSettingsPersistence() {
       const interface_ = localStorage.getItem(INTERFACE_KEY);
       const aiKeys = localStorage.getItem(AI_KEYS_KEY);
       const system = localStorage.getItem(SYSTEM_KEY);
+      const aiProvider = localStorage.getItem(AI_PROVIDER_KEY);
 
       if (brainCloud) setBrainCloudSettings(JSON.parse(brainCloud));
       if (interface_) setInterfacePreferences(JSON.parse(interface_));
-      if (aiKeys) setAIApiKeys(JSON.parse(aiKeys));
       if (system) setSystemSettings(JSON.parse(system));
+      if (aiProvider) {
+        try {
+          setAIProviderConfig((prev) => ({
+            ...prev,
+            ...JSON.parse(aiProvider),
+          }));
+        } catch (error) {
+          console.error('[useSettingsPersistence] Failed to parse AI provider config from localStorage:', error);
+        }
+      }
+      if (aiKeys) {
+        setAIApiKeys(JSON.parse(aiKeys));
+      }
 
       // Try to load from server with retry logic
       let retries = 3;
@@ -93,6 +164,13 @@ export function useSettingsPersistence() {
             console.log('✅ [useSettingsPersistence] Settings loaded from server:', serverSettings);
             if (serverSettings.brainCloud) setBrainCloudSettings(serverSettings.brainCloud);
             if (serverSettings.interface) setInterfacePreferences(serverSettings.interface);
+            if (serverSettings.aiProvider) {
+              setAIProviderConfig((prev) => ({
+                ...defaultAIProviderConfig,
+                ...prev,
+                ...serverSettings.aiProvider,
+              }));
+            }
             if (serverSettings.aiKeys) setAIApiKeys(serverSettings.aiKeys);
             if (serverSettings.system) setSystemSettings(serverSettings.system);
             break; // Success, exit retry loop
@@ -120,8 +198,9 @@ export function useSettingsPersistence() {
     try {
       localStorage.setItem(BRAINCLOUD_KEY, JSON.stringify(brainCloudSettings));
       localStorage.setItem(INTERFACE_KEY, JSON.stringify(interfacePreferences));
-      localStorage.setItem(AI_KEYS_KEY, JSON.stringify(aiApiKeys));
+      localStorage.setItem(AI_KEYS_KEY, JSON.stringify(aiProviderConfig.apiKeys));
       localStorage.setItem(SYSTEM_KEY, JSON.stringify(systemSettings));
+      localStorage.setItem(AI_PROVIDER_KEY, JSON.stringify(aiProviderConfig));
 
       const response = await fetch('/api/settings', {
         method: 'POST',
@@ -130,8 +209,9 @@ export function useSettingsPersistence() {
         body: JSON.stringify({
           brainCloud: brainCloudSettings,
           interface: interfacePreferences,
-          aiKeys: aiApiKeys,
+          aiKeys: aiProviderConfig.apiKeys,
           system: systemSettings,
+          aiProvider: aiProviderConfig,
         }),
       });
 
@@ -153,8 +233,10 @@ export function useSettingsPersistence() {
     setBrainCloudSettings,
     interfacePreferences,
     setInterfacePreferences,
-    aiApiKeys,
+    aiApiKeys: aiProviderConfig.apiKeys,
     setAIApiKeys,
+    aiProviderConfig,
+    setAIProviderConfig,
     systemSettings,
     setSystemSettings,
     loadSettings,

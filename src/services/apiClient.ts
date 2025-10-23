@@ -1,6 +1,13 @@
 // src/services/apiClient.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type {
+  AIProvider as ProviderKey,
+  AIProviderConfig as SettingsAIProviderConfig,
+  ModelContext,
+  ModelInfo as SettingsModelInfo,
+} from "../components/settings/types";
+
 // --- Interfaces de Tipos ---
 
 export interface FeedbackAction {
@@ -559,10 +566,18 @@ export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: any;
   headers?: Record<string, string>;
+  searchParams?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
+  retries?: number;
 }
 
 export class APIClient {
   private baseUrl: string;
+  private readonly aiConfigCacheTtlMs = 5 * 60 * 1000;
+  private aiConfigCache: {
+    data: SettingsAIProviderConfig;
+    expiresAt: number;
+  } | null = null;
 
   constructor() {
     this.baseUrl = resolveApiBaseUrl();
@@ -573,6 +588,67 @@ export class APIClient {
     resolve: (value: unknown) => void;
     reject: (reason?: any) => void;
   }[] = [];
+
+  private logDebug(...args: unknown[]) {
+    if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+      console.debug("[APIClient]", ...args);
+    }
+  }
+
+  private isTransientError(error: unknown): boolean {
+    if (!error) return false;
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return true;
+    }
+    if (error instanceof TypeError) {
+      return true;
+    }
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      return (
+        message.includes("network") ||
+        message.includes("timeout") ||
+        message.includes("failed to fetch") ||
+        message.includes("temporarily") ||
+        message.includes("connection reset")
+      );
+    }
+    return false;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private buildUrl(
+    endpoint: string,
+    searchParams?: Record<string, string | number | boolean | undefined>
+  ): string {
+    let url = `${this.baseUrl}${endpoint}`;
+    if (searchParams) {
+      const usp = new URLSearchParams();
+      for (const [key, value] of Object.entries(searchParams)) {
+        if (value === undefined || value === null) continue;
+        usp.append(key, String(value));
+      }
+      const queryString = usp.toString();
+      if (queryString) {
+        url += (url.includes("?") ? "&" : "?") + queryString;
+      }
+    }
+    return url;
+  }
+
+  private setAIConfigCache(config: SettingsAIProviderConfig) {
+    this.aiConfigCache = {
+      data: config,
+      expiresAt: Date.now() + this.aiConfigCacheTtlMs,
+    };
+  }
+
+  private clearAIConfigCache() {
+    this.aiConfigCache = null;
+  }
 
   private processQueue = (error: any, token = null) => {
     this.failedQueue.forEach((prom) => {
@@ -590,96 +666,150 @@ export class APIClient {
     endpoint: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    const token = localStorage.getItem("token");
+    const { searchParams, retries = 0, signal, ...restOptions } = options;
+    const url = this.buildUrl(endpoint, searchParams);
+    const method = restOptions.method ?? "GET";
 
-    const config: RequestInit = {
-      ...options,
-      headers: {
+    const attemptRequest = async (attempt: number): Promise<T> => {
+      const storage =
+        typeof window !== "undefined" ? window.localStorage : null;
+      const token = storage?.getItem("token") ?? null;
+
+      const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        ...options.headers,
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+        ...(restOptions.headers || {}),
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const isFormData =
+        restOptions.body instanceof FormData ||
+        restOptions.body instanceof Blob ||
+        restOptions.body instanceof ArrayBuffer ||
+        restOptions.body instanceof URLSearchParams;
+
+      if (isFormData && headers["Content-Type"]) {
+        delete headers["Content-Type"];
+      }
+
+      const body =
+        restOptions.body &&
+        typeof restOptions.body === "object" &&
+        !isFormData
+          ? JSON.stringify(restOptions.body)
+          : restOptions.body;
+
+      const config: RequestInit = {
+        ...restOptions,
+        method,
+        headers,
+        body,
+        signal,
+      };
+
+      this.logDebug("Request start", { method, endpoint, attempt: attempt + 1 });
+
+      try {
+        let response = await fetch(url, config);
+
+        if (response.status === 401 && storage) {
+          if (!this.isRefreshing) {
+            this.isRefreshing = true;
+            const refreshToken = storage.getItem("refreshToken");
+            if (refreshToken) {
+              try {
+                const refreshResponse = await fetch(
+                  `${this.baseUrl}/api/auth/refresh`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ refreshToken }),
+                  }
+                );
+                const refreshData = await refreshResponse.json();
+                if (refreshData.token) {
+                  storage.setItem("token", refreshData.token);
+                  storage.setItem("refreshToken", refreshData.refreshToken);
+                  this.processQueue(null, refreshData.token);
+                  (config.headers as Record<string, string>).Authorization = `Bearer ${refreshData.token}`;
+                  response = await fetch(url, config);
+                } else {
+                  throw new Error("Falha ao renovar o token");
+                }
+              } catch (error) {
+                this.processQueue(error, null);
+                storage.clear();
+                if (typeof window !== "undefined") {
+                  window.location.href = "/login";
+                }
+                throw error;
+              } finally {
+                this.isRefreshing = false;
+              }
+            }
+          } else {
+            const newToken = await new Promise<string | null>((resolve, reject) => {
+              this.failedQueue.push({
+                resolve: (value) => resolve((value as string) ?? null),
+                reject,
+              });
+            });
+            if (newToken) {
+              (config.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+            }
+            response = await fetch(url, config);
+          }
+        }
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          this.logDebug("Request error", {
+            method,
+            endpoint,
+            status: response.status,
+            statusText: response.statusText,
+            errorBody,
+          });
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const json = (await response.json()) as T;
+          this.logDebug("Request success", { method, endpoint, attempt: attempt + 1 });
+          return json;
+        }
+
+        const textResponse = (await response.text()) as unknown as T;
+        this.logDebug("Request success", { method, endpoint, attempt: attempt + 1 });
+        return textResponse;
+      } catch (error) {
+        this.logDebug("Request failure", { method, endpoint, attempt: attempt + 1, error });
+        throw error;
+      }
     };
 
-    if (config.body && typeof config.body === "object") {
-      config.body = JSON.stringify(config.body);
-    }
-
-    try {
-      let response = await fetch(url, config);
-
-      if (response.status === 401) {
-        if (!this.isRefreshing) {
-          this.isRefreshing = true;
-          const refreshToken = localStorage.getItem("refreshToken");
-          if (refreshToken) {
-            try {
-              const refreshResponse = await fetch(
-                `${this.baseUrl}/api/auth/refresh`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ refreshToken: refreshToken }),
-                }
-              );
-              const refreshData = await refreshResponse.json();
-              if (refreshData.token) {
-                localStorage.setItem("token", refreshData.token);
-                localStorage.setItem("refreshToken", refreshData.refreshToken);
-                this.processQueue(null, refreshData.token);
-                // Repete a requisição original com o novo token
-                (config.headers as Record<string, string>)[
-                  "Authorization"
-                ] = `Bearer ${refreshData.token}`;
-                response = await fetch(url, config);
-              } else {
-                throw new Error("Falha ao renovar o token");
-              }
-            } catch (error) {
-              this.processQueue(error, null);
-              localStorage.clear();
-              window.location.href = "/login";
-              throw error;
-            } finally {
-              this.isRefreshing = false;
-            }
-          }
-        } else {
-          return new Promise((resolve, reject) => {
-            this.failedQueue.push({ resolve, reject });
-          })
-            .then((newToken) => {
-              (config.headers as Record<string, string>)[
-                "Authorization"
-              ] = `Bearer ${newToken}`;
-              return fetch(url, config);
-            })
-            .then((res) => res.json());
+    let attempt = 0;
+    let lastError: unknown;
+    while (attempt <= retries) {
+      try {
+        return await attemptRequest(attempt);
+      } catch (error) {
+        lastError = error;
+        if (attempt >= retries || !this.isTransientError(error)) {
+          console.error(`API request failed: ${endpoint}`, error);
+          throw error;
         }
+        await this.delay(300 * (attempt + 1));
+        attempt += 1;
       }
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error(
-          `HTTP ${response.status}: ${response.statusText}`,
-          errorBody
-        );
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        return (await response.json()) as T;
-      }
-
-      // Retorna como texto se não for JSON
-      const textResponse = await response.text();
-      return textResponse as unknown as T;
-    } catch (error) {
-      console.error(`API request failed: ${endpoint}`, error);
-      throw error;
     }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("API request failed");
   }
 
   public async getDashboardSnapshot(): Promise<DashboardSnapshot> {
@@ -965,6 +1095,58 @@ export class APIClient {
     );
   }
 
+  public async sendChatMessage(
+    message: string,
+    providerOverride?: { provider: ProviderKey; model: string }
+  ): Promise<Response> {
+    const storage =
+      typeof window !== "undefined" ? window.localStorage : null;
+    const token = storage?.getItem("token") ?? null;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const payload: Record<string, unknown> = {
+      messages: [
+        {
+          role: "user",
+          content: message,
+        },
+      ],
+      sessionId: `chat-${Date.now()}`,
+      tools: true,
+    };
+
+    if (providerOverride) {
+      payload.providerOverride = providerOverride;
+    }
+
+    const response = await fetch(`${this.baseUrl}/api/mcp/chat/stream`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logDebug("sendChatMessage error", {
+        status: response.status,
+        statusText: response.statusText,
+        errorText,
+      });
+      throw new Error(
+        errorText || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    return response;
+  }
+
   // --- Métodos para Insights ---
 
   public async getInsights(): Promise<SynergyInsight[]> {
@@ -979,6 +1161,150 @@ export class APIClient {
       "/api/insights/weekly?cache=false"
     );
     return response.data || [];
+  }
+
+  public async getAIConfig(
+    forceRefresh = false
+  ): Promise<SettingsAIProviderConfig> {
+    const cached = this.aiConfigCache;
+    if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
+      this.logDebug("AI config cache hit");
+      return cached.data;
+    }
+
+    const response = await this.request<{
+      success?: boolean;
+      config?: SettingsAIProviderConfig;
+      error?: string;
+      code?: string;
+    }>("/api/ai/config", { retries: 1 });
+
+    if (!response?.success || !response.config) {
+      throw new Error(response?.error || "Falha ao carregar configuração de IA.");
+    }
+
+    this.setAIConfigCache(response.config);
+    return response.config;
+  }
+
+  public async updateAIConfig(
+    context: ModelContext,
+    configPatch: Partial<SettingsAIProviderConfig>
+  ): Promise<{ success: boolean; config: SettingsAIProviderConfig }> {
+    const response = await this.request<{
+      success: boolean;
+      config: SettingsAIProviderConfig;
+      error?: string;
+      code?: string;
+    }>("/api/ai/config/update", {
+      method: "POST",
+      body: {
+        context,
+        config: configPatch,
+      },
+      retries: 1,
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || "Falha ao atualizar configuração de IA.");
+    }
+
+    this.setAIConfigCache(response.config);
+    return response;
+  }
+
+  public async testAIProvider(
+    providerOrContext: ProviderKey | ModelContext,
+    apiKey?: string
+  ): Promise<{ connected: boolean; error?: string; code?: string; provider?: ProviderKey; model?: string }> {
+    const payload =
+      providerOrContext === "chat" ||
+      providerOrContext === "insights" ||
+      providerOrContext === "global"
+        ? { context: providerOrContext }
+        : { provider: providerOrContext, apiKey };
+
+    const response = await this.request<{
+      success?: boolean;
+      connected?: boolean;
+      error?: string;
+      code?: string;
+      provider?: ProviderKey;
+      model?: string;
+    }>("/api/ai/config/test", {
+      method: "POST",
+      body: payload,
+      retries: 1,
+    });
+
+    if (response?.success === false) {
+      throw new Error(response.error || "Falha ao testar provedor");
+    }
+
+    return {
+      connected: response?.connected ?? Boolean(response?.success),
+      error: response?.error,
+      code: response?.code,
+      provider: response?.provider,
+      model: response?.model,
+    };
+  }
+
+  public async updateAIModelSelection(
+    context: string,
+    selection: Partial<{
+      provider: string;
+      model: string;
+      temperature?: number;
+      maxTokens?: number;
+      customProviderId?: string;
+    }>
+  ): Promise<{ success: boolean; config: SettingsAIProviderConfig }> {
+    const normalizedContext: ModelContext =
+      context === "insights" || context === "global" ? context : "chat";
+
+    const baseConfig = await this.getAIConfig();
+    type Selection = SettingsAIProviderConfig["modelSelection"][ModelContext];
+    const fallbackSelection = baseConfig.modelSelection[normalizedContext] as Selection;
+
+    const nextSelection: Selection = {
+      ...fallbackSelection,
+      provider: (selection.provider ?? fallbackSelection.provider) as ProviderKey,
+      model: selection.model ?? fallbackSelection.model,
+      temperature: selection.temperature ?? fallbackSelection.temperature,
+      maxTokens: selection.maxTokens ?? fallbackSelection.maxTokens,
+      customProviderId:
+        selection.customProviderId ?? fallbackSelection.customProviderId,
+    };
+
+    return this.updateAIConfig(normalizedContext, {
+      modelSelection: {
+        [normalizedContext]: nextSelection,
+      },
+    });
+  }
+
+  public async getProviderModels(
+    provider: ProviderKey
+  ): Promise<SettingsModelInfo[]> {
+    const response = await this.request<{
+      success?: boolean;
+      models?: SettingsModelInfo[];
+      error?: string;
+      code?: string;
+    }>("/api/ai/config/models", {
+      method: "GET",
+      searchParams: { provider },
+      retries: 1,
+    });
+
+    if (response?.success === false) {
+      throw new Error(
+        response.error || "Falha ao carregar modelos do provedor."
+      );
+    }
+
+    return response?.models ?? [];
   }
 
   public async refreshInsightsWithParams(params: {
@@ -1604,9 +1930,9 @@ export class APIClient {
   }
 
   /**
-   * Get all models for a specific provider
+   * Get all models for a specific provider (by internal ID)
    */
-  public async getProviderModels(
+  public async getProviderModelsById(
     providerId: string
   ): Promise<{ models: AIModel[] }> {
     const response = await this.request<{ models: AIModelResponse[] }>(
@@ -1716,6 +2042,7 @@ export class APIClient {
   }
 
   public async logout(): Promise<void> {
+    this.clearAIConfigCache();
     await this.request<{ success?: boolean }>("/api/auth/logout", {
       method: "POST",
     });

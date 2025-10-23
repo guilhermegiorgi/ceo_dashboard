@@ -5,6 +5,7 @@ import {
   sanitizeConfigForClient,
   getModelConfigForUser,
 } from "../services/aiConfigService.js";
+import { loadUserSettings, saveUserSettings } from "../services/settingsServiceDB.js";
 import { aiProviderRouter } from "../services/aiProviderRouter.js";
 
 const router = Router();
@@ -52,6 +53,42 @@ router.post("/test", authenticateJWT, async (req, res, next) => {
       model: modelConfig.model,
       fallbackUsed: modelConfig.fallbackUsed || false,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/", authenticateJWT, async (req, res, next) => {
+  try {
+    const { context, selection } = req.body || {};
+    if (!context || !selection) {
+      return res.status(400).json({ success: false, error: "context and selection are required" });
+    }
+
+    const fullSettings = await loadUserSettings(req.user);
+    const settings = await getUserAIConfig(req.user);
+    const nextSelection = {
+      ...settings.modelSelection[context],
+      ...selection,
+    };
+
+    const nextConfig = {
+      ...settings,
+      modelSelection: {
+        ...settings.modelSelection,
+        [context]: nextSelection,
+      },
+    };
+
+    await saveUserSettings(req.user, {
+      braincloud: fullSettings.braincloud,
+      interface: fullSettings.interface,
+      aiKeys: nextConfig.apiKeys,
+      aiProvider: nextConfig,
+      system: fullSettings.system,
+    });
+
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }
