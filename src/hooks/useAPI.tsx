@@ -36,18 +36,21 @@ type APIHelpers = {
   delete: <T>(endpoint: string, options?: Omit<RequestOptions, "method">) => Promise<T>;
   getAIConfig: (forceRefresh?: boolean) => Promise<AIProviderConfig>;
   updateAIConfig: (
-    context: ModelContext,
+    context: ModelContext | null,
     configPatch: Partial<AIProviderConfig>
-  ) => Promise<{ success: boolean; config: AIProviderConfig }>;
+  ) => Promise<{ success: boolean; config?: AIProviderConfig }>;
   testAIProvider: (
     providerOrContext: ProviderKey | ModelContext,
-    apiKey?: string
+    options?: { apiKey?: string; selection?: { provider: ProviderKey; model: string } }
   ) => Promise<{ connected: boolean; error?: string; code?: string; provider?: ProviderKey; model?: string }>;
   getProviderModels: (provider: ProviderKey) => Promise<ModelInfo[]>;
   sendChatWithProvider: (
     message: string,
     providerOverride?: { provider: ProviderKey; model: string }
   ) => Promise<Response>;
+  updateFallbackProvider: (
+    provider: ProviderKey
+  ) => Promise<{ success: boolean; config?: AIProviderConfig }>;
 };
 
 type APIWithHelpers = APIClient & APIHelpers;
@@ -139,7 +142,7 @@ export const useAPI = (): APIWithHelpers => {
   );
 
   const updateAIConfig = useCallback(
-    (context: ModelContext, configPatch: Partial<AIProviderConfig>) =>
+    (context: ModelContext | null, configPatch: Partial<AIProviderConfig>) =>
       execute("updateAIConfig", () =>
         client.updateAIConfig(context, configPatch)
       ),
@@ -147,9 +150,20 @@ export const useAPI = (): APIWithHelpers => {
   );
 
   const testAIProvider = useCallback(
-    (providerOrContext: ProviderKey | ModelContext, apiKey?: string) =>
+    (
+      providerOrContext: ProviderKey | ModelContext,
+      options?: { apiKey?: string; selection?: { provider: ProviderKey; model: string } }
+    ) =>
       execute("testAIProvider", () =>
-        client.testAIProvider(providerOrContext, apiKey)
+        client.testAIProvider(providerOrContext, options)
+      ),
+    [client, execute]
+  );
+
+  const updateFallbackProvider = useCallback(
+    (provider: ProviderKey) =>
+      execute("updateFallbackProvider", () =>
+        client.updateFallbackProvider(provider)
       ),
     [client, execute]
   );
@@ -211,6 +225,7 @@ export const useAPI = (): APIWithHelpers => {
         if (prop === "testAIProvider") return testAIProvider;
         if (prop === "getProviderModels") return getProviderModels;
         if (prop === "sendChatWithProvider") return sendChatWithProvider;
+        if (prop === "updateFallbackProvider") return updateFallbackProvider;
 
         if (typeof prop === "string" || typeof prop === "symbol") {
           const value = Reflect.get(client as object, prop) as unknown;
@@ -233,6 +248,7 @@ export const useAPI = (): APIWithHelpers => {
       testAIProvider,
       getProviderModels,
       sendChatWithProvider,
+      updateFallbackProvider,
     ]
   );
 

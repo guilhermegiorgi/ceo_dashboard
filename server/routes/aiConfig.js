@@ -60,25 +60,42 @@ router.post("/test", authenticateJWT, async (req, res, next) => {
 
 router.patch("/", authenticateJWT, async (req, res, next) => {
   try {
-    const { context, selection } = req.body || {};
-    if (!context || !selection) {
-      return res.status(400).json({ success: false, error: "context and selection are required" });
+    const { context, selection, fallbackProvider } = req.body || {};
+
+    if (!selection && !fallbackProvider) {
+      return res
+        .status(400)
+        .json({ success: false, error: "selection or fallbackProvider required" });
+    }
+
+    if (selection && !context) {
+      return res
+        .status(400)
+        .json({ success: false, error: "context is required when updating selection" });
     }
 
     const fullSettings = await loadUserSettings(req.user);
     const settings = await getUserAIConfig(req.user);
-    const nextSelection = {
-      ...settings.modelSelection[context],
-      ...selection,
-    };
 
     const nextConfig = {
       ...settings,
-      modelSelection: {
-        ...settings.modelSelection,
-        [context]: nextSelection,
-      },
+      modelSelection: { ...settings.modelSelection },
     };
+
+    if (selection && context) {
+      const currentSelection = settings.modelSelection?.[context] || {};
+      nextConfig.modelSelection = {
+        ...nextConfig.modelSelection,
+        [context]: {
+          ...currentSelection,
+          ...selection,
+        },
+      };
+    }
+
+    if (fallbackProvider) {
+      nextConfig.fallbackProvider = fallbackProvider;
+    }
 
     await saveUserSettings(req.user, {
       braincloud: fullSettings.braincloud,
@@ -88,7 +105,7 @@ router.patch("/", authenticateJWT, async (req, res, next) => {
       system: fullSettings.system,
     });
 
-    res.json({ success: true });
+    res.json({ success: true, config: sanitizeConfigForClient(nextConfig) });
   } catch (error) {
     next(error);
   }

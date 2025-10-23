@@ -1188,20 +1188,37 @@ export class APIClient {
   }
 
   public async updateAIConfig(
-    context: ModelContext,
+    context: ModelContext | null,
     configPatch: Partial<SettingsAIProviderConfig>
-  ): Promise<{ success: boolean; config: SettingsAIProviderConfig }> {
+  ): Promise<{ success: boolean; config?: SettingsAIProviderConfig }> {
+    const selection =
+      context && configPatch.modelSelection?.[context]
+        ? configPatch.modelSelection[context]
+        : undefined;
+
+    const payload: Record<string, unknown> = {};
+
+    if (selection && context) {
+      payload.context = context;
+      payload.selection = selection;
+    }
+
+    if (configPatch.fallbackProvider) {
+      payload.fallbackProvider = configPatch.fallbackProvider;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return { success: true, config: this.aiConfigCache?.data };
+    }
+
     const response = await this.request<{
       success: boolean;
-      config: SettingsAIProviderConfig;
+      config?: SettingsAIProviderConfig;
       error?: string;
       code?: string;
-    }>("/api/ai/config/update", {
-      method: "POST",
-      body: {
-        context,
-        config: configPatch,
-      },
+    }>("/api/ai/config", {
+      method: "PATCH",
+      body: payload,
       retries: 1,
     });
 
@@ -1209,20 +1226,39 @@ export class APIClient {
       throw new Error(response.error || "Falha ao atualizar configuração de IA.");
     }
 
-    this.setAIConfigCache(response.config);
+    if (response.config) {
+      this.setAIConfigCache(response.config);
+    } else {
+      this.aiConfigCache = null;
+    }
+
     return response;
   }
 
   public async testAIProvider(
     providerOrContext: ProviderKey | ModelContext,
-    apiKey?: string
+    options: {
+      apiKey?: string;
+      selection?: { provider: ProviderKey; model: string };
+    } = {}
   ): Promise<{ connected: boolean; error?: string; code?: string; provider?: ProviderKey; model?: string }> {
-    const payload =
+    const payload: Record<string, unknown> = {};
+
+    if (
       providerOrContext === "chat" ||
       providerOrContext === "insights" ||
       providerOrContext === "global"
-        ? { context: providerOrContext }
-        : { provider: providerOrContext, apiKey };
+    ) {
+      payload.context = providerOrContext;
+      if (options.selection) {
+        payload.selection = options.selection;
+      }
+    } else {
+      payload.provider = providerOrContext;
+      if (options.apiKey) {
+        payload.apiKey = options.apiKey;
+      }
+    }
 
     const response = await this.request<{
       success?: boolean;
@@ -1250,6 +1286,12 @@ export class APIClient {
     };
   }
 
+  public async updateFallbackProvider(
+    fallbackProvider: ProviderKey
+  ): Promise<{ success: boolean; config?: SettingsAIProviderConfig }> {
+    return this.updateAIConfig(null, { fallbackProvider });
+  }
+
   public async updateAIModelSelection(
     context: string,
     selection: Partial<{
@@ -1259,7 +1301,7 @@ export class APIClient {
       maxTokens?: number;
       customProviderId?: string;
     }>
-  ): Promise<{ success: boolean; config: SettingsAIProviderConfig }> {
+  ): Promise<{ success: boolean; config?: SettingsAIProviderConfig }> {
     const normalizedContext: ModelContext =
       context === "insights" || context === "global" ? context : "chat";
 
