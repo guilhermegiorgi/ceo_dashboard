@@ -107,6 +107,36 @@ scripts/, migrations/  # automações e schema PG
 
 > Em ambiente local sem credenciais, o Hub exibe dados fallback. Para QA real, é recomendado apontar para o tenant Supabase + Brain Cloud oficial.
 
+## 🤖 AI Provider Configuration
+
+The application supports multiple AI providers for different use cases:
+
+### Supported Providers
+- **OpenAI** – gpt-4, gpt-4-turbo, gpt-3.5-turbo
+- **Anthropic** – claude-3-opus, claude-3-sonnet, claude-2
+- **Google** – gemini-pro, palm-2
+- **Perplexity** – pplx-7b, pplx-70b
+- **Open Router** – OpenAI-compatible custom providers
+
+### Configuration
+1. Acesse Settings → AI Providers
+2. Cadastre as API keys desejadas
+3. Escolha o modelo padrão para:
+   - Conversas (Chat)
+   - Insights
+   - Operações Globais
+4. Use "Test Connection" para validar as credenciais
+
+### Fallback Behavior
+1. Se o provedor primário falhar, o sistema tenta o próximo disponível
+2. Caso todos falhem, retornamos erro com instruções de recuperação
+3. Revise status do provedor e chaves em Settings
+
+### Streaming vs Standard
+- Chat suporta respostas em streaming (tokens em tempo real)
+- Insights utiliza resposta padrão (lote único)
+- Ambos respeitam a lógica de fallback
+
 ---
 
 ## 🗺 Roadmap em andamento
