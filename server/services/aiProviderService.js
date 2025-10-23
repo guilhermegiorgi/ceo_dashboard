@@ -277,6 +277,30 @@ export async function getProviderById(providerId, userId) {
   return rows[0];
 }
 
+export async function getProviderByName(userId, providerName) {
+  if (!userId) {
+    throw new Error("User ID is required to look up providers");
+  }
+
+  if (!providerName) {
+    throw new Error("Provider name is required");
+  }
+
+  const normalized = providerName.toLowerCase();
+
+  const { rows } = await query(
+    `SELECT *
+     FROM ai_providers
+     WHERE user_id = $1
+       AND provider_name = $2
+       AND is_active = true
+     LIMIT 1`,
+    [userId, normalized]
+  );
+
+  return rows[0] || null;
+}
+
 /**
  * Create or update a provider
  */
@@ -980,4 +1004,5 @@ export default {
   updateModelUsage,
   syncProviderModels,
   getProviderById,
+  getProviderByName,
 };

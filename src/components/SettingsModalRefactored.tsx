@@ -1,12 +1,3 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, Loader2, Save, Cloud, Key, Sliders, Palette, X } from 'lucide-react';
-import { useSettingsPersistence } from './settings/hooks/useSettingsPersistence';
-import { showSuccessToast, showErrorToast } from '../lib/toast';
-import { BrainCloudSettingsSection } from './settings/BrainCloudSettingsSection';
-import { InterfaceSettingsSection } from './settings/InterfaceSettingsSection';
-import { AIApiKeysSection } from './settings/AIApiKeysSection';
-import { SystemSettingsSection } from './settings/SystemSettingsSection';
-import { BrainCloudConnectionMode, TestStatus } from './settings/types';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Settings as SettingsIcon,
