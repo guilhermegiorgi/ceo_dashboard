@@ -1,1074 +1,726 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import ReactDOM from "react-dom";
-import toast from "react-hot-toast";
+'use client';
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import {
-  Cloud,
-  RefreshCw,
-  Save,
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  Settings,
   ShieldCheck,
-  Eye,
-  EyeOff,
-  Settings2,
-  Workflow,
-  Layers,
-  X,
-  Brain,
-  Trash2,
-  Plus,
-} from "lucide-react";
-import api, {
-  AIProvider,
-  AIProviderCreatePayload,
-  AIModel,
-} from "../services/apiClient";
-
-type BrainCloudSettings = {
-  baseUrl: string;
-  apiToken: string;
-  tenantId: string;
-  tenantPlan: string;
-  mcpWs: string;
-  mcpHttp: string;
-  enableRest: boolean;
-  enableMcp: boolean;
-};
-
-const DEFAULT_SETTINGS: BrainCloudSettings = {
-  baseUrl: "",
-  apiToken: "",
-  tenantId: "",
-  tenantPlan: "",
-  mcpWs: "",
-  mcpHttp: "",
-  enableRest: true,
-  enableMcp: true,
-};
+  Wifi,
+} from 'lucide-react';
+import apiClient, {
+  BrainCloudConnectionMode,
+  BrainCloudSettings,
+  defaultBrainCloudSettings,
+} from '../services/apiClient';
 
 type SettingsModalProps = {
   open: boolean;
   onClose: () => void;
 };
 
-const SECTIONS = [
-  {
-    id: "general",
-    label: "General",
-    description: "Preferências gerais do workspace.",
-    icon: <Settings2 className="h-4 w-4" />,
-  },
-  {
-    id: "braincloud",
-    label: "Brain Cloud",
-    description: "Configurações REST/MCP do Obsidian Brain Cloud.",
-    icon: <Cloud className="h-4 w-4" />,
-  },
-  {
-    id: "aiproviders",
-    label: "AI Providers",
-    description: "Configurar provedores de IA e modelos para chat.",
-    icon: <Brain className="h-4 w-4" />,
-  },
-  {
-    id: "modelparams",
-    label: "Model Parameters",
-    description: "Ajustar parâmetros específicos por provedor de IA.",
-    icon: <Settings2 className="h-4 w-4" />,
-  },
-  {
-    id: "integrations",
-    label: "Integrations",
-    description: "Outras integrações e automações (em breve).",
-    icon: <Workflow className="h-4 w-4" />,
-  },
-  {
-    id: "dataops",
-    label: "Data Ops",
-    description: "Pipelines de dados e sync (em breve).",
-    icon: <Layers className="h-4 w-4" />,
-  },
-];
+type InterfacePreferences = {
+  theme: 'system' | 'light' | 'dark';
+  language: 'pt-BR' | 'en-US';
+  reduceMotion: boolean;
+  showBetaFeatures: boolean;
+};
+
+type AIApiKeys = {
+  openai: string;
+  anthropic: string;
+  google: string;
+  perplexity: string;
+};
+
+type SystemSettings = {
+  allowEditAllDirectories: boolean;
+};
+
+const INTERFACE_PREFS_KEY = 'ggai.settings.interface';
+
+const defaultInterfacePreferences: InterfacePreferences = {
+  theme: 'system',
+  language: 'pt-BR',
+  reduceMotion: false,
+  showBetaFeatures: false,
+};
+
+const defaultAIApiKeys: AIApiKeys = {
+  openai: '',
+  anthropic: '',
+  google: '',
+  perplexity: '',
+};
+
+const defaultSystemSettings: SystemSettings = {
+  allowEditAllDirectories: false,
+};
+
+type TestStatus =
+  | {
+      mode: BrainCloudConnectionMode;
+      success: true;
+      message: string;
+    }
+  | {
+      mode: BrainCloudConnectionMode;
+      success: false;
+      message: string;
+    };
+
+const fieldClass =
+  'w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-60';
+
+const labelClass = 'text-sm font-medium text-zinc-300';
+
+const descriptionClass = 'text-xs text-zinc-500';
+
+const loadInterfacePreferences = (): InterfacePreferences => {
+  if (typeof window === 'undefined') {
+    return defaultInterfacePreferences;
+  }
+  try {
+    const stored = window.localStorage.getItem(INTERFACE_PREFS_KEY);
+    if (!stored) return defaultInterfacePreferences;
+    const parsed = JSON.parse(stored);
+    return {
+      ...defaultInterfacePreferences,
+      ...(parsed || {}),
+    };
+  } catch (error) {
+    console.warn('Failed to load interface preferences:', error);
+    return defaultInterfacePreferences;
+  }
+};
+
+const persistInterfacePreferences = (prefs: InterfacePreferences) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      INTERFACE_PREFS_KEY,
+      JSON.stringify(prefs)
+    );
+  } catch (error) {
+    console.warn('Failed to persist interface preferences:', error);
+  }
+};
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
-  const [activeSection, setActiveSection] = useState<
-    "general" | "braincloud" | "aiproviders" | "modelparams" | "integrations" | "dataops"
-  >("braincloud");
-  const [settings, setSettings] = useState<BrainCloudSettings | null>(null);
+  const [brainCloudSettings, setBrainCloudSettings] =
+    useState<BrainCloudSettings>(defaultBrainCloudSettings);
+  const [interfacePreferences, setInterfacePreferences] =
+    useState<InterfacePreferences>(defaultInterfacePreferences);
+  const [aiApiKeys, setAIApiKeys] = useState<AIApiKeys>(defaultAIApiKeys);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [testingMode, setTestingMode] = useState<"rest" | "mcp" | null>(null);
-  const [showToken, setShowToken] = useState(false);
+  const [testingMode, setTestingMode] =
+    useState<BrainCloudConnectionMode | null>(null);
+  const [testStatus, setTestStatus] = useState<TestStatus | null>(null);
+  const [dirty, setDirty] = useState(false);
 
-  // AI Providers state
-  const [providers, setProviders] = useState<AIProvider[]>([]);
-  const [loadingProviders, setLoadingProviders] = useState(false);
-  const [newProvider, setNewProvider] = useState<AIProviderCreatePayload>({
-    providerName: "openai",
-    displayName: "",
-    apiKey: "",
-  });
-  const [showProviderForm, setShowProviderForm] = useState(false);
-  const [providerModels, setProviderModels] = useState<Record<string, AIModel[]>>({});
-  const [providerModelsLoading, setProviderModelsLoading] = useState<
-    Record<string, boolean>
-  >({});
-  const [syncingProviderId, setSyncingProviderId] = useState<string | null>(
-    null
-  );
+  const hasBrainCloudConfig = useMemo(() => {
+    const { baseUrl, apiToken, mcpHttp, mcpWs } = brainCloudSettings;
+    return Boolean(
+      baseUrl?.trim() ||
+        apiToken?.trim() ||
+        mcpHttp?.trim() ||
+        mcpWs?.trim()
+    );
+  }, [brainCloudSettings]);
 
-  const mergedSettings = useMemo(
-    () => settings ?? DEFAULT_SETTINGS,
-    [settings]
-  );
+  const resetState = useCallback(() => {
+    setTestStatus(null);
+    setDirty(false);
+    setTestingMode(null);
+  }, []);
 
-  const fetchSettings = useCallback(async () => {
+  const hydrateSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.request<{
-        success?: boolean;
-        braincloud?: Partial<BrainCloudSettings> | null;
-      }>("/api/settings/braincloud");
-
-      setSettings({ ...DEFAULT_SETTINGS, ...(data?.braincloud || {}) });
+      const [settings] = await Promise.all([
+        apiClient.getBrainCloudSettings(),
+      ]);
+      setBrainCloudSettings({
+        ...defaultBrainCloudSettings,
+        ...(settings || {}),
+      });
+      setInterfacePreferences(loadInterfacePreferences());
+      resetState();
     } catch (error) {
-      console.error(error);
-      toast.error("Não foi possível carregar as configurações.");
-      setSettings(DEFAULT_SETTINGS);
+      console.error('Failed to load settings modal data:', error);
+      toast.error('Não foi possível carregar as configurações.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resetState]);
 
   useEffect(() => {
-    if (!open) return;
-    fetchSettings();
-  }, [open, fetchSettings]);
+    if (!open) {
+      return;
+    }
+    hydrateSettings();
+  }, [open, hydrateSettings]);
 
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === 'Escape') {
         onClose();
       }
     };
-    document.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
-    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
 
-  const handleChange =
-    (field: keyof BrainCloudSettings) =>
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const value = event.target.value;
-      setSettings((prev) => ({
-        ...(prev || DEFAULT_SETTINGS),
-        [field]: value,
-      }));
-    };
-
-  const handleToggle = (field: keyof BrainCloudSettings) => () => {
-    setSettings((prev) => ({
-      ...(prev || DEFAULT_SETTINGS),
-      [field]: !(prev?.[field] as boolean),
-    }));
+  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
   };
 
-  const handleSave = async () => {
-    if (!settings) return;
+  const handleBrainCloudChange = <
+    Field extends keyof BrainCloudSettings,
+    Value extends BrainCloudSettings[Field],
+  >(
+    field: Field,
+    value: Value
+  ) => {
+    setBrainCloudSettings((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    setDirty(true);
+  };
+
+  const handleInterfacePreferencesChange = <
+    Field extends keyof InterfacePreferences,
+    Value extends InterfacePreferences[Field],
+  >(
+    field: Field,
+    value: Value
+  ) => {
+    setInterfacePreferences((prev) => {
+      const next = { ...prev, [field]: value };
+      persistInterfacePreferences(next);
+      return next;
+    });
+  };
+
+  const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setSaving(true);
     try {
-      const data = await api.request<{
-        success?: boolean;
-        braincloud?: Partial<BrainCloudSettings> | null;
-      }>("/api/settings/braincloud", {
-        method: "PUT",
-        body: { braincloud: settings },
-      });
-
-      setSettings({ ...DEFAULT_SETTINGS, ...(data?.braincloud || {}) });
-      toast.success("Configurações salvas com sucesso");
-    } catch (error) {
-      console.error(error);
-      toast.error(
-        error instanceof Error ? error.message : "Falha ao salvar configurações"
+      const updated = await apiClient.updateBrainCloudSettings(
+        brainCloudSettings
       );
+      setBrainCloudSettings({
+        ...defaultBrainCloudSettings,
+        ...(updated || {}),
+      });
+      setDirty(false);
+      toast.success('Configurações salvas com sucesso.');
+      persistInterfacePreferences(interfacePreferences);
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      toast.error('Não foi possível salvar as configurações.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTest = async (mode: "rest" | "mcp") => {
-    if (!settings) return;
+  const handleTestConnection = async (mode: BrainCloudConnectionMode) => {
     setTestingMode(mode);
+    setTestStatus(null);
     try {
-      const payload = await api.request<{
-        success: boolean;
-        mode: string;
-        response?: Record<string, unknown>;
-      }>("/api/settings/braincloud/test", {
-        method: "POST",
-        body: { braincloud: settings, mode },
-      });
-
-      toast.success(
-        `${mode === "rest" ? "REST" : "MCP"} ok: ${
-          payload?.response?.status || "sucesso"
-        }`
+      const response = await apiClient.testBrainCloudConnection(
+        brainCloudSettings,
+        mode
       );
-    } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Teste falhou");
+      if (response?.success) {
+        setTestStatus({
+          mode,
+          success: true,
+          message:
+            mode === 'mcp'
+              ? 'Conexão MCP estabelecida com sucesso.'
+              : 'Conexão REST verificada com sucesso.',
+        });
+        toast.success(
+          mode === 'mcp'
+            ? 'Conexão MCP ativa!'
+            : 'Conexão REST ativa!'
+        );
+      } else {
+        const message =
+          response?.error ||
+          'Não foi possível validar a conexão. Verifique as credenciais.';
+        setTestStatus({
+          mode,
+          success: false,
+          message,
+        });
+        toast.error(message);
+      }
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Erro inesperado ao testar a conexão.';
+      setTestStatus({
+        mode,
+        success: false,
+        message,
+      });
+      toast.error(message);
     } finally {
       setTestingMode(null);
     }
   };
 
-  // AI Providers functions
-  const loadProviderModels = useCallback(
-    async (providerId: string) => {
-      setProviderModelsLoading((prev) => ({ ...prev, [providerId]: true }));
-      try {
-        const response = await api.getProviderModels(providerId);
-        setProviderModels((prev) => ({
-          ...prev,
-          [providerId]: response.models || [],
-        }));
-      } catch (error) {
-        console.error("Error fetching provider models:", error);
-        toast.error("Falha ao carregar modelos do provedor");
-      } finally {
-        setProviderModelsLoading((prev) => ({
-          ...prev,
-          [providerId]: false,
-        }));
-      }
-    },
-    []
-  );
+  if (!open) {
+    return null;
+  }
 
-  const fetchProviders = useCallback(async () => {
-    setLoadingProviders(true);
-    try {
-      const response = await api.getAIProviders();
-      setProviders(response.providers);
-
-      await Promise.all(
-        response.providers.map(async (provider) => {
-          await loadProviderModels(provider.id);
-        })
-      );
-    } catch (error) {
-      console.error("Error fetching providers:", error);
-      toast.error("Não foi possível carregar os provedores de IA");
-    } finally {
-      setLoadingProviders(false);
-    }
-  }, [loadProviderModels]);
-
-  const handleSaveProvider = async () => {
-    try {
-      if (!newProvider.displayName || !newProvider.apiKey) {
-        toast.error("Nome e API Key são obrigatórios");
-        return;
-      }
-
-      const provider = await api.upsertAIProvider(newProvider);
-      try {
-        await api.syncProviderModels(provider.id);
-      } catch (error) {
-        console.error("Error syncing models after provider save:", error);
-        toast.error("Provedor salvo, mas não foi possível sincronizar modelos");
-      }
-      toast.success("Provedor salvo com sucesso");
-      setShowProviderForm(false);
-      setNewProvider({
-        providerName: "openai",
-        displayName: "",
-        apiKey: "",
-      });
-      fetchProviders();
-    } catch (error) {
-      console.error("Error saving provider:", error);
-      toast.error("Erro ao salvar provedor");
-    }
-  };
-
-  const handleSetDefaultModel = async (
-    providerId: string,
-    modelId: string
-  ) => {
-    const models = providerModels[providerId] || [];
-    const targetModel = models.find((model) => model.id === modelId);
-    if (!targetModel) {
-      toast.error("Modelo não encontrado para este provedor");
-      return;
-    }
-
-    try {
-      await api.upsertModel(providerId, {
-        modelId: targetModel.modelId,
-        displayName: targetModel.displayName,
-        description: targetModel.description,
-        supportsStreaming: targetModel.supportsStreaming,
-        supportsFunctionCalling: targetModel.supportsFunctionCalling,
-        supportsVision: targetModel.supportsVision,
-        maxTokens: targetModel.maxTokens,
-        contextWindow: targetModel.contextWindow,
-        costPerInputToken: targetModel.costPerInputToken,
-        costPerOutputToken: targetModel.costPerOutputToken,
-        isActive: true,
-        isDefault: true,
-      });
-
-      toast.success("Modelo padrão atualizado com sucesso");
-      await loadProviderModels(providerId);
-    } catch (error) {
-      console.error("Error updating default model:", error);
-      toast.error("Não foi possível definir o modelo padrão");
-    }
-  };
-
-  const handleSyncModels = useCallback(
-    async (providerId: string) => {
-      try {
-        setSyncingProviderId(providerId);
-        const response = await api.syncProviderModels(providerId);
-        setProviderModels((prev) => ({
-          ...prev,
-          [providerId]: response.models,
-        }));
-        toast.success("Modelos sincronizados com sucesso");
-      } catch (error) {
-        console.error("Error syncing provider models:", error);
-        toast.error("Não foi possível sincronizar modelos");
-      } finally {
-        setSyncingProviderId(null);
-        loadProviderModels(providerId);
-      }
-    },
-    // 'api' é um singleton importado; mudança no objeto não dispara re-render
-    [loadProviderModels]
-  );
-
-  const handleSetDefaultProvider = async (providerId: string) => {
-    try {
-      // Update only the default flag, don't overwrite API keys
-      const targetProvider = providers.find(p => p.id === providerId);
-      if (!targetProvider) {
-        toast.error("Provedor não encontrado");
-        return;
-      }
-
-      // Set all providers to non-default first
-      await Promise.all(
-        providers.map(async (provider) => {
-          // Don't modify API key when just changing default flag
-          await api.upsertAIProvider({
-            providerName: provider.providerName,
-            displayName: provider.displayName,
-            apiKey: "API_KEY_PLACEHOLDER_TO_PRESERVE_EXISTING", // Special placeholder
-            baseUrl: provider.baseUrl,
-            isActive: provider.isActive,
-            isDefault: provider.id === providerId,
-          });
-        })
-      );
-
-      toast.success("Provedor padrão atualizado");
-      fetchProviders();
-    } catch (error) {
-      console.error("Error setting default provider:", error);
-      toast.error("Não foi possível definir provedor padrão");
-    }
-  };
-
-  const handleDeleteProvider = async (providerId: string) => {
-    if (!confirm("Tem certeza que deseja remover este provedor?")) return;
-
-    try {
-      await api.deleteAIProvider(providerId);
-      toast.success("Provedor removido");
-      fetchProviders();
-    } catch (error) {
-      console.error("Error deleting provider:", error);
-      toast.error("Erro ao remover provedor");
-    }
-  };
-
-  useEffect(() => {
-    if (open && activeSection === "aiproviders") {
-      fetchProviders();
-    }
-  }, [open, activeSection, fetchProviders]);
-
-  if (!open) return null;
-
-  return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-neutral-950/80 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative z-10 w-full max-w-5xl rounded-3xl border border-neutral-800 bg-neutral-950/95 text-zinc-100 shadow-2xl shadow-black/40">
-        <div className="flex h-[75vh] overflow-hidden rounded-3xl">
-          <aside className="w-60 border-r border-neutral-800 bg-neutral-950/80 p-6">
-            <div className="mb-6">
-              <p className="text-sm font-medium text-emerald-300">
-                Advanced Settings
-              </p>
-              <p className="mt-1 text-xs text-zinc-500">
-                Ajuste conexões e integrações do CEO Dashboard.
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-modal-title"
+      onClick={handleBackdropClick}
+    >
+      <div className="relative flex h-full max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
+        <header className="border-b border-neutral-800 bg-neutral-900 px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2
+                id="settings-modal-title"
+                className="flex items-center gap-2 text-lg font-semibold text-zinc-100"
+              >
+                <Settings className="h-5 w-5 text-emerald-400" />
+                Configurações do Sistema
+              </h2>
+              <p className="text-sm text-zinc-400">
+                Ajuste integrações, preferências visuais e conectividade com o
+                Brain Cloud.
               </p>
             </div>
-            <nav className="space-y-2">
-              {SECTIONS.map((item) => {
-                const active = activeSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() =>
-                      setActiveSection(item.id as typeof activeSection)
-                    }
-                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${
-                      active
-                        ? "bg-neutral-800 text-zinc-100"
-                        : "text-zinc-400 hover:bg-neutral-900 hover:text-zinc-200"
-                    }`}
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900">
-                      {item.icon}
-                    </span>
-                    <span className="text-left">{item.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </aside>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-neutral-700 px-3 py-1 text-sm text-zinc-300 transition hover:border-neutral-500 hover:text-white"
+            >
+              Fechar
+            </button>
+          </div>
+        </header>
 
-          <section className="flex-1 overflow-y-auto p-8">
-            <header className="flex items-start justify-between gap-4 border-b border-neutral-800 pb-4">
-              <div>
-                <p className="text-lg font-semibold">
-                  {SECTIONS.find((sec) => sec.id === activeSection)?.label ||
-                    "Configurações"}
-                </p>
-                <p className="text-sm text-zinc-500">
-                  {SECTIONS.find((sec) => sec.id === activeSection)
-                    ?.description || ""}
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                className="rounded-full border border-neutral-800 bg-neutral-900 p-2 text-zinc-400 transition hover:border-neutral-600 hover:text-zinc-100"
-                aria-label="Fechar configurações"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </header>
+        <form
+          onSubmit={handleSave}
+          className="flex-1 overflow-y-auto px-6 py-6"
+        >
+          {loading ? (
+            <div className="flex h-64 flex-col items-center justify-center gap-4 text-sm text-zinc-400">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+              Carregando configurações do Brain Cloud...
+            </div>
+          ) : (
+            <div className="space-y-10">
+              <section className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 shadow-inner shadow-black/20">
+                <header>
+                  <h3 className="flex items-center gap-2 text-base font-semibold text-zinc-100">
+                    <ShieldCheck className="h-5 w-5 text-emerald-400" />
+                    Integração Brain Cloud
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    Configure os endpoints e chaves de acesso para sincronizar o
+                    dashboard com o Obsidian Brain Cloud.
+                  </p>
+                </header>
 
-            {activeSection === "braincloud" && (
-              <div className="mt-6 space-y-6">
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => handleTest("rest")}
-                    disabled={testingMode === "rest" || loading}
-                    className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-zinc-200 transition hover:border-neutral-500 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <RefreshCw
-                      className={`h-4 w-4 ${
-                        testingMode === "rest" ? "animate-spin" : ""
-                      }`}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label htmlFor="braincloud-base-url" className={labelClass}>
+                      Base URL
+                    </label>
+                    <input
+                      id="braincloud-base-url"
+                      type="url"
+                      placeholder="https://obsidian-mcp.ggailabs.com"
+                      className={fieldClass}
+                      value={brainCloudSettings.baseUrl}
+                      onChange={(event) =>
+                        handleBrainCloudChange('baseUrl', event.target.value)
+                      }
+                      required
                     />
+                    <p className={descriptionClass}>
+                      Endereço da instância Brain Cloud (REST). Utilize HTTPS em
+                      produção.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="braincloud-api-token" className={labelClass}>
+                      API Token
+                    </label>
+                    <input
+                      id="braincloud-api-token"
+                      type="password"
+                      placeholder="Token seguro"
+                      className={fieldClass}
+                      value={brainCloudSettings.apiToken}
+                      onChange={(event) =>
+                        handleBrainCloudChange('apiToken', event.target.value)
+                      }
+                    />
+                    <p className={descriptionClass}>
+                      Token de autenticação para chamadas REST/MCP. Fica
+                      armazenado somente no backend.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="braincloud-tenant-id" className={labelClass}>
+                      Tenant ID
+                    </label>
+                    <input
+                      id="braincloud-tenant-id"
+                      type="text"
+                      placeholder="cliente-xyz"
+                      className={fieldClass}
+                      value={brainCloudSettings.tenantId}
+                      onChange={(event) =>
+                        handleBrainCloudChange('tenantId', event.target.value)
+                      }
+                    />
+                    <p className={descriptionClass}>
+                      Opcional. Define o workspace utilizado em ambientes
+                      multi-tenant.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="braincloud-tenant-plan"
+                      className={labelClass}
+                    >
+                      Tenant Plan
+                    </label>
+                    <input
+                      id="braincloud-tenant-plan"
+                      type="text"
+                      placeholder="enterprise"
+                      className={fieldClass}
+                      value={brainCloudSettings.tenantPlan}
+                      onChange={(event) =>
+                        handleBrainCloudChange(
+                          'tenantPlan',
+                          event.target.value
+                        )
+                      }
+                    />
+                    <p className={descriptionClass}>
+                      Opcional. Informativo para cálculo de limites e quotas.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="braincloud-mcp-http" className={labelClass}>
+                      MCP HTTP Endpoint
+                    </label>
+                    <input
+                      id="braincloud-mcp-http"
+                      type="url"
+                      placeholder="https://.../api/v1/mcp/http"
+                      className={fieldClass}
+                      value={brainCloudSettings.mcpHttp}
+                      onChange={(event) =>
+                        handleBrainCloudChange('mcpHttp', event.target.value)
+                      }
+                    />
+                    <p className={descriptionClass}>
+                      Endpoint HTTP do MCP (necessário para agentes e
+                      ferramentas).
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="braincloud-mcp-ws" className={labelClass}>
+                      MCP WebSocket Endpoint
+                    </label>
+                    <input
+                      id="braincloud-mcp-ws"
+                      type="url"
+                      placeholder="wss://.../api/v1/mcp/ws"
+                      className={fieldClass}
+                      value={brainCloudSettings.mcpWs}
+                      onChange={(event) =>
+                        handleBrainCloudChange('mcpWs', event.target.value)
+                      }
+                    />
+                    <p className={descriptionClass}>
+                      Endpoint WebSocket do MCP (opcional, usado para sessões de
+                      longa duração).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/80 px-4 py-3">
+                    <div>
+                      <span className="block text-sm font-medium text-zinc-200">
+                        Habilitar REST
+                      </span>
+                      <span className={descriptionClass}>
+                        Necessário para o dashboard consumir notas, tarefas e
+                        coleções.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-emerald-500"
+                      checked={brainCloudSettings.enableRest}
+                      onChange={(event) =>
+                        handleBrainCloudChange(
+                          'enableRest',
+                          event.target.checked
+                        )
+                      }
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/80 px-4 py-3">
+                    <div>
+                      <span className="block text-sm font-medium text-zinc-200">
+                        Habilitar MCP
+                      </span>
+                      <span className={descriptionClass}>
+                        Recomendado para agentes, chat avançado e ferramentas de
+                        automação.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-emerald-500"
+                      checked={brainCloudSettings.enableMcp}
+                      onChange={(event) =>
+                        handleBrainCloudChange(
+                          'enableMcp',
+                          event.target.checked
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-zinc-100 transition hover:border-emerald-500/60 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => handleTestConnection('rest')}
+                    disabled={testingMode !== null}
+                  >
+                    {testingMode === 'rest' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                    ) : (
+                      <Wifi className="h-4 w-4 text-emerald-400" />
+                    )}
                     Testar REST
                   </button>
                   <button
-                    onClick={() => handleTest("mcp")}
-                    disabled={testingMode === "mcp" || loading}
-                    className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-zinc-200 transition hover:border-neutral-500 disabled:cursor-wait disabled:opacity-60"
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm font-medium text-zinc-100 transition hover:border-emerald-500/60 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => handleTestConnection('mcp')}
+                    disabled={testingMode !== null || !hasBrainCloudConfig}
                   >
-                    <RefreshCw
-                      className={`h-4 w-4 ${
-                        testingMode === "mcp" ? "animate-spin" : ""
-                      }`}
-                    />
+                    {testingMode === 'mcp' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                    ) : (
+                      <ExternalLink className="h-4 w-4 text-emerald-400" />
+                    )}
                     Testar MCP
                   </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving || loading}
-                    className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/30 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <Save className="h-4 w-4" />
-                    Salvar
-                  </button>
-                </div>
-
-                {loading ? (
-                  <div className="h-40 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/60" />
-                ) : (
-                  <div className="space-y-6">
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
-                      <div className="flex items-center gap-3 text-zinc-100">
-                        <Cloud className="h-5 w-5" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            Obsidian Brain Cloud • REST
-                          </h2>
-                          <p className="text-xs text-zinc-400">
-                            URL e credenciais para operações via API.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 space-y-3">
-                        <Field
-                          label="Base URL"
-                          placeholder="https://braincloud.ggai.dev"
-                          value={mergedSettings.baseUrl}
-                          onChange={handleChange("baseUrl")}
-                        />
-
-                        <Field
-                          label="Token de API"
-                          type={showToken ? "text" : "password"}
-                          placeholder="••••••"
-                          value={mergedSettings.apiToken}
-                          onChange={handleChange("apiToken")}
-                          rightAdornment={
-                            <button
-                              type="button"
-                              onClick={() => setShowToken((prev) => !prev)}
-                              className="text-zinc-400 transition hover:text-zinc-200"
-                            >
-                              {showToken ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </button>
-                          }
-                        />
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Field
-                            label="Tenant ID (opcional)"
-                            placeholder="cliente-xpto"
-                            value={mergedSettings.tenantId}
-                            onChange={handleChange("tenantId")}
-                          />
-                          <Field
-                            label="Tenant Plan"
-                            placeholder="enterprise"
-                            value={mergedSettings.tenantPlan}
-                            onChange={handleChange("tenantPlan")}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
-                      <div className="flex items-center gap-3 text-zinc-100">
-                        <ShieldCheck className="h-5 w-5" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            Model Context Protocol
-                          </h2>
-                          <p className="text-xs text-zinc-400">
-                            Endpoints de WebSocket e HTTP para ferramentas MCP.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 space-y-3">
-                        <Field
-                          label="MCP WebSocket"
-                          placeholder="ws://localhost:8000/mcp"
-                          value={mergedSettings.mcpWs}
-                          onChange={handleChange("mcpWs")}
-                        />
-                        <Field
-                          label="MCP HTTP"
-                          placeholder="http://localhost:8000/api/v1/mcp/http"
-                          value={mergedSettings.mcpHttp}
-                          onChange={handleChange("mcpHttp")}
-                        />
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <ToggleField
-                            label="Habilitar features REST"
-                            description="Permite que o dashboard use a API REST da Brain Cloud."
-                            checked={mergedSettings.enableRest}
-                            onToggle={handleToggle("enableRest")}
-                          />
-                          <ToggleField
-                            label="Habilitar features MCP"
-                            description="Libera uso de ferramentas MCP (semantic search, templates, etc.)."
-                            checked={mergedSettings.enableMcp}
-                            onToggle={handleToggle("enableMcp")}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeSection === "aiproviders" && (
-              <div className="mt-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-zinc-400">
-                      Configure seus provedores de IA para usar no chat
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowProviderForm(!showProviderForm)}
-                    className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/30"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Adicionar Provedor
-                  </button>
-                </div>
-
-                {showProviderForm && (
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
-                    <h3 className="mb-4 text-sm font-semibold text-zinc-100">
-                      Novo Provedor de IA
-                    </h3>
-                    <div className="space-y-4">
-                      <label className="block text-sm">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">
-                          Provedor
-                        </span>
-                        <select
-                          value={newProvider.providerName}
-                          onChange={(event) =>
-                            setNewProvider((prev) => ({
-                              ...prev,
-                              providerName:
-                                event.target.value as AIProviderCreatePayload["providerName"],
-                            }))
-                          }
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-zinc-100 focus:border-neutral-600 focus:outline-none"
-                        >
-                          <option value="openai">OpenAI</option>
-                          <option value="anthropic">Anthropic</option>
-                          <option value="deepseek">DeepSeek</option>
-                          <option value="google">Google AI</option>
-                          <option value="openrouter">OpenRouter</option>
-                          <option value="azure">Azure OpenAI</option>
-                          <option value="custom">Custom</option>
-                        </select>
-                      </label>
-
-                      <Field
-                        label="Nome de Exibição"
-                        placeholder="Ex: Meu OpenAI"
-                        value={newProvider.displayName}
-                        onChange={(e) =>
-                          setNewProvider({
-                            ...newProvider,
-                            displayName: e.target.value,
-                          })
-                        }
-                      />
-
-                      <Field
-                        label="API Key"
-                        type="password"
-                        placeholder="sk-..."
-                        value={newProvider.apiKey}
-                        onChange={(e) =>
-                          setNewProvider({
-                            ...newProvider,
-                            apiKey: e.target.value,
-                          })
-                        }
-                      />
-
-                      {newProvider.providerName === "custom" && (
-                        <Field
-                          label="Base URL (opcional)"
-                          placeholder="https://api.example.com/v1"
-                          value={newProvider.baseUrl || ""}
-                          onChange={(e) =>
-                            setNewProvider({
-                              ...newProvider,
-                              baseUrl: e.target.value,
-                            })
-                          }
-                        />
+                  {testStatus && (
+                    <div
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                        testStatus.success
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          : 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                      }`}
+                    >
+                      {testStatus.success ? (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5" />
                       )}
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleSaveProvider}
-                          className="flex-1 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/30"
-                        >
-                          Salvar
-                        </button>
-                        <button
-                          onClick={() => setShowProviderForm(false)}
-                          className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-zinc-200 transition hover:border-neutral-500"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
+                      {testStatus.message}
                     </div>
-                  </div>
-                )}
-
-                {loadingProviders ? (
-                  <div className="h-40 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/60" />
-                ) : providers.length === 0 ? (
-                  <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/60 text-zinc-400">
-                    <Brain className="h-8 w-8" />
-                    <p className="text-sm">Nenhum provedor configurado ainda</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {providers.map((provider) => (
-                      <div
-                        key={provider.id}
-                        className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 p-4"
-                      >
-                        <div className="flex flex-1 gap-4">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
-                                provider.isActive
-                                  ? "border-emerald-500/50 bg-emerald-500/10"
-                                  : "border-neutral-700 bg-neutral-800"
-                              }`}
-                            >
-                              <Brain
-                                className={`h-5 w-5 ${
-                                  provider.isActive
-                                    ? "text-emerald-300"
-                                    : "text-zinc-500"
-                                }`}
-                              />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-zinc-100">
-                                {provider.displayName}
-                              </p>
-                              <p className="text-xs text-zinc-500">
-                                {provider.providerName}
-                                {provider.isDefault && (
-                                  <span className="ml-2 rounded bg-emerald-500/20 px-1.5 py-0.5 text-emerald-300">
-                                    Padrão
-                                  </span>
-                                )}
-                                {!provider.isDefault && (
-                                  <button
-                                    onClick={() => handleSetDefaultProvider(provider.id)}
-                                    className="ml-2 rounded border border-blue-600/40 bg-blue-500/10 px-2 py-1 text-xs text-blue-300 transition hover:bg-blue-500/20"
-                                  >
-                                    Set Default
-                                  </button>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex flex-1 flex-col gap-2">
-                            <label className="block text-xs uppercase tracking-wide text-zinc-500">
-                              Modelo padrão
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1">
-                                {providerModelsLoading[provider.id] ? (
-                                  <div className="h-10 animate-pulse rounded-lg border border-neutral-800 bg-neutral-900/60" />
-                                ) : providerModels[provider.id]?.length ? (
-                                  <select
-                                    value={
-                                      providerModels[provider.id].find(
-                                        (model) => model.isDefault
-                                      )?.id || ""
-                                    }
-                                    onChange={(event) =>
-                                      handleSetDefaultModel(
-                                        provider.id,
-                                        event.target.value
-                                      )
-                                    }
-                                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                  >
-                                    <option value="" disabled>
-                                      Selecione o modelo padrão
-                                    </option>
-                                    {providerModels[provider.id].map((model) => (
-                                      <option key={model.id} value={model.id}>
-                                        {model.displayName}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <div className="rounded-lg border border-amber-700/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                                    Nenhum modelo disponível. Verifique se a API key é válida.
-                                  </div>
-                                )}
-                              </div>
-                              <button
-                                onClick={() => handleSyncModels(provider.id)}
-                                disabled={syncingProviderId === provider.id}
-                                className="flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 text-xs text-zinc-300 transition hover:border-neutral-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <RefreshCw
-                                  className={`mr-2 h-4 w-4 ${
-                                    syncingProviderId === provider.id
-                                      ? "animate-spin"
-                                      : ""
-                                  }`}
-                                />
-                                Atualizar modelos
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteProvider(provider.id)}
-                          className="ml-4 rounded-lg border border-red-900/50 bg-red-500/10 p-2 text-red-400 transition hover:bg-red-500/20"
-                          title="Remover provedor"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeSection === "modelparams" && <ModelParametersSection />}
-
-            {activeSection !== "braincloud" &&
-              activeSection !== "aiproviders" &&
-              activeSection !== "modelparams" && (
-                <div className="mt-12 flex h-full flex-col items-center justify-center gap-4 text-center text-zinc-400">
-                  <div className="rounded-full border border-neutral-800 bg-neutral-900/60 p-4">
-                    <ShieldCheck className="h-6 w-6 text-zinc-300" />
-                  </div>
-                  <div>
-                    <p className="text-base font-medium text-zinc-100">
-                      Em breve
-                    </p>
-                    <p className="text-sm text-zinc-500">
-                      Estamos trazendo estas configurações para a próxima versão
-                      do dashboard.
-                    </p>
-                  </div>
+                  )}
                 </div>
-              )}
-          </section>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-};
+              </section>
 
-type FieldProps = {
-  label: string;
-  value: string;
-  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  type?: string;
-  placeholder?: string;
-  rightAdornment?: React.ReactNode;
-};
+              <section className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-5 shadow-inner shadow-black/20">
+                <header>
+                  <h3 className="text-base font-semibold text-zinc-100">
+                    Preferências de Interface
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    Personalize a experiência do dashboard. Futuramente essas
+                    opções serão compartilhadas entre dispositivos.
+                  </p>
+                </header>
 
-const Field: React.FC<FieldProps> = ({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  rightAdornment,
-}) => (
-  <label className="block text-sm text-zinc-300">
-    <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">
-      {label}
-    </span>
-    <div className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 focus-within:border-neutral-600">
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
-      />
-      {rightAdornment}
-    </div>
-  </label>
-);
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label htmlFor="interface-theme" className={labelClass}>
+                      Tema
+                    </label>
+                    <select
+                      id="interface-theme"
+                      className={fieldClass}
+                      value={interfacePreferences.theme}
+                      onChange={(event) =>
+                        handleInterfacePreferencesChange(
+                          'theme',
+                          event.target.value as InterfacePreferences['theme']
+                        )
+                      }
+                    >
+                      <option value="system">Seguir sistema</option>
+                      <option value="light">Claro</option>
+                      <option value="dark">Escuro</option>
+                    </select>
+                    <p className={descriptionClass}>
+                      Ainda em beta — ajuste visual aplicado apenas nesta
+                      máquina.
+                    </p>
+                  </div>
 
-type ToggleFieldProps = {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onToggle: () => void;
-};
+                  <div className="space-y-1.5">
+                    <label htmlFor="interface-language" className={labelClass}>
+                      Idioma preferido
+                    </label>
+                    <select
+                      id="interface-language"
+                      className={fieldClass}
+                      value={interfacePreferences.language}
+                      onChange={(event) =>
+                        handleInterfacePreferencesChange(
+                          'language',
+                          event.target
+                            .value as InterfacePreferences['language']
+                        )
+                      }
+                    >
+                      <option value="pt-BR">Português (Brasil)</option>
+                      <option value="en-US">English (US)</option>
+                    </select>
+                    <p className={descriptionClass}>
+                      Influencia textos auxiliares e futuros relatórios.
+                    </p>
+                  </div>
 
-const ToggleField: React.FC<ToggleFieldProps> = ({
-  label,
-  description,
-  checked,
-  onToggle,
-}) => (
-  <button
-    type="button"
-    onClick={onToggle}
-    className="flex items-start gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-left transition hover:border-neutral-600"
-  >
-    <span
-      className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] ${
-        checked
-          ? "border-emerald-500 bg-emerald-500/20 text-emerald-300"
-          : "border-neutral-700 text-neutral-400"
-      }`}
-    >
-      {checked ? "●" : ""}
-    </span>
-    <span className="flex-1 text-sm text-zinc-200">
-      {label}
-      {description && (
-        <p className="mt-1 text-xs text-zinc-500">{description}</p>
-      )}
-    </span>
-  </button>
-);
+                  <label className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/80 px-4 py-3 md:col-span-2">
+                    <div>
+                      <span className="block text-sm font-medium text-zinc-200">
+                        Reduzir animações
+                      </span>
+                      <span className={descriptionClass}>
+                        Minimiza transições e efeitos visuais para reduzir carga
+                        cognitiva.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-emerald-500"
+                      checked={interfacePreferences.reduceMotion}
+                      onChange={(event) =>
+                        handleInterfacePreferencesChange(
+                          'reduceMotion',
+                          event.target.checked
+                        )
+                      }
+                    />
+                  </label>
 
-// Model Parameter Configuration Section
-const ModelParametersSection: React.FC = () => {
-  const [providerConfigs, setProviderConfigs] = useState<any>({});
+                  <label className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/80 px-4 py-3 md:col-span-2">
+                    <div>
+                      <span className="block text-sm font-medium text-zinc-200">
+                        Habilitar recursos beta
+                      </span>
+                      <span className={descriptionClass}>
+                        Exibe protótipos experimentais quando disponíveis.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-emerald-500"
+                      checked={interfacePreferences.showBetaFeatures}
+                      onChange={(event) =>
+                        handleInterfacePreferencesChange(
+                          'showBetaFeatures',
+                          event.target.checked
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              </section>
 
-  const handleConfigChange = (providerName: string, param: string, value: any) => {
-    setProviderConfigs(prev => ({
-      ...prev,
-      [providerName]: {
-        ...prev[providerName],
-        [param]: value
-      }
-    }));
-  };
-
-  const handleSaveConfig = async (providerName: string) => {
-    try {
-      // TODO: Save to backend
-      toast.success(`Parâmetros para ${providerName} atualizados`);
-    } catch (error) {
-      toast.error("Erro ao salvar configurações");
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium text-zinc-100">Parâmetros por Provedor</h3>
-        <p className="text-xs text-zinc-400">
-          Configure parâmetros específicos para cada provedor de IA. Isso resolve problemas de compatibilidade entre APIs diferentes.
-        </p>
-        
-        {Object.entries(PROVIDER_PARAMETER_PRESETS).map(([providerName, config]) => (
-          <div key={providerName} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h4 className="text-sm font-medium text-zinc-100 capitalize">{providerName}</h4>
-                <p className="text-xs text-zinc-500">{config.description}</p>
-              </div>
-              <button
-                onClick={() => handleSaveConfig(providerName)}
-                className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 text-xs hover:bg-emerald-500/20 transition"
-              >
-                Salvar
-              </button>
+              <section className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 text-sm text-zinc-400">
+                <p className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-amber-400" />
+                  <span>
+                    As configurações do Brain Cloud são persistidas no backend
+                    (arquivo <code>data/settings.json</code>). Os valores do
+                    token são protegidos e não ficam acessíveis ao cliente.
+                  </span>
+                </p>
+              </section>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1">Campo Max Tokens</label>
-                <select 
-                  value={providerConfigs[providerName]?.maxTokensField || config.maxTokensField}
-                  onChange={(e) => handleConfigChange(providerName, 'maxTokensField', e.target.value)}
-                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-zinc-100"
-                >
-                  <option value="max_tokens">max_tokens</option>
-                  <option value="max_completion_tokens">max_completion_tokens</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1">Max Tokens Padrão</label>
-                <input 
-                  type="number" 
-                  value={providerConfigs[providerName]?.maxTokens || config.maxTokens}
-                  onChange={(e) => handleConfigChange(providerName, 'maxTokens', parseInt(e.target.value))}
-                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-zinc-100"
-                  min="1"
-                  max="32768"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1">Temperatura</label>
-                <input 
-                  type="number" 
-                  value={providerConfigs[providerName]?.temperature || config.temperature}
-                  onChange={(e) => handleConfigChange(providerName, 'temperature', parseFloat(e.target.value))}
-                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-zinc-100"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                />
-              </div>
-            </div>
-            
-            <div className="mt-3 p-2 rounded-lg border border-amber-700/30 bg-amber-500/5">
-              <p className="text-xs text-amber-300">
-                💡 <strong>OpenAI:</strong> Use <code>max_completion_tokens</code> (novo) | 
-                <strong> Anthropic/DeepSeek:</strong> Use <code>max_tokens</code> (padrão)
-              </p>
-            </div>
+          )}
+        </form>
+
+        <footer className="flex flex-col gap-3 border-t border-neutral-800 bg-neutral-900/80 px-6 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="text-xs text-zinc-500">
+            Ajustes realizados serão propagados para os módulos do dashboard ao
+            salvar. Recomenda-se testar as conexões após qualquer alteração de
+            URL ou credenciais.
           </div>
-        ))}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-neutral-500 hover:text-white"
+              onClick={onClose}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              formNoValidate
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={saving || loading || !dirty}
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              Salvar alterações
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   );
-};
-
-// Model parameter configurations per provider
-const PROVIDER_PARAMETER_PRESETS = {
-  openai: {
-    maxTokens: 4096,
-    temperature: 0.7,
-    topP: 1.0,
-    maxTokensField: 'max_completion_tokens',
-    description: 'OpenAI API (updated parameters)'
-  },
-  anthropic: {
-    maxTokens: 8192,
-    temperature: 0.7,
-    topP: 1.0,
-    maxTokensField: 'max_tokens',
-    description: 'Anthropic Claude API'
-  },
-  deepseek: {
-    maxTokens: 4096,
-    temperature: 0.7,
-    topP: 1.0,
-    maxTokensField: 'max_tokens',
-    description: 'DeepSeek API'
-  },
-  openrouter: {
-    maxTokens: 4096,
-    temperature: 0.7,
-    topP: 1.0,
-    maxTokensField: 'max_completion_tokens',
-    description: 'OpenRouter API (mixed providers)'
-  }
 };
 
 export default SettingsModal;

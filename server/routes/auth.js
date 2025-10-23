@@ -85,6 +85,38 @@ router.post("/logout", authenticateJWT, async (req, res) => {
   }
 });
 
+/**
+ * @route   GET /api/auth/me
+ * @desc    Retorna informações do usuário autenticado
+ * @access  Privado (JWT)
+ */
+router.get("/me", authenticateJWT, async (req, res) => {
+  try {
+    const userProfile = await authService.getUserById(req.user.id);
+    if (!userProfile) {
+      return res.status(404).json({
+        success: false,
+        error: "Usuário não encontrado",
+      });
+    }
+
+    res.json({
+      success: true,
+      user: userProfile,
+    });
+  } catch (error) {
+    logger.error("Erro ao obter perfil do usuário", {
+      userId: req.user?.id,
+      error: error.message,
+    });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao carregar perfil",
+      message: error.message,
+    });
+  }
+});
+
 // ==========================================
 // OAuth Routes
 // ==========================================
@@ -98,7 +130,7 @@ router.get(
   "/google",
   passport.authenticate("google", {
     scope: ["profile", "email"],
-    session: false,
+    session: true, // Enable session for Passport
   })
 );
 
@@ -113,7 +145,7 @@ router.get(
     failureRedirect: `${
       process.env.FRONTEND_URL || "http://localhost:5173"
     }/login?error=oauth_failed`,
-    session: false,
+    session: true, // Enable session to create connect.sid cookie
   }),
   async (req, res) => {
     try {
@@ -151,5 +183,46 @@ router.get(
     }
   }
 );
+
+/**
+ * @route   POST /api/auth/dev-login
+ * @desc    Login automático para desenvolvimento (apenas em NODE_ENV=development)
+ * @access  Público (apenas development)
+ */
+router.post("/dev-login", async (req, res) => {
+  if (process.env.NODE_ENV !== "development") {
+    return res.status(403).json({
+      success: false,
+      error: "Dev login apenas disponível em ambiente de desenvolvimento",
+    });
+  }
+
+  try {
+    // Cria um usuário de desenvolvimento fake
+    const devUser = {
+      id: "dev-user-123",
+      email: "dev@ggailabs.com",
+      name: "Developer",
+      role: "admin",
+    };
+
+    const tokens = generateTokenPair(devUser);
+
+    logger.info("Dev login successful", { userId: devUser.id });
+
+    res.json({
+      success: true,
+      ...tokens,
+      user: devUser,
+    });
+  } catch (error) {
+    logger.error("Dev login failed", { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: "Falha no dev login",
+      message: error.message,
+    });
+  }
+});
 
 export default router;

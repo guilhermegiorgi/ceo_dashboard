@@ -1,5 +1,5 @@
-import fetch from 'node-fetch';
-import { loadSettings } from './settingsService.js';
+import fetch from "node-fetch";
+import { loadSettings } from "./settingsService.js";
 
 /**
  * Lightweight client for Obsidian Brain Cloud (OBC) REST API.
@@ -7,10 +7,17 @@ import { loadSettings } from './settingsService.js';
  * helpers consumed across dashboard services.
  */
 
-const DEFAULT_BASE_URL = process.env.BRAINCLOUD_BASE_URL || process.env.OBSIDIAN_API_URL || 'http://localhost:8000';
-const DEFAULT_API_TOKEN = process.env.BRAINCLOUD_API_TOKEN || process.env.OBSIDIAN_API_KEY || process.env.API_TOKEN || '';
-const DEFAULT_TENANT_ID = process.env.BRAINCLOUD_TENANT_ID || '';
-const DEFAULT_TENANT_PLAN = process.env.BRAINCLOUD_TENANT_PLAN || '';
+const DEFAULT_BASE_URL =
+  process.env.BRAINCLOUD_BASE_URL ||
+  process.env.OBSIDIAN_API_URL ||
+  "http://localhost:8000";
+const DEFAULT_API_TOKEN =
+  process.env.BRAINCLOUD_API_TOKEN ||
+  process.env.OBSIDIAN_API_KEY ||
+  process.env.API_TOKEN ||
+  "";
+const DEFAULT_TENANT_ID = process.env.BRAINCLOUD_TENANT_ID || "";
+const DEFAULT_TENANT_PLAN = process.env.BRAINCLOUD_TENANT_PLAN || "";
 
 const CONFIG_CACHE_TTL = 60_000; // 60s
 let cachedConfig = null;
@@ -18,18 +25,22 @@ let lastConfigLoad = 0;
 
 function buildFallbackConfig() {
   return {
-    baseUrl: DEFAULT_BASE_URL.replace(/\/+$/, ''),
+    baseUrl: DEFAULT_BASE_URL.replace(/\/+$/, ""),
     apiToken: DEFAULT_API_TOKEN,
     tenantId: DEFAULT_TENANT_ID,
     tenantPlan: DEFAULT_TENANT_PLAN,
     enableRest: true,
-    enableMcp: true
+    enableMcp: true,
   };
 }
 
 async function getRuntimeConfig(forceRefresh = false) {
   const now = Date.now();
-  if (!forceRefresh && cachedConfig && now - lastConfigLoad < CONFIG_CACHE_TTL) {
+  if (
+    !forceRefresh &&
+    cachedConfig &&
+    now - lastConfigLoad < CONFIG_CACHE_TTL
+  ) {
     return cachedConfig;
   }
 
@@ -37,15 +48,23 @@ async function getRuntimeConfig(forceRefresh = false) {
     const settings = await loadSettings();
     const braincloud = settings?.braincloud || {};
     cachedConfig = {
-      baseUrl: (braincloud.baseUrl || DEFAULT_BASE_URL || '').replace(/\/+$/, ''),
+      baseUrl: (braincloud.baseUrl || DEFAULT_BASE_URL || "").replace(
+        /\/+$/,
+        ""
+      ),
       apiToken: braincloud.apiToken || DEFAULT_API_TOKEN,
       tenantId: braincloud.tenantId || DEFAULT_TENANT_ID,
       tenantPlan: braincloud.tenantPlan || DEFAULT_TENANT_PLAN,
-      enableRest: braincloud.enableRest !== undefined ? braincloud.enableRest : true,
-      enableMcp: braincloud.enableMcp !== undefined ? braincloud.enableMcp : true
+      enableRest:
+        braincloud.enableRest !== undefined ? braincloud.enableRest : true,
+      enableMcp:
+        braincloud.enableMcp !== undefined ? braincloud.enableMcp : true,
     };
   } catch (error) {
-    console.warn('BrainCloud settings unavailable, falling back to environment variables:', error.message);
+    console.warn(
+      "BrainCloud settings unavailable, falling back to environment variables:",
+      error.message
+    );
     cachedConfig = buildFallbackConfig();
   }
 
@@ -54,17 +73,20 @@ async function getRuntimeConfig(forceRefresh = false) {
 }
 
 function buildHeaders(config, extra = {}) {
-  const headers = { 'Content-Type': 'application/json', ...extra };
-  if (config.apiToken) headers['Authorization'] = `Bearer ${config.apiToken}`;
-  if (config.tenantId) headers['X-Tenant-Id'] = config.tenantId;
-  if (config.tenantPlan) headers['X-Tenant-Plan'] = config.tenantPlan;
+  const headers = { "Content-Type": "application/json", ...extra };
+  if (config.apiToken) headers["Authorization"] = `Bearer ${config.apiToken}`;
+  if (config.tenantId) headers["X-Tenant-Id"] = config.tenantId;
+  if (config.tenantPlan) headers["X-Tenant-Plan"] = config.tenantPlan;
   return headers;
 }
 
-async function request(path, { method = 'GET', body, headers = {}, searchParams } = {}) {
+async function request(
+  path,
+  { method = "GET", body, headers = {}, searchParams } = {}
+) {
   const config = await getRuntimeConfig();
   if (!config.enableRest) {
-    throw new Error('BrainCloud REST integration is disabled via settings.');
+    throw new Error("BrainCloud REST integration is disabled via settings.");
   }
 
   const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
@@ -74,7 +96,9 @@ async function request(path, { method = 'GET', body, headers = {}, searchParams 
     Object.entries(searchParams).forEach(([key, value]) => {
       if (value === undefined || value === null) return;
       if (Array.isArray(value)) {
-        value.filter((v) => v !== undefined && v !== null).forEach((item) => url.searchParams.append(key, item));
+        value
+          .filter((v) => v !== undefined && v !== null)
+          .forEach((item) => url.searchParams.append(key, item));
       } else {
         url.searchParams.set(key, value);
       }
@@ -85,9 +109,9 @@ async function request(path, { method = 'GET', body, headers = {}, searchParams 
   let payload;
 
   if (body !== undefined && body !== null) {
-    if (typeof body === 'string' || body instanceof Buffer) {
+    if (typeof body === "string" || body instanceof Buffer) {
       payload = body;
-    } else if (finalHeaders['Content-Type']?.includes('application/json')) {
+    } else if (finalHeaders["Content-Type"]?.includes("application/json")) {
       payload = JSON.stringify(body);
     } else {
       payload = body;
@@ -97,7 +121,7 @@ async function request(path, { method = 'GET', body, headers = {}, searchParams 
   const response = await fetch(url.toString(), {
     method,
     headers: finalHeaders,
-    body: payload
+    body: payload,
   });
 
   return handleJson(response);
@@ -115,15 +139,20 @@ async function handleJson(res) {
   }
 }
 
-export async function getBrainCloudRuntimeConfig({ forceRefresh = false } = {}) {
+export async function getBrainCloudRuntimeConfig({
+  forceRefresh = false,
+} = {}) {
   return getRuntimeConfig(forceRefresh);
 }
 
 export const brainCloudClient = {
   // Files
-  async listFiles(directory = '') {
-    return request('/api/v1/files/', {
-      searchParams: directory !== undefined && directory !== null ? { directory } : undefined
+  async listFiles(directory = "") {
+    return request("/api/v1/files/", {
+      searchParams:
+        directory !== undefined && directory !== null
+          ? { directory }
+          : undefined,
     });
   },
 
@@ -132,123 +161,253 @@ export const brainCloudClient = {
   },
 
   async batchGet(filepaths = [], ignore_missing = false) {
-    return request('/api/v1/files/batch', {
-      method: 'POST',
-      body: { filepaths, ignore_missing }
+    return request("/api/v1/files/batch", {
+      method: "POST",
+      body: { filepaths, ignore_missing },
     });
   },
 
   async writeFile(path, content, create_parents = true) {
-    return request('/api/v1/files/', {
-      method: 'POST',
-      body: { path, content, create_parents }
+    return request("/api/v1/files/", {
+      method: "POST",
+      body: { path, content, create_parents },
     });
   },
 
-  async appendContent(path, content, create_parents = true, separator = '\n') {
-    return request('/api/v1/files/append', {
-      method: 'POST',
-      body: { path, content, create_parents, separator }
+  async appendContent(path, content, create_parents = true, separator = "\n") {
+    return request("/api/v1/files/append", {
+      method: "POST",
+      body: { path, content, create_parents, separator },
     });
   },
 
-  async patchContent({ path, content, heading, position = 'after_heading', create_file = true, create_parents = true, separator = '\n' }) {
-    return request('/api/v1/files/patch', {
-      method: 'POST',
-      body: { path, content, heading, position, create_file, create_parents, separator }
+  async patchContent({
+    path,
+    content,
+    heading,
+    position = "after_heading",
+    create_file = true,
+    create_parents = true,
+    separator = "\n",
+  }) {
+    return request("/api/v1/files/patch", {
+      method: "POST",
+      body: {
+        path,
+        content,
+        heading,
+        position,
+        create_file,
+        create_parents,
+        separator,
+      },
     });
   },
 
-  async moveFile({ source_path, destination_path, create_parents = true, overwrite = false }) {
-    return request('/api/v1/files/move', {
-      method: 'POST',
-      body: { source_path, destination_path, create_parents, overwrite }
+  async moveFile({
+    source_path,
+    destination_path,
+    create_parents = true,
+    overwrite = false,
+  }) {
+    return request("/api/v1/files/move", {
+      method: "POST",
+      body: { source_path, destination_path, create_parents, overwrite },
     });
   },
 
   async deleteFile(path) {
-    return request(`/api/v1/files/${encodeURIComponent(path)}`, { method: 'DELETE' });
-  },
-
-  // Search
-  async search({ query, case_sensitive = false, file_extensions = [], directories = [] }) {
-    return request('/api/v1/search/', {
-      method: 'POST',
-      body: { query, case_sensitive, file_extensions, directories }
+    return request(`/api/v1/files/${encodeURIComponent(path)}`, {
+      method: "DELETE",
     });
   },
 
-  async complexSearch({ rules, file_extensions = null, directories = null, limit = 50 }) {
-    return request('/api/v1/search/complex', {
-      method: 'POST',
-      body: { rules, file_extensions, directories, limit }
+  // Search
+  async search({
+    query,
+    case_sensitive = false,
+    file_extensions = [],
+    directories = [],
+  }) {
+    return request("/api/v1/search/", {
+      method: "POST",
+      body: { query, case_sensitive, file_extensions, directories },
+    });
+  },
+
+  async complexSearch({
+    rules,
+    file_extensions = null,
+    directories = null,
+    limit = 50,
+  }) {
+    return request("/api/v1/search/complex", {
+      method: "POST",
+      body: { rules, file_extensions, directories, limit },
     });
   },
 
   // Periodic notes & recent
   async getPeriodic({ period_type, date = null }) {
-    return request('/api/v1/periodic/', {
-      method: 'POST',
-      body: { period_type, date }
+    return request("/api/v1/periodic/", {
+      method: "POST",
+      body: { period_type, date },
     });
   },
 
   async getRecentPeriodic({ period_type, limit = 5 }) {
-    return request(`/api/v1/recent/periodic/${encodeURIComponent(period_type)}`, {
-      searchParams: { limit }
-    });
+    return request(
+      `/api/v1/recent/periodic/${encodeURIComponent(period_type)}`,
+      {
+        searchParams: { limit },
+      }
+    );
   },
 
   async getRecentChanges({ limit = 10, days = 90 } = {}) {
-    return request('/api/v1/recent/changes', {
-      searchParams: { limit, days }
+    return request("/api/v1/recent/changes", {
+      searchParams: { limit, days },
     });
   },
 
   // Sync & status
   async syncNow() {
-    return request('/api/v1/sync/', { method: 'POST' });
+    return request("/api/v1/sync/", { method: "POST" });
   },
 
   async syncStatus() {
-    return request('/api/v1/sync/status');
+    return request("/api/v1/sync/status");
   },
 
   async vaultStatus() {
-    return request('/api/v1/vault/status');
+    return request("/api/v1/vault/status");
   },
 
   // Focus & context
   async getCurrentFocus(params = {}) {
-    return request('/api/v1/focus/current', {
-      searchParams: params
+    return request("/api/v1/focus/current", {
+      searchParams: params,
     });
   },
 
   async getTimeBasedContext(params = {}) {
-    return request('/api/v1/context/time', {
-      searchParams: params
+    return request("/api/v1/context/time", {
+      searchParams: params,
     });
   },
 
   // Tasks & due items
   async getDueTasks(params = {}) {
-    return request('/api/v1/tasks/due', {
-      searchParams: params
+    return request("/api/v1/tasks/due", {
+      searchParams: params,
     });
   },
 
   async getTasksSummary(params = {}) {
-    return request('/api/v1/tasks/summary', {
-      searchParams: params
+    return request("/api/v1/tasks/summary", {
+      searchParams: params,
     });
   },
 
   async getOverdueTasks(params = {}) {
-    return request('/api/v1/tasks/overdue', {
-      searchParams: params
+    return request("/api/v1/tasks/overdue", {
+      searchParams: params,
     });
-  }
+  },
+
+  // Graph & knowledge
+  async getGraphData(params = {}) {
+    return request("/api/v1/vault/graph", {
+      searchParams: params,
+    });
+  },
+
+  async analyzeGraph(params = {}) {
+    return request("/api/v1/vault/graph/analyze", {
+      method: "POST",
+      body: params,
+    });
+  },
+
+  // Semantic search & context
+  async semanticSearch(params = {}) {
+    return request("/api/v1/search/semantic", {
+      method: "POST",
+      body: params,
+    });
+  },
+
+  async getHistoricalContext(params = {}) {
+    return request("/api/v1/context/historical", {
+      method: "POST",
+      body: params,
+    });
+  },
+
+  // Conversations
+  async saveConversation(payload = {}) {
+    return request("/api/v1/conversations", {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  async searchConversations(params = {}) {
+    return request("/api/v1/conversations/search", {
+      method: "POST",
+      body: params,
+    });
+  },
+
+  /**
+   * Enable path override temporarily (admin mode)
+   * Allows writing to all directories for a limited time (TTL)
+   * @param {number} ttlSeconds - Time to live in seconds (default: 600 = 10 minutes)
+   * @param {string} adminToken - Admin API token (overrides config token)
+   * @returns {Promise<{success: boolean, expires_at?: string, message?: string}>}
+   */
+  async enablePathOverride(ttlSeconds = 600, adminToken = null) {
+    try {
+      const settings = await loadSettings();
+      const token = adminToken || settings.system?.adminApiToken || '';
+      
+      if (!token) {
+        throw new Error('Admin API token is required for path override. Configure it in Settings → System.');
+      }
+
+      const config = await getRuntimeConfig();
+      const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
+      const url = new URL('/api/v1/security/path-override/enable', baseUrl);
+
+      console.log('[brainCloudClient.enablePathOverride] Activating for', ttlSeconds, 'seconds');
+
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ttl_seconds: ttlSeconds }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Path override failed (${response.status}): ${text}`);
+      }
+
+      const result = await response.json();
+      console.log('[brainCloudClient.enablePathOverride] Enabled until:', result.expires_at);
+      
+      return {
+        success: true,
+        expires_at: result.expires_at,
+        message: `Path override enabled for ${ttlSeconds} seconds`,
+      };
+    } catch (error) {
+      console.error('[brainCloudClient.enablePathOverride] Error:', error);
+      throw error;
+    }
+  },
 };
 
 export default brainCloudClient;

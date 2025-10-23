@@ -1,5 +1,7 @@
+'use client';
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Command,
   FilePlus2,
@@ -22,6 +24,7 @@ import {
 import { useSettingsModal } from '../contexts/SettingsModalContext';
 import apiClient, { DashboardCollection } from '../services/apiClient';
 import ConversationHistory from './ConversationHistory';
+import { useAuth } from '../hooks/useAuth';
 
 type NavItem = {
   label: string;
@@ -53,6 +56,7 @@ const navSections: NavSection[] = [
 ];
 
 const NavigationSidebar: React.FC = () => {
+  const { user, loading: userLoading } = useAuth();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem('ggai.nav.collapsed') === 'true';
@@ -62,26 +66,24 @@ const NavigationSidebar: React.FC = () => {
   const [collectionsLoading, setCollectionsLoading] = useState(true);
   const { openSettings } = useSettingsModal();
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const getIsActive = useCallback(
     (targetPath: string) => {
-      const [pathname, search] = targetPath.split('?');
-      if (location.pathname !== pathname) return false;
+      const [targetPathname, search] = targetPath.split('?');
+      if (pathname !== targetPathname) return false;
       if (!search) return true;
       const targetParams = new URLSearchParams(search);
-      const currentParams = new URLSearchParams(location.search);
-      for (const [key, value] of targetParams) {
-        if (currentParams.get(key) !== value) return false;
-      }
-      return true;
+      return Array.from(targetParams.entries()).every(
+        ([key, value]) => searchParams.get(key) === value
+      );
     },
-    [location.pathname, location.search]
+    [pathname, searchParams]
   );
   const activeCollectionId = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('collection');
-  }, [location.search]);
+    return searchParams.get('collection');
+  }, [searchParams]);
 
   useEffect(() => {
     localStorage.setItem('ggai.nav.collapsed', String(collapsed));
@@ -196,7 +198,7 @@ const NavigationSidebar: React.FC = () => {
                     key={item.path}
                     type="button"
                     onClick={() => {
-                      navigate(item.path);
+                      router.push(item.path);
                       setUserMenuOpen(false);
                     }}
                     title={collapsed ? item.label : undefined}
@@ -238,7 +240,7 @@ const NavigationSidebar: React.FC = () => {
         {/* <ConversationHistory 
           collapsed={collapsed}
           onSelect={(conversationId) => {
-            navigate(`/chat?conversation=${conversationId}`);
+                router.push(`/chat?conversation=${conversationId}`);
             setUserMenuOpen(false);
           }}
         /> */}
@@ -274,7 +276,7 @@ const NavigationSidebar: React.FC = () => {
                       onClick={() => {
                         const params = new URLSearchParams(location.search);
                         params.set('collection', collection.id);
-                        navigate(`/?${params.toString()}`);
+                        router.push(`/?${params.toString()}`);
                         setUserMenuOpen(false);
                       }}
                       title={collection.label}
@@ -333,21 +335,21 @@ const NavigationSidebar: React.FC = () => {
             <div className="grid grid-cols-3 gap-2">
               <button
                 title="Nova nota (⌘+N)"
-                onClick={() => navigate('/?action=new-note')}
+                onClick={() => router.push('/?action=new-note')}
                 className="flex h-11 items-center justify-center rounded-xl border border-dashed border-neutral-600 bg-neutral-900 text-zinc-200 transition hover:border-neutral-500"
               >
                 <FilePlus2 className="h-4 w-4" />
               </button>
               <button
                 title="Capturar áudio"
-                onClick={() => navigate('/?action=voice-capture')}
+                onClick={() => router.push('/?action=voice-capture')}
                 className="flex h-11 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-zinc-200 transition hover:border-neutral-600 hover:bg-neutral-900"
               >
                 <Mic className="h-4 w-4" />
               </button>
               <button
                 title="Importar mídia"
-                onClick={() => navigate('/?action=media-import')}
+                onClick={() => router.push('/?action=media-import')}
                 className="flex h-11 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-zinc-200 transition hover:border-neutral-600 hover:bg-neutral-900"
               >
                 <ImageIcon className="h-4 w-4" />
@@ -367,7 +369,12 @@ const NavigationSidebar: React.FC = () => {
             </div>
             <ConversationHistory
               onSelect={(conversationId) => {
-                navigate(`/chat-centered?conversation=${conversationId}`);
+                const params = new URLSearchParams(
+                  typeof window !== "undefined" ? window.location.search : ""
+                );
+                params.set("conversation", conversationId);
+                const search = params.toString();
+                router.push(`/${search ? `?${search}` : ""}`);
                 setUserMenuOpen(false);
               }}
               collapsed={false}
@@ -390,12 +397,16 @@ const NavigationSidebar: React.FC = () => {
           }`}
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900">
-            <UserAvatar />
+            <UserAvatar picture={user?.picture} name={user?.name} loading={userLoading} />
           </div>
           {!collapsed && (
             <div className="flex-1 text-left">
-              <p className="text-sm font-semibold text-zinc-100">Guilherme Giorgi</p>
-              <p className="text-xs text-zinc-500">vectal.free@gg.ai</p>
+              <p className="text-sm font-semibold text-zinc-100">
+                {userLoading ? 'Carregando...' : user?.name || 'Usuário'}
+              </p>
+              <p className="text-xs text-zinc-500">
+                {userLoading ? '...' : user?.email || 'email@example.com'}
+              </p>
             </div>
           )}
           {!collapsed && (
@@ -406,8 +417,10 @@ const NavigationSidebar: React.FC = () => {
         {userMenuOpen && !collapsed && (
           <div className="absolute bottom-20 left-4 right-4 z-40 space-y-1 rounded-2xl border border-neutral-800 bg-neutral-950/95 py-2 shadow-2xl shadow-black/40">
             <div className="border-b border-neutral-800 px-4 py-3 text-sm">
-              <p className="font-medium text-zinc-100">gui.agro@gmail.com</p>
-              <p className="text-xs text-zinc-500">GG.AI Labs • Vectal Free</p>
+              <p className="font-medium text-zinc-100">{user?.email || 'email@example.com'}</p>
+              <p className="text-xs text-zinc-500">
+                {user?.name || 'GG.AI Labs'} • {user?.role || 'Free'}
+              </p>
             </div>
             <MenuItem
               icon={<Settings className="h-4 w-4 text-zinc-300" />}
@@ -439,7 +452,7 @@ const NavigationSidebar: React.FC = () => {
               label="Logout"
               onClick={() => {
                 localStorage.clear();
-                navigate('/login', { replace: true });
+                router.replace('/login');
               }}
             />
           </div>
@@ -449,11 +462,42 @@ const NavigationSidebar: React.FC = () => {
   );
 };
 
-const UserAvatar: React.FC = () => (
-  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-500 via-slate-400 to-slate-300 text-zinc-950 text-sm font-semibold">
-    GG
-  </span>
-);
+const UserAvatar: React.FC<{ picture?: string; name?: string; loading?: boolean }> = ({ 
+  picture, 
+  name, 
+  loading 
+}) => {
+  if (loading) {
+    return (
+      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-800 animate-pulse" />
+    );
+  }
+
+  if (picture) {
+    return (
+      <img 
+        src={picture} 
+        alt={name || 'User'} 
+        className="h-8 w-8 rounded-full object-cover"
+        onError={(e) => {
+          // Fallback if image fails to load
+          e.currentTarget.style.display = 'none';
+          e.currentTarget.nextElementSibling?.classList.remove('hidden');
+        }}
+      />
+    );
+  }
+
+  const initials = name
+    ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    : 'GG';
+
+  return (
+    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-500 via-slate-400 to-slate-300 text-zinc-950 text-sm font-semibold">
+      {initials}
+    </span>
+  );
+};
 
 const MenuItem: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void; badge?: string }> = ({
   icon,

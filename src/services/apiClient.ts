@@ -170,6 +170,20 @@ export interface Conversation {
   messages?: ChatMessage[];
 }
 
+export interface CurrentUserProfile {
+  id: string;
+  tenantId?: string;
+  email: string;
+  name: string;
+  picture?: string;
+  role?: string;
+  status?: string;
+  lastLoginAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ConversationCreatePayload {
   contextType?: "global" | "project" | "note";
   contextProjectId?: string;
@@ -379,7 +393,8 @@ const toNumber = (
 };
 
 const mapAIProvider = (data: AIProviderResponse): AIProvider => {
-  const providerName = (data.provider_name || "custom") as AIProvider["providerName"];
+  const providerName = (data.provider_name ||
+    "custom") as AIProvider["providerName"];
 
   return {
     id: data.id,
@@ -462,6 +477,7 @@ export interface DashboardSnapshot {
         total: number;
       };
     };
+    recentNotes?: FocusNote[];
   };
   warnings?: Array<{ scope?: string; message: string }>;
   config?: {
@@ -489,6 +505,54 @@ export interface InboxNote {
   size?: number | null;
 }
 
+export type BrainCloudConnectionMode = "rest" | "mcp";
+
+export interface BrainCloudSettings {
+  baseUrl: string;
+  apiToken: string;
+  tenantId: string;
+  tenantPlan: string;
+  mcpWs: string;
+  mcpHttp: string;
+  enableRest: boolean;
+  enableMcp: boolean;
+}
+
+export const defaultBrainCloudSettings: BrainCloudSettings = {
+  baseUrl: "",
+  apiToken: "",
+  tenantId: "",
+  tenantPlan: "",
+  mcpWs: "",
+  mcpHttp: "",
+  enableRest: true,
+  enableMcp: true,
+};
+
+export const resolveApiBaseUrl = () => {
+  if (typeof process !== "undefined") {
+    if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+      return process.env.NEXT_PUBLIC_API_BASE_URL;
+    }
+    if (process.env.API_BASE_URL) {
+      return process.env.API_BASE_URL;
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    const globalOverride = (
+      window as typeof window & {
+        __APP_API_BASE_URL__?: string;
+      }
+    ).__APP_API_BASE_URL__;
+    if (globalOverride) {
+      return globalOverride;
+    }
+  }
+
+  return "http://localhost:3002";
+};
+
 // --- Cliente da API ---
 
 export interface RequestOptions {
@@ -501,7 +565,7 @@ export class APIClient {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+    this.baseUrl = resolveApiBaseUrl();
   }
 
   private isRefreshing = false;
@@ -572,11 +636,11 @@ export class APIClient {
               } else {
                 throw new Error("Falha ao renovar o token");
               }
-            } catch (e) {
-              this.processQueue(e, null);
+            } catch (error) {
+              this.processQueue(error, null);
               localStorage.clear();
               window.location.href = "/login";
-              throw e;
+              throw error;
             } finally {
               this.isRefreshing = false;
             }
@@ -636,7 +700,7 @@ export class APIClient {
       "/api/settings/dashboard/collections",
       {
         method: "PUT",
-        body: { collections }
+        body: { collections },
       }
     );
     return response.collections || [];
@@ -644,81 +708,130 @@ export class APIClient {
 
   // Brain Cloud Semantic Search
   public async semanticSearch(query: string, limit = 5): Promise<any> {
-    return this.request('/api/brain/search', {
-      method: 'POST',
-      body: { query, limit }
+    return this.request("/api/brain/search", {
+      method: "POST",
+      body: { query, limit },
     });
   }
 
   // Brain Cloud Graph Data
-  public async getGraphData(directory = '', includeOrphans = true): Promise<any> {
-    return this.request('/api/brain/graph', {
-      method: 'GET',
-      searchParams: { directory, include_orphans: includeOrphans }
+  public async getGraphData(
+    directory = "",
+    includeOrphans = true
+  ): Promise<any> {
+    return this.request("/api/brain/graph", {
+      method: "GET",
+      searchParams: { directory, include_orphans: includeOrphans },
     });
   }
 
   // Brain Cloud Save Conversation
   public async saveConversation(
-    conversationId: string, 
-    messages: any[], 
+    conversationId: string,
+    messages: any[],
     metadata = {}
   ): Promise<any> {
-    return this.request('/api/brain/conversation/save', {
-      method: 'POST',
+    return this.request("/api/brain/conversation/save", {
+      method: "POST",
       body: {
-        source: 'claude',
+        source: "claude",
         conversation_id: conversationId,
         messages,
-        metadata
-      }
+        metadata,
+      },
     });
   }
 
   // Brain Cloud Search Conversations
   public async searchConversations(
-    query: string, 
-    limit = 5, 
+    query: string,
+    limit = 5,
     filters = {}
   ): Promise<any> {
-    return this.request('/api/brain/conversation/search', {
-      method: 'POST',
-      body: { query, limit, filters }
+    return this.request("/api/brain/conversation/search", {
+      method: "POST",
+      body: { query, limit, filters },
     });
   }
 
   // Brain Cloud Get Recent Conversations
   public async getRecentConversations(limit = 10): Promise<any> {
-    return this.request('/api/brain/conversations/recent?limit=' + limit);
+    return this.request("/api/brain/conversations/recent?limit=" + limit);
   }
 
   // Brain Cloud Get Specific Conversation
   public async getBrainConversation(conversationId: string): Promise<any> {
-    return this.request('/api/brain/conversation/' + conversationId);
+    return this.request("/api/brain/conversation/" + conversationId);
+  }
+
+  // Settings - Brain Cloud
+  public async getBrainCloudSettings(): Promise<BrainCloudSettings> {
+    const response = await this.request<{
+      success?: boolean;
+      braincloud?: Partial<BrainCloudSettings>;
+    }>("/api/settings/braincloud");
+    return {
+      ...defaultBrainCloudSettings,
+      ...(response?.braincloud || {}),
+    };
+  }
+
+  public async updateBrainCloudSettings(
+    payload: BrainCloudSettings
+  ): Promise<BrainCloudSettings> {
+    const response = await this.request<{
+      success?: boolean;
+      braincloud?: Partial<BrainCloudSettings>;
+    }>("/api/settings/braincloud", {
+      method: "PUT",
+      body: { braincloud: payload },
+    });
+    return {
+      ...defaultBrainCloudSettings,
+      ...(response?.braincloud || {}),
+    };
+  }
+
+  public async testBrainCloudConnection(
+    payload: BrainCloudSettings,
+    mode: BrainCloudConnectionMode
+  ): Promise<{
+    success?: boolean;
+    mode?: BrainCloudConnectionMode;
+    response?: Record<string, unknown>;
+    error?: string;
+  }> {
+    return this.request("/api/settings/braincloud/test", {
+      method: "POST",
+      body: {
+        braincloud: payload,
+        mode,
+      },
+    });
   }
 
   // Projects API
   public async getProjects(): Promise<any[]> {
-    return this.request('/api/projects');
+    return this.request("/api/projects");
   }
 
   public async createProject(project: any): Promise<any> {
-    return this.request('/api/projects', {
-      method: 'POST',
-      body: project
+    return this.request("/api/projects", {
+      method: "POST",
+      body: project,
     });
   }
 
   public async updateProject(projectId: string, project: any): Promise<any> {
     return this.request(`/api/projects/${projectId}`, {
-      method: 'PUT',
-      body: project
+      method: "PUT",
+      body: project,
     });
   }
 
   public async deleteProject(projectId: string): Promise<any> {
     return this.request(`/api/projects/${projectId}`, {
-      method: 'DELETE'
+      method: "DELETE",
     });
   }
 
@@ -729,25 +842,31 @@ export class APIClient {
   async chatStream(
     messages: any[],
     sessionId: string,
-    onChunk: (chunk: string | {content: string, thinking: boolean}) => void,
+    onChunk: (chunk: string) => void,
     onError: (error: Error) => void,
     onComplete: () => void,
-    modelId?: string
+    modelId?: string,
+    onEvent?: (
+      event:
+        | { type: "thinking"; content: string }
+        | { type: "tool_result"; data: any }
+        | { type: "tool_summary"; data: any }
+    ) => void
   ): Promise<void> {
     try {
       // Usa fetch direto para streaming
       const response = await fetch(`${this.baseUrl}/api/mcp/chat/stream`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
         body: JSON.stringify({
           messages,
           sessionId,
           tools: true, // Habilita ferramentas MCP
-          modelId
-        })
+          modelId,
+        }),
       });
 
       if (!response.ok) {
@@ -767,26 +886,45 @@ export class APIClient {
           break;
         }
         const chunk = decoder.decode(value);
-        
+
         // Process Server-Sent Events
-        const lines = chunk.split('\n');
+        const lines = chunk.split("\n");
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line.startsWith("data: ")) {
             const data = line.slice(6);
-            if (data === '[DONE]') continue;
-            
+            if (data === "[DONE]") continue;
+
             try {
               const parsed = JSON.parse(data);
+
+              if (parsed.tool_result) {
+                onEvent?.({
+                  type: "tool_result",
+                  data: parsed.tool_result,
+                });
+                continue;
+              }
+
+              if (parsed.tool_summary) {
+                onEvent?.({
+                  type: "tool_summary",
+                  data: parsed.tool_summary,
+                });
+                continue;
+              }
+
               const delta = parsed.choices?.[0]?.delta;
               if (delta?.content) {
-                // Check for thinking metadata
                 if (delta.thinking) {
-                  onChunk({ content: delta.content, thinking: true });
+                  onEvent?.({
+                    type: "thinking",
+                    content: delta.content,
+                  });
                 } else {
                   onChunk(delta.content);
                 }
               }
-            } catch (e) {
+            } catch {
               // Trying to parse as plain text
               if (data && data.trim()) {
                 onChunk(data);
@@ -811,7 +949,20 @@ export class APIClient {
     onComplete: () => void
   ): Promise<void> {
     // Legacy method - redirect to chatStream
-    return this.chatStream(query, sessionId, onChunk, onError, onComplete);
+    const legacyMessages = [
+      {
+        role: "user",
+        content: query,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    return this.chatStream(
+      legacyMessages,
+      sessionId,
+      onChunk,
+      onError,
+      onComplete
+    );
   }
 
   // --- Métodos para Insights ---
@@ -985,8 +1136,14 @@ export class APIClient {
     lineNumber?: number | null;
     completed: boolean;
     title?: string;
-  }): Promise<void> {
-    await this.request("/api/tasks/toggle", {
+  }): Promise<{
+    success: boolean;
+    filePath: string;
+    completed: boolean;
+    updatedFrontmatter: boolean;
+    adminModeExpiry?: string | null;
+  }> {
+    return await this.request("/api/tasks/toggle", {
       method: "POST",
       body: payload,
     });
@@ -1421,10 +1578,13 @@ export class APIClient {
   public async upsertAIProvider(
     payload: AIProviderCreatePayload
   ): Promise<AIProvider> {
-    const response = await this.request<AIProviderResponse>("/api/ai-providers", {
-      method: "POST",
-      body: payload,
-    });
+    const response = await this.request<AIProviderResponse>(
+      "/api/ai-providers",
+      {
+        method: "POST",
+        body: payload,
+      }
+    );
     return mapAIProvider(response);
   }
 
@@ -1545,6 +1705,20 @@ export class APIClient {
       }
     );
     return response ? mapConversationModelConfig(response) : null;
+  }
+
+  public async getCurrentUser(): Promise<CurrentUserProfile> {
+    const response = await this.request<{
+      success?: boolean;
+      user: CurrentUserProfile;
+    }>("/api/auth/me");
+    return response.user;
+  }
+
+  public async logout(): Promise<void> {
+    await this.request<{ success?: boolean }>("/api/auth/logout", {
+      method: "POST",
+    });
   }
 }
 

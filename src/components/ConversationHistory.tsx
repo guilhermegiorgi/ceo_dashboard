@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Clock, Loader2, Search } from 'lucide-react';
 import apiClient from '../services/apiClient';

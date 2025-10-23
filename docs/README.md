@@ -1,199 +1,143 @@
-# GG.AI Labs - Dashboard do CEO
+# GG.AI Labs – CEO Dashboard
 
-Um sofisticado dashboard executivo que se integra ao seu segundo cérebro do Obsidian para fornecer insights de negócios e recomendações estratégicas com tecnologia de IA.
+Um cockpit operativo que conecta o **Segundo Cérebro** (vault Obsidian) à camada de IA **Sophia 3.0**. O sistema consolida foco, tarefas, projetos, insights, grafos e chat cognitivo em uma única experiência, com dados reais alimentados pela Brain Cloud MCP e persistência em PostgreSQL.
 
-## 🚀 Visão Geral
+---
 
-Este dashboard funciona como um centro de comando para CEOs e executivos, utilizando agentes de IA para analisar grafos de conhecimento, fornecer inteligência de negócios em tempo real e entregar insights acionáveis através de integrações avançadas com Obsidian, MCP (Protocolo de Contexto de Modelo) e serviços de IA customizados.
+## 🚀 O que está entregue hoje
 
-## ✨ Funcionalidades
+### Dashboard em tempo real
+- Snapshot diário alimentado pela Brain Cloud (foco semanal, tarefas críticas, notas recentes).
+- Cards de agentes e eventos em tempo real via SSE.
+- Utilidades dedicadas: tarefas, inbox, notas diárias, histórico de chat, grafo e ferramentas MCP.
 
-### Dashboard Principal
-- **Visão Geral de Métricas Executivas**: KPIs em tempo real, incluindo crescimento de receita, pontuações de eficiência de IA, projetos ativos e produtividade da equipe.
-- **Insights com IA**: Recomendações estratégicas com pontuação de confiança e classificação de prioridade.
-- **Suporte Bilíngue**: Alternância transparente PT-BR/Inglês com localização completa.
-- **Design Responsivo**: UI premium com animações suaves e microinterações.
+### Conversas com contexto do vault
+- Chat streaming via assistant-ui, enriquecido com busca semântica na Brain Cloud.
+- Conversas e contextos persistidos automaticamente no vault (`5 - INSIGHTS-IA/Conversas/...`).
+- Seleção dinâmica de modelos/fornecedores de IA.
 
-### Integrações
-- **Grafo de Conhecimento do Obsidian**: Integração direta com seu segundo cérebro para análise de nós de conhecimento.
-- **Serviços MCP**: Integração com o Protocolo de Contexto de Modelo para comunicação entre agentes de IA.
-- **Gerenciamento de Projetos**: Acompanhamento de projetos em tempo real com visualização de progresso.
-- **API de Embeddings de IA**: Integração com API customizada para análise de conteúdo e insights.
+### Knowledge Graph acionável
+- `/api/knowledge-graph/nodes` expõe nós/arestas reais do vault com fallback REST/MCP.
+- Visualização carregada sob demanda (lazy) no Hub para reduzir custo inicial.
 
-## 🛠 Tecnologias Utilizadas (Stack)
+### Backend consolidado em PostgreSQL
+- Rotas de projetos e coleções do dashboard migradas para `pg-pool` com escopo multi-tenant.
+- Código legacy SQLite e rotas antigas removidos.
 
-### Frontend
-- **React 18** com TypeScript
-- **Vite** para desenvolvimento e build
-- **Tailwind CSS** para estilização
-- **Lucide React** para ícones
+---
 
-### Backend (BFF)
-- **Node.js** com **Express**
-- **SQLite** para persistência de dados
-- **Redis** para cache
-- **Integração com APIs**: Obsidian, OpenAI, etc.
-- **WebSocket** para comunicação em tempo real
+## 🧱 Stack Atual
 
-## 🏗 Arquitetura
+| Camada | Tecnologias | Observações |
+|--------|-------------|-------------|
+| **Frontend/App** | [Next.js 15](https://nextjs.org/) (App Router), React 19, TypeScript, Tailwind CSS, assistant-ui | Executa em `http://localhost:3000` durante o dev; `/app` concentra as rotas do dashboard |
+| **BFF / API** | Node.js + Express (`server/index.js`), Brain Cloud unified service (REST/MCP), Redis (opcional) | Sobe em `http://localhost:3002`; expõe `/api/*` consumido pelo Next |
+| **Banco de Dados** | PostgreSQL (Supabase ou self-hosted) com `pg` | Migrations em `migrations/` + pool em `server/database/pg-pool.js` |
+| **Integrações** | Obsidian Brain Cloud MCP, SSE event bus, provedores de IA configuráveis | Configuração via `.env` (root + `server/.env`) e painel `/settings` |
 
-O projeto utiliza uma arquitetura **Backend for Frontend (BFF)**, separando claramente as responsabilidades:
-
+### Estrutura do repo
 ```
-/
-├── src/       # Código-fonte do Frontend (React)
-└── server/    # Código-fonte do Backend (Node.js/Express)
-```
-
-## 🚀 Como Começar
-
-### Pré-requisitos
-- Node.js 18+
-- npm ou yarn
-- Obsidian com acesso à API (para funcionalidade completa)
-
-### Instalação
-
-1. Clone o repositório
-```bash
-git clone <url-do-repositorio>
-cd gg-ai-labs-dashboard
+app/                # Rotas Next.js (App Router)
+server/             # Express API, serviços, integrações MCP
+src/components      # UI modularizada (Hub e utilitários)
+src/hooks           # Hooks auxiliares
+scripts/, migrations/  # automações e schema PG
 ```
 
-2. Instale as dependências
-```bash
-npm install
-```
+---
 
-3. Inicie o servidor de desenvolvimento
-```bash
-npm run dev
-```
+## ▶️ Como rodar localmente
 
-4. Abra [http://localhost:5173](http://localhost:5173) no seu navegador
-
-### Configuração de Ambiente
-
-1. Copie o arquivo de exemplo para criar seu ambiente local:
+1. **Instale dependências**
    ```bash
-   cp .env.example .env
+   npm install
    ```
 
-2. Edite o arquivo `.env` com suas chaves e configurações. As variáveis são separadas por responsabilidade:
-   - **Variáveis `VITE_`**: São seguras para serem expostas ao frontend.
-   - **Outras Variáveis**: São secretas e usadas apenas pelo servidor backend.
+2. **Configure variáveis**
+   - `.env` (raiz) para variáveis expostas ao Next (`NEXT_PUBLIC_*`, `CHAT_*`, etc.).
+   - `server/.env` para segredos do backend (`PORT`, `BRAINCLOUD_*`, `OPENAI_*`, credenciais PG).
 
+   Exemplo mínimo:
    ```env
-   # Frontend Environment Variables
-   VITE_API_BASE_URL=http://localhost:3001
-   VITE_WEBSOCKET_URL=ws://localhost:3001
-
-   # Backend Environment Variables (Secrets)
-   PORT=3001
-   OBSIDIAN_API_KEY=your_obsidian_api_key
-   OPENAI_API_KEY=your_openai_api_key
-   # ... e outras chaves secretas
+   PORT=3002
+   DATABASE_URL=postgres://user:pass@host:6543/db
+   BRAINCLOUD_API_TOKEN=xxxxxxxx
+   BRAINCLOUD_BASE_URL=https://obsidian-mcp.ggailabs.com
+   NEXT_PUBLIC_API_BASE_URL=http://localhost:3002
+   CHAT_PROVIDER=openai
+   CHAT_API_KEY=sk-...
    ```
 
-## 🔧 Configuração
+3. **Inicie frontend + backend em paralelo**
+   ```bash
+   npm run dev
+   ```
+   - Next.js (frontend) ➜ `http://localhost:3000`
+   - Express (backend) ➜ `http://localhost:3002`
 
-### Configuração do Obsidian
-1. Instale o plugin Obsidian Local REST API
-2. Configure o acesso à API nas configurações do Obsidian
-3. Atualize as variáveis de ambiente com os detalhes da sua API do Obsidian
+4. **Outros scripts úteis**
+   ```bash
+   npm run dev:frontend   # apenas Next.js
+   npm run dev:backend    # apenas Express (nodemon)
+   npm run build          # build Next + preparar server
+   npm run lint           # ESLint unificado
+   ```
 
-### Configuração dos Serviços de IA
-1. Faça o deploy da sua API de embeddings/transformers
-2. Configure os endpoints da API nas variáveis de ambiente
-3. Configure as chaves de autenticação
+---
 
-## 📊 Funcionalidades em Detalhe
+## 🧩 Componentes e Fluxos Principais
 
-### Motor de Insights de IA
-- **Pontuação de Confiança**: Cada insight inclui um percentual de confiança.
-- **Classificação de Prioridade**: Sistema de prioridade Alta/Média/Baixa.
-- **Recomendações Acionáveis**: Próximos passos claros para cada insight.
-- **Análise em Tempo Real**: Processamento ao vivo do seu grafo de conhecimento.
+| Área | Arquivo de entrada | Destaques |
+|------|---------------------|-----------|
+| Business Intelligence Hub | `src/components/BusinessIntelligenceHub.tsx` | Container principal (em processo de decomposição: hooks + componentes utilitários)|
+| Chat Assistente | `src/components/ChatWidget.tsx` | Streaming assistant-ui + ferramentas MCP |
+| Dashboard Provider | `src/contexts/DashboardDataContext.tsx` | Carrega snapshot/coleções com caching básico |
+| API Client | `src/services/apiClient.ts` | Client HTTP tipado para `/api/*` |
+| Brain Cloud Service | `server/services/brainCloudService.js` + `brainCloud/BrainCloudService.ts` | Abstração REST/MCP com fallback automático |
+| Projetos API | `server/routes/projects.js` | CRUD multi-tenant em PostgreSQL |
 
-### Integração com Grafo de Conhecimento
-- **Funcionalidade de Busca**: Consulte seu cofre do Obsidian diretamente.
-- **Visualização de Nós**: Veja conexões e relacionamentos.
-- **Atividade Recente**: Acompanhe as últimas atualizações de conhecimento.
-- **Insights Gerados por IA**: Análise automática de suas notas.
+---
 
-### Gerenciamento de Projetos
-- **Acompanhamento de Progresso**: Barras de progresso visuais e indicadores de status.
-- **Gerenciamento de Equipe**: Alocação de membros e distribuição de carga de trabalho.
-- **Monitoramento de Orçamento**: Acompanhamento financeiro e cálculos de ROI.
-- **Gerenciamento de Prazos**: Visualização de cronogramas e alertas.
+## 📡 Integração com Brain Cloud MCP
 
-## 🌐 Internacionalização
+1. Gere um token no painel MCP (`BRAINCLOUD_API_TOKEN`).
+2. Configure `BRAINCLOUD_BASE_URL`, `VITE_BRAINCLOUD_API_TOKEN`/`VITE_BRAINCLOUD_MCP_HTTP` se desejar expor ao frontend.
+3. Verifique `/api/settings/braincloud` para persistir parâmetros via UI.
+4. Snapshot, grafo, chat e ferramentas MCP dependem dessa configuração.
 
-O dashboard suporta tanto Inglês quanto Português (Brasil) com:
-- Tradução completa da UI
-- Formatação de números localizada
-- Conversão de moeda (USD ↔ BRL)
-- Localização de data/hora
-- Adaptações culturais
+> Em ambiente local sem credenciais, o Hub exibe dados fallback. Para QA real, é recomendado apontar para o tenant Supabase + Brain Cloud oficial.
 
-## 🎨 Sistema de Design
+---
 
-### Paleta de Cores
-- **Primária**: Gradientes de Azul para Roxo
-- **Secundária**: Gradientes de Verde para Ciano
-- **Destaque**: Gradientes de Roxo para Rosa
-- **Cores de Status**: Verde (sucesso), Amarelo (aviso), Vermelho (erro)
-- **Fundo**: Slate 900/800 com camadas de transparência
+## 🗺 Roadmap em andamento
 
-### Tipografia
-- **Títulos**: Negrito, hierarquia clara
-- **Corpo de Texto**: Legível com contraste adequado
-- **Métricas**: Números grandes e proeminentes
-- **Rótulos**: Sutis, informativos
+| Fase | Objetivo | Status |
+|------|----------|--------|
+| Agent 1 – Migração PostgreSQL | Migrar rotas críticas `/api/projects` e settings para PG | ✅ Concluído (pg-pool + cache por tenant) |
+| Agent 2 – Brain Cloud + Chat | Snapshot real, grafo MCP e chat com contexto | ✅ Concluído (REST/MCP integrados + conversa persistida) |
+| Agent 3 – Otimizações Hub | Decompor `BusinessIntelligenceHub`, lazy load, remoção de pages legadas | 🔄 Em progresso (contexto unificado + cleanup de rotas) |
+| Agent 4 – (Planejado) | Storybook/testes de regressão + automações workflows | ⏳ Planejado |
 
-## 🔮 Roadmap
+Pendências ativas do Agent 3:
+- Extrair hooks dedicados (`useTasks`, `useInbox`, etc.) e finalizar redução para ~2500 linhas.
+- Reintroduzir tool renderers específicos (substituídos por stubs em `src/components/chat-tools.tsx`).
+- Atualizar `package-lock.json` após remoção de `sqlite3` (rodar `npm install`).
 
-### Fase 1 (Atual)
-- [x] UI principal do dashboard
-- [x] Suporte bilíngue
-- [x] Integração de dados mock
-- [x] Design responsivo
+---
 
-### Fase 2 (Próxima)
-- [ ] Integração com API do Obsidian
-- [ ] Conexões de dados em tempo real
-- [ ] Implementação de WebSocket
-- [ ] Autenticação de usuário
+## 📚 Documentação complementar
 
-### Fase 3 (Futura)
-- [ ] Integração com protocolo MCP
-- [ ] Agentes de IA avançados
-- [ ] Processamento de embeddings customizados
-- [ ] Suporte a múltiplos usuários
-- [ ] Aplicativo móvel complementar
+- `docs/README_PROXIMOS_PASSOS.md` – acompanhamento tático dos agentes.
+- `docs/HUB_DECOMPOSITION_PHASE3.md` – análise detalhada e roadmap de refatoração do Hub.
+- `docs/PROMPT_AGENT*_*.md` – instruções operacionais para cada agente.
+- `docs/QUESTIONARIO_DEFINICAO_SISTEMA.md` / `DEFINICOES_SISTEMA_PREENCHIDO.md` – requisitos funcionais consolidados.
 
-## 🤝 Contribuição
+---
 
-1. Faça um fork do repositório
-2. Crie uma branch de funcionalidade (`git checkout -b feature/funcionalidade-incrivel`)
-3. Faça commit de suas alterações (`git commit -m 'Adiciona funcionalidade incrível'`)
-4. Envie para a branch (`git push origin feature/funcionalidade-incrivel`)
-5. Abra um Pull Request
+## 🤝 Contribuição & Suporte
 
-## 📝 Licença
+1. Crie uma branch (`git checkout -b feature/nome`).
+2. Garanta lint/tests (`npm run lint`, testes específicos quando aplicável).
+3. Abra um PR descrevendo o impacto (rotas, hooks, UI, etc.).
 
-Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
-
-## 🆘 Suporte
-
-Para suporte e perguntas:
-- Crie uma issue no repositório
-- Contate a equipe de desenvolvimento
-- Verifique a [documentação](DOCS.md) para guias detalhados
-
-## 🙏 Agradecimentos
-
-- Equipe do Obsidian pela plataforma de gerenciamento de conhecimento
-- Comunidades React e Vite
-- Tailwind CSS pelo sistema de design
-- Lucide pelos ícones incríveis
+Para dúvidas rápidas: abra uma issue ou registre contexto via `save_conversation_history` para manter o histórico no vault.

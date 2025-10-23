@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
-import SettingsModal from '../components/SettingsModal';
+import { SettingsModalRefactored as SettingsModal } from '../components/SettingsModalRefactored';
 
 type SettingsModalContextValue = {
   openSettings: () => void;

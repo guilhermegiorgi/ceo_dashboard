@@ -1,5 +1,7 @@
+'use client';
+
 import { useState, useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useSearchParams } from 'next/navigation';
 import apiClient from '../services/apiClient';
 
 interface Message {
@@ -12,13 +14,19 @@ interface Message {
 interface Conversation {
   conversation_id: string;
   content: string;
-  role: string;
+  role: "user" | "assistant";
   timestamp: string;
 }
 
+type StoredMessage = {
+  id: string;
+  text: string;
+  role: "user" | "assistant";
+  timestamp: string;
+};
+
 export const useChat = () => {
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
+  const searchParams = useSearchParams();
   const conversationId = searchParams.get('conversation');
   
   const [messages, setMessages] = useState<Message[]>([]);
@@ -33,20 +41,28 @@ export const useChat = () => {
     if (conversationId && conversationId !== currentConversationId) {
       loadConversation(conversationId);
     }
-  }, [conversationId, currentConversationId]);
+  }, [conversationId, currentConversationId, loadConversation]);
 
   // Cross-tab synchronization via storage events
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === `chat-messages-${currentConversationId}`) {
-        const newMessages = e.newValue ? JSON.parse(e.newValue) : [];
-        setMessages(newMessages.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        })));
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === `chat-messages-${currentConversationId}`) {
+        try {
+          const stored: StoredMessage[] = event.newValue
+            ? JSON.parse(event.newValue)
+            : [];
+          setMessages(
+            stored.map((msg) => ({
+              ...msg,
+              timestamp: new Date(msg.timestamp),
+            }))
+          );
+        } catch (parseError) {
+          console.warn("Failed to parse stored chat messages", parseError);
+        }
       }
-      if (e.key === `chat-title-${currentConversationId}`) {
-        const newTitle = e.newValue || "Nova Conversa";
+      if (event.key === `chat-title-${currentConversationId}`) {
+        const newTitle = event.newValue || "Nova Conversa";
         setConversationTitle(newTitle);
       }
     };
@@ -76,8 +92,8 @@ export const useChat = () => {
         const loadedMessages = response.conversation.map((msg: Conversation) => ({
           id: `${msg.role}-${msg.timestamp}`,
           text: msg.content,
-          role: msg.role as "user" | "assistant",
-          timestamp: new Date(msg.timestamp)
+          role: msg.role,
+          timestamp: new Date(msg.timestamp),
         }));
         
         setMessages(loadedMessages);

@@ -1,3 +1,5 @@
+"use client";
+
 import React, {
   useCallback,
   useEffect,
@@ -7,18 +9,16 @@ import React, {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import toast from "react-hot-toast";
+import { showSuccessToast, showErrorToast } from "../lib/toast";
+import { useAdminModeActivation } from "../hooks/useAdminModeActivation";
 import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Cpu,
-  FilePlus2,
   Flag,
   Link2,
   Loader2,
-  Mic,
-  Play,
   RefreshCw,
   Search as SearchIcon,
   ListTodo,
@@ -34,28 +34,46 @@ import {
   Pin,
   List as ListIcon,
   LayoutGrid,
+  BarChart,
   SlidersHorizontal,
   Info,
   UserCircle,
   CheckCircle,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type {
-  DashboardSnapshot,
-  DashboardCollection,
   AgentRun,
-  InboxNote,
   CompletedTask,
   TaskPreferences,
-  Conversation,
   ChatMessage,
   ConversationModelConfig,
 } from "../services/apiClient";
 import { useAPI } from "../hooks/useAPI";
-import KnowledgeGraphVisualizer from "./KnowledgeGraphVisualizer";
-import ConversationView from "./ConversationView";
+import ChatWidget from "./ChatWidget";
+import FeedbackLoopTracker from "./FeedbackLoopTracker";
+import ProjectOverview from "./ProjectOverview";
+import EventListener from "./EventListener";
+import ConversationSection from "./workflow/ConversationSection";
+import ProjectCard from "./ProjectCard";
+import FocusSummaryWidget from "./workflow/FocusSummaryWidget";
+import ActiveProjectBanner from "./workflow/ActiveProjectBanner";
+import InboxPanel from "./workflow/InboxPanel";
+import InboxNoteCard from "./InboxNoteCard";
+import ChatHistoryRenderer from "./workflow/ChatHistoryRenderer";
+import McpToolsRenderer from "./workflow/McpToolsRenderer";
+import ShortcutsRenderer from "./workflow/ShortcutsRenderer";
+import WorkflowManager from "./workflow/WorkflowManager";
+import AnalyticsDashboard from "./analytics/AnalyticsDashboard";
+import { FocusHeadline } from "./FocusHeadline";
+import { EmptyFocusState } from "./EmptyFocusState";
+import { useDashboardData } from "../contexts/DashboardDataContext";
+import { useTasksState } from "../hooks/useTasksState";
+import { useInboxState } from "../hooks/useInboxState";
+import { useSemanticInsights } from "../hooks/useSemanticInsights";
+import { useTimelineState } from "../hooks/useTimelineState";
+import { useUIState, UtilityView } from "../hooks/useUIState";
 
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.0.0";
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0.0";
 const APP_VERSION_LABEL = APP_VERSION.toUpperCase().startsWith("V")
   ? APP_VERSION.toUpperCase()
   : `V${APP_VERSION}`;
@@ -136,141 +154,6 @@ type ChatThread = {
   pinned?: boolean;
 };
 
-const FALLBACK_TIMELINE: TimelineCard[] = [
-  {
-    id: "card-1",
-    type: "message",
-    author: "assistant",
-    title: "Bom dia! Aqui está o foco do dia:",
-    body: "• Validar proposta de automação IA com a Cooperativa Verde.\n• Finalizar roteiro do piloto multi-tenant.\n• Revisar 4 notas marcadas como “pending review”.",
-    timestamp: "08:00",
-    actions: [
-      { label: "Avaliar notas", icon: <Link2 className="h-4 w-4" /> },
-      { label: "Gerar resumo diário", icon: <Sparkles className="h-4 w-4" /> },
-    ],
-  },
-  {
-    id: "card-2",
-    type: "insight",
-    title: "Insight IA: onboarding Agro SaaS",
-    body: "Padrões de reuniões + notas indicam oportunidade de oferecer onboarding express para cooperativas (ticket médio R$ 18k).",
-    impact: "Potencial +R$ 90k / trimestre",
-    confidence: 0.82,
-    tags: ["#estratégia", "#agronegócio", "#produto"],
-    timestamp: "Ontem • 19:42",
-  },
-  {
-    id: "card-3",
-    type: "note",
-    title: "Transcrição – Reunião NK Insights",
-    snippet:
-      "Squads escolhidos para agentes autônomos: suporte, BI e agricultura digital. Integração inicial com dashboards existentes...",
-    related: ["Roadmap IA NK", "Hypersprint #03"],
-    timestamp: "Ontem • 17:22",
-  },
-  {
-    id: "card-4",
-    type: "agent",
-    title: "Agente Daily Focus concluído",
-    status: "completed",
-    description:
-      "Resumo diário gerado das notas 09/10 + tarefas atrasadas. 4 insights sugeridos.",
-    nextRun: "Próxima execução às 07:00",
-    timestamp: "Hoje • 07:01",
-  },
-  {
-    id: "card-5",
-    type: "message",
-    author: "user",
-    title: "Pergunta",
-    body: "Quais riscos estratégicos preciso revisar esta semana?",
-    timestamp: "Ontem • 21:13",
-    actions: [
-      { label: "Ver resposta", icon: <ChevronRight className="h-4 w-4" /> },
-    ],
-  },
-];
-
-const FALLBACK_TASKS: Task[] = [];
-
-const FALLBACK_PINNED_INSIGHTS = [
-  {
-    id: "pin-1",
-    title: "Playbook onboarding IA em 7 dias",
-    description:
-      "Sequência de passos para onboarding express em cooperativas. Atualizado ontem.",
-    source: "Insight IA • Alta prioridade",
-  },
-  {
-    id: "pin-2",
-    title: "Mapa de decisões críticas NK Insights",
-    description:
-      "Top 5 decisões que dependem de dados atualizados nas próximas duas semanas.",
-    source: "Decision Journal",
-  },
-];
-
-const FALLBACK_FOCUS_SUMMARY = [
-  { label: "Projetos ativos", value: 5 },
-  { label: "Insights novos", value: 8 },
-  { label: "Tarefas críticas", value: 3 },
-];
-
-const FALLBACK_AGENT_CARDS = [
-  {
-    id: "agent-1",
-    name: "Daily Focus",
-    status: "Executado",
-    time: "07:01",
-    icon: <Sparkles className="h-4 w-4 text-emerald-300" />,
-  },
-  {
-    id: "agent-2",
-    name: "Linker Insights",
-    status: "Rodando",
-    time: "agora",
-    icon: <Loader2 className="h-4 w-4 text-sky-300 animate-spin" />,
-  },
-  {
-    id: "agent-3",
-    name: "Weekly Digest",
-    status: "Agendado",
-    time: "Sáb • 08:00",
-    icon: <Timer className="h-4 w-4 text-zinc-300" />,
-  },
-];
-
-const FALLBACK_CHAT_THREADS: ChatThread[] = [
-  {
-    id: "chat-1",
-    title: "Planejamento Weekly Review",
-    summary:
-      "Checklist da weekly review com insights das notas e tarefas críticas.",
-    updatedAt: new Date().toISOString(),
-    messageCount: 18,
-    tags: ["ritual", "weekly"],
-    pinned: true,
-  },
-  {
-    id: "chat-2",
-    title: "Estratégia Agro SaaS",
-    summary:
-      "Discussão sobre hipóteses de crescimento e playbook de onboarding.",
-    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    messageCount: 24,
-    tags: ["agro", "produto"],
-  },
-  {
-    id: "chat-3",
-    title: "Roadmap NK Insights",
-    summary:
-      "Brainstorm das próximas entregas e dependências com squads parceiros.",
-    updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    messageCount: 12,
-    tags: ["roadmap", "parcerias"],
-  },
-];
-
 type AgentCardData = {
   id: string;
   name: string;
@@ -278,19 +161,6 @@ type AgentCardData = {
   time: string;
   icon: React.ReactNode;
 };
-
-type UtilityView =
-  | "tasks"
-  | "inbox"
-  | "dailyNotes"
-  | "workflows"
-  | "search"
-  | "agents"
-  | "projects"
-  | "chatHistory"
-  | "knowledgeGraph"
-  | "mcpTools"
-  | "shortcuts";
 
 type DockButton = {
   id: UtilityView;
@@ -341,6 +211,241 @@ const formatDateTimeRange = (
   return "Execução sem horário registrado";
 };
 
+const readStringProp = (
+  event: BrainCloudEvent,
+  key: string
+): string | undefined => {
+  const value = event[key];
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+  return undefined;
+};
+
+const readNumberProp = (
+  event: BrainCloudEvent,
+  key: string
+): number | undefined => {
+  const value = event[key];
+  return typeof value === "number" ? value : undefined;
+};
+
+const readStringArrayProp = (
+  event: BrainCloudEvent,
+  key: string
+): string[] | undefined => {
+  const value = event[key];
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const items = value.filter(
+    (item): item is string => typeof item === "string" && item.trim().length > 0
+  );
+  return items.length > 0 ? items : undefined;
+};
+
+const formatDurationLabel = (duration?: number): string | undefined => {
+  if (duration === undefined || duration === null || Number.isNaN(duration)) {
+    return undefined;
+  }
+  if (duration >= 1000) {
+    const seconds = duration / 1000;
+    return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)}s`;
+  }
+  return `${Math.round(duration)}ms`;
+};
+
+const buildEventCardId = (event: BrainCloudEvent): string => {
+  if (
+    "taskId" in event &&
+    typeof event.taskId === "string" &&
+    event.taskId.trim().length > 0
+  ) {
+    return `${event.type}-${event.taskId}-${event.timestamp}`;
+  }
+  if (
+    "conversationId" in event &&
+    typeof event.conversationId === "string" &&
+    event.conversationId.trim().length > 0
+  ) {
+    return `${event.type}-${event.conversationId}-${event.timestamp}`;
+  }
+  if (
+    "workflowId" in event &&
+    typeof event.workflowId === "string" &&
+    event.workflowId.trim().length > 0
+  ) {
+    return `${event.type}-${event.workflowId}-${event.timestamp}`;
+  }
+  if (
+    "path" in event &&
+    typeof event.path === "string" &&
+    event.path.trim().length > 0
+  ) {
+    return `${event.type}-${event.path}-${event.timestamp}`;
+  }
+  return `${event.type}-${event.timestamp}`;
+};
+
+const buildTimelineCardFromEvent = (event: BrainCloudEvent): TimelineCard => {
+  const eventType = String(event.type);
+  const timestamp = formatTimestampLabel(event.timestamp);
+  const bodyParts: string[] = [];
+
+  let title = `🔔 ${eventType}`;
+
+  if (eventType.startsWith("task:")) {
+    const taskLabels: Record<string, string> = {
+      "task:created": "🆕 Tarefa criada",
+      "task:updated": "✏️ Tarefa atualizada",
+      "task:completed": "✅ Tarefa concluída",
+    };
+    title = taskLabels[eventType] ?? "Atualização de tarefa";
+    const taskTitle = readStringProp(event, "title");
+    if (taskTitle) {
+      bodyParts.push(taskTitle);
+    }
+    const status = readStringProp(event, "status");
+    if (status) {
+      bodyParts.push(`Status: ${status}`);
+    }
+    const filePath = readStringProp(event, "filePath");
+    if (filePath) {
+      bodyParts.push(`Nota: ${filePath}`);
+    }
+  } else if (eventType.startsWith("file:")) {
+    const fileLabels: Record<string, string> = {
+      "file:created": "📁 Arquivo criado",
+      "file:updated": "📄 Arquivo atualizado",
+      "file:deleted": "🗑️ Arquivo removido",
+      "file:moved": "📂 Arquivo movido",
+    };
+    title = fileLabels[eventType] ?? "Atualização de arquivo";
+    const path = readStringProp(event, "path");
+    if (path) {
+      bodyParts.push(path);
+    }
+    if (eventType === "file:moved") {
+      const newPath = readStringProp(event, "newPath");
+      if (newPath) {
+        bodyParts.push(`➡️ ${newPath}`);
+      }
+    }
+  } else if (eventType.startsWith("note:")) {
+    title =
+      eventType === "note:created" ? "📝 Nota criada" : "📝 Nota atualizada";
+    const noteTitle = readStringProp(event, "title");
+    if (noteTitle) {
+      bodyParts.push(noteTitle);
+    }
+    const path = readStringProp(event, "path");
+    if (path) {
+      bodyParts.push(`Arquivo: ${path}`);
+    }
+    const tags = readStringArrayProp(event, "tags");
+    if (tags) {
+      bodyParts.push(`Tags: ${tags.join(", ")}`);
+    }
+  } else if (eventType === "conversation:saved") {
+    title = "💬 Conversa salva";
+    const conversationId = readStringProp(event, "conversationId");
+    if (conversationId) {
+      bodyParts.push(`ID: ${conversationId}`);
+    }
+    const notePath = readStringProp(event, "notePath");
+    if (notePath) {
+      bodyParts.push(`Registrada em: ${notePath}`);
+    }
+    const messageCount = readNumberProp(event, "messageCount");
+    if (messageCount !== undefined) {
+      bodyParts.push(`Mensagens: ${messageCount}`);
+    }
+  } else if (eventType === "graph:updated") {
+    title = "🧠 Grafo atualizado";
+    const nodesAdded = readNumberProp(event, "nodesAdded");
+    const nodesRemoved = readNumberProp(event, "nodesRemoved");
+    const edgesChanged = readNumberProp(event, "edgesChanged");
+    const changes: string[] = [];
+    if (nodesAdded && nodesAdded > 0) {
+      changes.push(`+${nodesAdded} nós`);
+    }
+    if (nodesRemoved && nodesRemoved > 0) {
+      changes.push(`-${nodesRemoved} nós`);
+    }
+    if (edgesChanged && edgesChanged !== 0) {
+      changes.push(`${edgesChanged > 0 ? "+" : ""}${edgesChanged} conexões`);
+    }
+    if (changes.length > 0) {
+      bodyParts.push(changes.join(" • "));
+    }
+  } else if (eventType === "focus:changed") {
+    title = "🎯 Foco atualizado";
+    const dailyNote = readStringProp(event, "dailyNote");
+    if (dailyNote) {
+      bodyParts.push(`Nota diária: ${dailyNote}`);
+    }
+    const weeklyFocus = readStringProp(event, "weeklyFocus");
+    if (weeklyFocus) {
+      bodyParts.push(`Foco semanal: ${weeklyFocus}`);
+    }
+  } else if (eventType.startsWith("sync:")) {
+    const syncLabels: Record<string, string> = {
+      "sync:started": "🔄 Sincronização iniciada",
+      "sync:completed": "✅ Sincronização concluída",
+      "sync:failed": "⚠️ Sincronização falhou",
+    };
+    title = syncLabels[eventType] ?? "Atualização de sincronização";
+    const filesChanged = readNumberProp(event, "filesChanged");
+    if (filesChanged !== undefined) {
+      bodyParts.push(`Arquivos alterados: ${filesChanged}`);
+    }
+    const duration = formatDurationLabel(readNumberProp(event, "duration"));
+    if (duration) {
+      bodyParts.push(`Duração: ${duration}`);
+    }
+    const errorMessage = readStringProp(event, "error");
+    if (errorMessage) {
+      bodyParts.push(`Erro: ${errorMessage}`);
+    }
+  } else if (eventType.startsWith("workflow:")) {
+    const workflowLabels: Record<string, string> = {
+      "workflow:triggered": "⚙️ Workflow iniciado",
+      "workflow:completed": "✅ Workflow concluído",
+      "workflow:failed": "🚫 Workflow falhou",
+    };
+    title = workflowLabels[eventType] ?? "Atualização de workflow";
+    const workflowName = readStringProp(event, "workflowName");
+    if (workflowName) {
+      bodyParts.push(`Workflow: ${workflowName}`);
+    }
+    const trigger = readStringProp(event, "trigger");
+    if (trigger) {
+      bodyParts.push(`Trigger: ${trigger}`);
+    }
+    const duration = formatDurationLabel(readNumberProp(event, "duration"));
+    if (duration) {
+      bodyParts.push(`Duração: ${duration}`);
+    }
+    if (eventType === "workflow:failed") {
+      const errorMessage = readStringProp(event, "error");
+      if (errorMessage) {
+        bodyParts.push(`Erro: ${errorMessage}`);
+      }
+    }
+  }
+
+  const body = bodyParts.filter(Boolean).join("\n");
+
+  return {
+    id: `live-${buildEventCardId(event)}`,
+    type: "message",
+    author: "assistant",
+    title,
+    body: body.length > 0 ? body : "Atualização registrada no Brain Cloud.",
+    timestamp,
+  };
+};
+
 const normalizeAgentStatus = (status?: string) => {
   const value = (status || "").toLowerCase();
   if (value.includes("running")) return "Rodando";
@@ -373,81 +478,99 @@ const buildAgentCard = (run: AgentRun): AgentCardData => {
 };
 
 const BusinessIntelligenceHub: React.FC = () => {
-  const api = useAPI();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(false);
-  const [activeUtility, setActiveUtility] = useState<UtilityView>("tasks");
-  const [composerValue, setComposerValue] = useState("");
-  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [collections, setCollections] = useState<DashboardCollection[]>([]);
-  const [collectionsLoading, setCollectionsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [inboxNotes, setInboxNotes] = useState<InboxNote[]>([]);
-  const [inboxLoading, setInboxLoading] = useState(false);
-  const [inboxError, setInboxError] = useState<string | null>(null);
-  const [expandedInboxFrontmatter, setExpandedInboxFrontmatter] = useState<
-    string | null
-  >(null);
-  const [expandedInboxPath, setExpandedInboxPath] = useState<string | null>(
-    null
-  );
-  const [expandedInboxContent, setExpandedInboxContent] = useState<
-    string | null
-  >(null);
-  const [expandedInboxLoading, setExpandedInboxLoading] = useState(false);
-  const [expandedInboxError, setExpandedInboxError] = useState<string | null>(
-    null
-  );
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedTaskPath, setSelectedTaskPath] = useState<string | null>(null);
-  const [selectedTaskTitle, setSelectedTaskTitle] = useState<string | null>(
-    null
-  );
-  const [selectedTaskHeading, setSelectedTaskHeading] = useState<string | null>(
-    null
-  );
-  const [selectedTaskContent, setSelectedTaskContent] = useState<string | null>(
-    null
-  );
-  const [selectedTaskLoading, setSelectedTaskLoading] = useState(false);
-  const [selectedTaskError, setSelectedTaskError] = useState<string | null>(
-    null
-  );
-  const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
-  const [completedTaskIds, setCompletedTaskIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  const [, setTaskPreferences] = useState<TaskPreferences | null>(null);
+  // Initialize admin mode listener
+  useAdminModeActivation();
 
-  // Chat/Conversation states
-  const [chatMode, setChatMode] = useState<"timeline" | "conversation">(
-    "timeline"
+  const api = useAPI();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamsString = useMemo(
+    () => searchParams?.toString() || "",
+    [searchParams]
   );
-  const [activeConversation, setActiveConversation] =
-    useState<Conversation | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [streamingMessage, setStreamingMessage] = useState("");
-  const [thinkingMessage, setThinkingMessage] = useState("");
+
+
+  const {
+    snapshot,
+    collections,
+    loading,
+    error,
+    refreshing,
+    collectionsLoading,
+    loadSnapshot: loadDashboardSnapshot,
+    getDashboardCollections,
+  } = useDashboardData();
+  const tasks = useTasksState();
+  const inbox = useInboxState();
+  const insights = useSemanticInsights();
+  const timeline = useTimelineState();
+  const ui = useUIState();
+
+  const tasksSetCompletedTaskIds = tasks.setCompletedTaskIds;
+  const tasksApplyTaskPreferences = tasks.applyTaskPreferences;
+  const tasksSetTaskPreferences = tasks.setTaskPreferences;
+  const tasksSetPinnedTaskIds = tasks.setPinnedTaskIds;
+  const tasksSetPriorityMap = tasks.setPriorityMap;
+  const tasksSetTaskContextDraft = tasks.setTaskContextDraft;
+  const tasksSetAiCleanupLoading = tasks.setAiCleanupLoading;
+  const tasksSetTaskViewMode = tasks.setTaskViewMode;
+  const tasksSetTaskSortBy = tasks.setTaskSortBy;
+  const tasksSetSearchTerm = tasks.setSearchTerm;
+  const tasksSetBoardOrder = tasks.setBoardOrder;
+  const tasksSetBoardDragState = tasks.setBoardDragState;
+  const tasksSetSelectedTaskId = tasks.setSelectedTaskId;
+  const tasksSetSelectedTaskPath = tasks.setSelectedTaskPath;
+  const tasksSetSelectedTaskTitle = tasks.setSelectedTaskTitle;
+  const tasksSetSelectedTaskHeading = tasks.setSelectedTaskHeading;
+  const tasksSetSelectedTaskContent = tasks.setSelectedTaskContent;
+  const tasksSetSelectedTaskLoading = tasks.setSelectedTaskLoading;
+  const tasksSetSelectedTaskError = tasks.setSelectedTaskError;
+  const tasksSetTogglingTaskId = tasks.setTogglingTaskId;
+
+  const uiSetActiveUtility = ui.setActiveUtility;
+  const uiHandleResizeStart = ui.handleResizeStart;
+  const uiUpdatePanelRatio = ui.updatePanelRatio;
+
+  const timelineSetActiveConversation = timeline.setActiveConversation;
+  const timelineSetChatMessages = timeline.setChatMessages;
+  const timelineSetStreamingMessage = timeline.setStreamingMessage;
+  const timelineSetThinkingMessage = timeline.setThinkingMessage;
+  const timelineSetChatMode = timeline.setChatMode;
+  const timelineSetIsTimelineCollapsed = timeline.setIsTimelineCollapsed;
+  const timelineSetComposerValue = timeline.setComposerValue;
+  const timelineSetEventsConnected = timeline.setEventsConnected;
+  const timelineSetEventsError = timeline.setEventsError;
+  const timelinePushLiveTimelineCard = timeline.pushLiveTimelineCard;
+
+  const inboxSetInboxNotes = inbox.setInboxNotes;
+  const inboxSetInboxLoading = inbox.setInboxLoading;
+  const inboxSetInboxError = inbox.setInboxError;
+  const inboxSetExpandedInboxPath = inbox.setExpandedInboxPath;
+  const inboxSetExpandedInboxFrontmatter = inbox.setExpandedInboxFrontmatter;
+  const inboxSetExpandedInboxContent = inbox.setExpandedInboxContent;
+  const inboxSetExpandedInboxLoading = inbox.setExpandedInboxLoading;
+  const inboxSetExpandedInboxError = inbox.setExpandedInboxError;
+
+  const insightsFetchInsights = insights.fetchInsights;
+  const insightsList = insights.insights;
+
+  useEffect(() => {
+    tasksSetCompletedTaskIds(new Set());
+  }, [snapshot, tasksSetCompletedTaskIds]);
+
+  // Chat/Conversation states not gerenciados pelos hooks
   const [chatLoading, setChatLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
-  const [modelOptions, setModelOptions] = useState<ConversationModelOption[]>([]);
+  const [modelOptions, setModelOptions] = useState<ConversationModelOption[]>(
+    []
+  );
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelUpdating, setModelUpdating] = useState(false);
   const [conversationModelConfig, setConversationModelConfig] =
     useState<ConversationModelConfig | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [taskPrefsReady, setTaskPrefsReady] = useState(false);
-  const [taskViewMode, setTaskViewMode] = useState<"list" | "kanban">("list");
-  const [taskSortBy, setTaskSortBy] = useState<
-    "natural" | "due" | "priority" | "project"
-  >("natural");
-  const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>([]);
-  const [priorityMap, setPriorityMap] = useState<Record<string, string>>({});
-  const [boardOrder, setBoardOrder] = useState<Record<string, string[]>>({});
   const [openPriorityMenuId, setOpenPriorityMenuId] = useState<string | null>(
     null
   );
@@ -456,64 +579,20 @@ const BusinessIntelligenceHub: React.FC = () => {
   const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
   const [completedLoading, setCompletedLoading] = useState(false);
   const [contextModalOpen, setContextModalOpen] = useState(false);
-  const [taskContextDraft, setTaskContextDraft] = useState({
-    workDescription: "",
-    shortTermFocus: "",
-    longTermGoals: "",
-    otherContext: "",
-  });
-  const [aiCleanupLoading, setAiCleanupLoading] = useState(false);
-  const [boardDragState, setBoardDragState] = useState<{
-    taskId: string;
-    fromColumn: string;
-  } | null>(null);
-  
-  // ✨ Brain Cloud Semantic Insights
-  const [semanticInsights, setSemanticInsights] = useState<any[]>([]);
-  const [semanticLoading, setSemanticLoading] = useState(false);
-  const [lastSemanticQuery, setLastSemanticQuery] = useState<string | null>(null);
-
-  const applyTaskPreferences = useCallback((prefs: TaskPreferences) => {
-    if (!prefs) return;
-    setTaskPreferences(prefs);
-    const nextView =
-      prefs.viewMode === "kanban" || prefs.viewMode === "list"
-        ? prefs.viewMode
-        : "list";
-    setTaskViewMode(nextView);
-    const allowedSorts = new Set(["natural", "due", "priority", "project"]);
-    setTaskSortBy(
-      prefs.sortBy && allowedSorts.has(prefs.sortBy)
-        ? (prefs.sortBy as "natural" | "due" | "priority" | "project")
-        : "natural"
-    );
-    setPinnedTaskIds(
-      Array.isArray(prefs.pinnedTaskIds) ? prefs.pinnedTaskIds : []
-    );
-    setPriorityMap(prefs.priorityMap ? { ...prefs.priorityMap } : {});
-
-    const baseBoardOrder: Record<string, string[]> = {
-      overdue: [],
-      today: [],
-      upcoming: [],
-    };
-    if (prefs.boardOrder) {
-      Object.entries(prefs.boardOrder).forEach(([column, ids]) => {
-        baseBoardOrder[column] = Array.isArray(ids)
-          ? ids.map((id) => String(id))
-          : [];
-      });
-    }
-    setBoardOrder(baseBoardOrder);
-
-    const template = prefs.contextTemplate || {};
-    setTaskContextDraft({
-      workDescription: template.workDescription || "",
-      shortTermFocus: template.shortTermFocus || "",
-      longTermGoals: template.longTermGoals || "",
-      otherContext: template.otherContext || "",
-    });
-  }, []);
+  const [expandedDailyPath, setExpandedDailyPath] = useState<string | null>(
+    null
+  );
+  const [expandedDailyContent, setExpandedDailyContent] =
+    useState<string | null>(null);
+  const [expandedDailyTitle, setExpandedDailyTitle] = useState<string | null>(
+    null
+  );
+  const [expandedDailyLoading, setExpandedDailyLoading] = useState(false);
+  const [expandedDailyError, setExpandedDailyError] = useState<string | null>(
+    null
+  );
+  const [expandedDailyFrontmatter, setExpandedDailyFrontmatter] =
+    useState<Record<string, unknown> | string | null>(null);
 
   const tasksList = useMemo<Task[]>(() => {
     const simplified = snapshot?.data?.tasks?.simplified;
@@ -533,59 +612,21 @@ const BusinessIntelligenceHub: React.FC = () => {
         lineNumber: item.lineNumber,
       }));
     }
-    return FALLBACK_TASKS;
+    return [];
   }, [snapshot]);
 
-  // ✨ Brain Cloud: Buscar insights semânticos baseados no contexto
-  const fetchSemanticInsights = useCallback(async () => {
-    if (semanticLoading) return;
-    
-    // Construir query baseada no contexto atual
-    const contextParts = [];
-    
-    // Adicionar foco semanal se existir
-    if (snapshot?.data?.focus?.weekly_focus?.title) {
-      contextParts.push(snapshot.data.focus.weekly_focus.title);
-    }
-    
-    // Adicionar tarefas críticas
-    if (tasksList.length > 0) {
-      const criticalTasks = tasksList.slice(0, 3).map(t => t.title).join(' ');
-      contextParts.push(criticalTasks);
-    }
-    
-    // Adicionar metadados de projetos
-    const activeProjects = collections?.filter(c => c.active).slice(0, 2).map(c => c.name).join(' ');
-    if (activeProjects) {
-      contextParts.push(activeProjects);
-    }
-    
-    const query = contextParts.join(' ');
-    if (!query || query === lastSemanticQuery) return;
-    
-    try {
-      setSemanticLoading(true);
-      const response = await api.semanticSearch(query, 3);
-      setSemanticInsights(response.results || []);
-      setLastSemanticQuery(query);
-    } catch (error) {
-      console.error('Erro ao buscar insights semânticos:', error);
-      setSemanticInsights([]);
-    } finally {
-      setSemanticLoading(false);
-    }
-  }, [snapshot, tasksList, collections, semanticLoading, lastSemanticQuery, api]);
+  
 
   // Buscar insights quando o contexto mudar
   useEffect(() => {
     if (snapshot && tasksList.length > 0) {
       const timer = setTimeout(() => {
-        fetchSemanticInsights();
+        insightsFetchInsights();
       }, 1000); // Delay para evitar muitas requisições
-      
+
       return () => clearTimeout(timer);
     }
-  }, [snapshot, tasksList, fetchSemanticInsights]);
+  }, [snapshot, tasksList, insightsFetchInsights]);
 
   const persistTaskPreferences = useCallback(
     async (
@@ -598,9 +639,9 @@ const BusinessIntelligenceHub: React.FC = () => {
     ) => {
       if (!taskPrefsReady) return;
       const updated = await api.updateTaskPreferences(patch);
-      applyTaskPreferences(updated);
+      tasksApplyTaskPreferences(updated);
     },
-    [api, applyTaskPreferences, taskPrefsReady]
+    [api, tasksApplyTaskPreferences, taskPrefsReady]
   );
 
   const priorityDescriptors = useMemo(() => {
@@ -695,47 +736,36 @@ const BusinessIntelligenceHub: React.FC = () => {
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isResizingRef = useRef(false);
-  const [panelRatio, setPanelRatio] = useState(() => {
-    if (typeof window === "undefined") return 0.58;
-    const stored = window.localStorage.getItem("ggai.layout.panelRatio");
-    const parsed = stored ? parseFloat(stored) : NaN;
-    if (Number.isFinite(parsed) && parsed >= 0.3 && parsed <= 0.75) {
-      return parsed;
-    }
-    return 0.58;
-  });
   const collectionId = useMemo(() => {
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(searchParamsString);
     return params.get("collection");
-  }, [location.search]);
+  }, [searchParamsString]);
   const quickAction = useMemo(() => {
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(searchParamsString);
     return params.get("action");
-  }, [location.search]);
+  }, [searchParamsString]);
   const viewMode = useMemo(() => {
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(searchParamsString);
     return params.get("view");
-  }, [location.search]);
+  }, [searchParamsString]);
 
   const setViewParam = useCallback(
     (view: string | null) => {
-      const params = new URLSearchParams(location.search);
+      const params = new URLSearchParams(searchParamsString);
       if (view) {
         params.set("view", view);
       } else {
         params.delete("view");
       }
       const searchValue = params.toString();
-      navigate(`${location.pathname}${searchValue ? `?${searchValue}` : ""}`, {
-        replace: true,
-      });
+      router.replace(`${pathname}${searchValue ? `?${searchValue}` : ""}`);
     },
-    [location.pathname, location.search, navigate]
+    [pathname, router, searchParamsString]
   );
 
   const handleUtilitySelect = useCallback(
     (utility: UtilityView) => {
-      setActiveUtility(utility);
+      uiSetActiveUtility(utility);
       if (utility === "inbox") {
         setViewParam("inbox");
       } else if (utility === "dailyNotes") {
@@ -744,7 +774,7 @@ const BusinessIntelligenceHub: React.FC = () => {
         setViewParam(null);
       }
     },
-    [setViewParam]
+    [setViewParam, uiSetActiveUtility]
   );
 
   useEffect(() => {
@@ -753,7 +783,7 @@ const BusinessIntelligenceHub: React.FC = () => {
       try {
         const prefs = await api.getTaskPreferences();
         if (!cancelled && prefs) {
-          applyTaskPreferences(prefs);
+          tasksApplyTaskPreferences(prefs);
         }
       } catch (error) {
         console.error("Failed to load task preferences", error);
@@ -766,63 +796,37 @@ const BusinessIntelligenceHub: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [api, applyTaskPreferences]);
+  }, [api, tasksApplyTaskPreferences]);
 
   useEffect(() => {
     if (!viewMode) return;
     if (viewMode === "inbox") {
-      setActiveUtility("inbox");
+      uiSetActiveUtility("inbox");
     } else if (viewMode === "daily") {
-      setActiveUtility("dailyNotes");
+      uiSetActiveUtility("dailyNotes");
     } else if (viewMode === "tasks") {
-      setActiveUtility("tasks");
+      uiSetActiveUtility("tasks");
     }
-  }, [viewMode]);
+  }, [viewMode, uiSetActiveUtility]);
 
-  const updatePanelRatio = useCallback((clientX: number) => {
-    const container = layoutRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const relativeX = clientX - rect.left;
-    const nextRatio = relativeX / rect.width;
-    const clamped = Math.min(0.75, Math.max(0.3, nextRatio));
-    setPanelRatio(clamped);
-  }, []);
-
-  const handleResizeStart = useCallback(
-    (clientX: number) => {
-      if (isTimelineCollapsed) {
-        setIsTimelineCollapsed(false);
-      }
-      isResizingRef.current = true;
-      updatePanelRatio(clientX);
-    },
-    [isTimelineCollapsed, updatePanelRatio]
-  );
+  
 
   const handleResizeMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
-      handleResizeStart(event.clientX);
+      uiHandleResizeStart(event.clientX);
     },
-    [handleResizeStart]
+    [uiHandleResizeStart]
   );
 
   const handleResizeTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       if (event.touches.length !== 1) return;
-      handleResizeStart(event.touches[0].clientX);
+      uiHandleResizeStart(event.touches[0].clientX);
     },
-    [handleResizeStart]
+    [uiHandleResizeStart]
   );
-  const handleCollapseTimeline = useCallback(
-    () => setIsTimelineCollapsed(true),
-    []
-  );
-  const handleExpandTimeline = useCallback(
-    () => setIsTimelineCollapsed(false),
-    []
-  );
+  
 
   const initializeConversationModels = useCallback(
     async (conversationId: string) => {
@@ -832,10 +836,12 @@ const BusinessIntelligenceHub: React.FC = () => {
       setModelsLoading(true);
 
       try {
-        let [modelsResponse, configResponse] = await Promise.all([
+        const [initialModelsResponse, configResponse] = await Promise.all([
           api.getAvailableModels(),
           api.getConversationModel(conversationId),
         ]);
+
+        let modelsResponse = initialModelsResponse;
 
         let mappedModels: ConversationModelOption[] =
           (modelsResponse.models || []).map((model) => ({
@@ -857,15 +863,13 @@ const BusinessIntelligenceHub: React.FC = () => {
             if (providers.length > 0) {
               await Promise.all(
                 providers.map((provider) =>
-                  api
-                    .syncProviderModels(provider.id)
-                    .catch((error) => {
-                      console.error(
-                        `Error syncing models for provider ${provider.displayName}:`,
-                        error
-                      );
-                      return null;
-                    })
+                  api.syncProviderModels(provider.id).catch((error) => {
+                    console.error(
+                      `Error syncing models for provider ${provider.displayName}:`,
+                      error
+                    );
+                    return null;
+                  })
                 )
               );
 
@@ -893,8 +897,7 @@ const BusinessIntelligenceHub: React.FC = () => {
 
         if (!finalConfig && mappedModels.length > 0) {
           const defaultOption =
-            mappedModels.find((option) => option.isDefault) ||
-            mappedModels[0];
+            mappedModels.find((option) => option.isDefault) || mappedModels[0];
 
           try {
             finalConfig = await api.setConversationModel(
@@ -938,16 +941,16 @@ const BusinessIntelligenceHub: React.FC = () => {
 
   useEffect(() => {
     if (
-      chatMode === "conversation" &&
-      activeConversation?.id &&
+      timeline.chatMode === "conversation" &&
+      timeline.activeConversation?.id &&
       !modelsLoading &&
       modelOptions.length === 0
     ) {
-      initializeConversationModels(activeConversation.id);
+      initializeConversationModels(timeline.activeConversation.id);
     }
   }, [
-    activeConversation?.id,
-    chatMode,
+    timeline.activeConversation?.id,
+    timeline.chatMode,
     initializeConversationModels,
     modelOptions.length,
     modelsLoading,
@@ -955,12 +958,12 @@ const BusinessIntelligenceHub: React.FC = () => {
 
   // Chat/Conversation handlers
   const handleStartChat = useCallback(
-    async (initialMessage: string) => {
+    async (initialMessage: string, sendMessageFn?: (msg: string) => Promise<void>) => {
       try {
         setChatLoading(true);
 
         // Get current context (project if in collection view)
-        const params = new URLSearchParams(location.search);
+        const params = new URLSearchParams(searchParamsString);
         const collectionId = params.get("collection");
 
         // Create new conversation with context
@@ -969,16 +972,16 @@ const BusinessIntelligenceHub: React.FC = () => {
           contextProjectId: collectionId || undefined,
         });
 
-        setActiveConversation(conversation);
-        setChatMessages([]);
-        setStreamingMessage("");
-        setChatMode("conversation");
+        timelineSetActiveConversation(conversation);
+        timelineSetChatMessages([]);
+        timelineSetStreamingMessage("");
+        timelineSetChatMode("conversation");
 
         await initializeConversationModels(conversation.id);
 
-        // Send initial message
-        if (initialMessage.trim()) {
-          await handleSendMessage(initialMessage);
+        // Send initial message (using callback passed as parameter)
+        if (initialMessage.trim() && sendMessageFn) {
+          await sendMessageFn(initialMessage);
         }
       } catch (error) {
         console.error("Error starting chat:", error);
@@ -987,20 +990,91 @@ const BusinessIntelligenceHub: React.FC = () => {
         setChatLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [api, initializeConversationModels, location.search]
+    [
+      api,
+      initializeConversationModels,
+      searchParamsString,
+      timelineSetActiveConversation,
+      timelineSetChatMessages,
+      timelineSetStreamingMessage,
+      timelineSetChatMode,
+    ]
   );
+
+  const openConversationFromHistory = useCallback(
+    async (conversationId: string) => {
+      try {
+        setChatLoading(true);
+        const conversation = await api.getConversation(conversationId);
+        if (!conversation) {
+          toast.error("Conversa não encontrada.");
+          return;
+        }
+        timelineSetActiveConversation(conversation);
+        timelineSetChatMessages(
+          Array.isArray(conversation.messages) ? conversation.messages : []
+        );
+        timelineSetStreamingMessage("");
+        timelineSetThinkingMessage("");
+        timelineSetChatMode("conversation");
+        timelineSetIsTimelineCollapsed(false);
+        await initializeConversationModels(conversationId);
+      } catch (error) {
+        console.error("Failed to open conversation:", error);
+        toast.error("Não foi possível carregar a conversa selecionada.");
+      } finally {
+        setChatLoading(false);
+      }
+    },
+    [
+      api,
+      initializeConversationModels,
+      timelineSetActiveConversation,
+      timelineSetChatMessages,
+      timelineSetStreamingMessage,
+      timelineSetThinkingMessage,
+      timelineSetChatMode,
+      timelineSetIsTimelineCollapsed,
+    ]
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParamsString);
+    const conversationId = params.get("conversation");
+    if (!conversationId) return;
+    if (
+      timeline.activeConversation?.id === conversationId &&
+      timeline.chatMode === "conversation"
+    ) {
+      const nextParams = new URLSearchParams(searchParamsString);
+      nextParams.delete("conversation");
+      const nextSearch = nextParams.toString();
+      router.replace(`${pathname}${nextSearch ? `?${nextSearch}` : ""}`);
+      return;
+    }
+    openConversationFromHistory(conversationId).finally(() => {
+      const nextParams = new URLSearchParams(searchParamsString);
+      nextParams.delete("conversation");
+      const nextSearch = nextParams.toString();
+      router.replace(`${pathname}${nextSearch ? `?${nextSearch}` : ""}`);
+    });
+  }, [
+    timeline.activeConversation?.id,
+    timeline.chatMode,
+    openConversationFromHistory,
+    pathname,
+    router,
+    searchParamsString,
+  ]);
 
   const handleSendMessage = useCallback(
     async (content: string) => {
       const trimmedContent = content.trim();
 
-      if (!activeConversation || !trimmedContent) return;
+      if (!timeline.activeConversation || !trimmedContent) return;
 
       if (!selectedModelId) {
-        toast.error(
-          "Selecione um modelo de IA antes de enviar mensagens."
-        );
+        toast.error("Selecione um modelo de IA antes de enviar mensagens.");
         return;
       }
 
@@ -1013,14 +1087,14 @@ const BusinessIntelligenceHub: React.FC = () => {
 
       try {
         setChatLoading(true);
-        setChatMessages((prev) => [...prev, tempMessage]);
+        timelineSetChatMessages((prev) => [...prev, tempMessage]);
 
-        const savedMessage = await api.addMessage(activeConversation.id, {
+        const savedMessage = await api.addMessage(timeline.activeConversation.id, {
           role: "user",
           content: trimmedContent,
         });
 
-        setChatMessages((prev) =>
+        timelineSetChatMessages((prev) =>
           prev.map((message) =>
             message.id === tempMessage.id ? savedMessage : message
           )
@@ -1028,128 +1102,92 @@ const BusinessIntelligenceHub: React.FC = () => {
 
         // 🔗 Salvar conversa no Brain Cloud (só se tiver conteúdo)
         try {
-          const conversationContent = [...chatMessages, savedMessage].map(m => m.content).join(' ');
+          const conversationContent = [...timeline.chatMessages, savedMessage]
+            .map((m) => m.content)
+            .join(" ");
           if (conversationContent && conversationContent.trim()) {
             await api.saveConversation(
-              activeConversation.id,
-              [...chatMessages, savedMessage],
+              timeline.activeConversation.id,
+              [...timeline.chatMessages, savedMessage],
               {
-                source: 'claude',
+                source: "claude",
                 modelId: selectedModelId,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
               }
             );
           }
         } catch (brainError) {
-          console.warn("Erro ao salvar conversation no Brain Cloud:", brainError);
+          console.warn(
+            "Erro ao salvar conversation no Brain Cloud:",
+            brainError
+          );
           // Não bloqueia a conversa se o Brain Cloud falhar
         }
 
-        setStreamingMessage("Gerando resposta...");
-
-        // 🔍 Buscar contexto relevante no Brain Cloud
-        let contextData = null;
-        try {
-          contextData = await api.semanticSearch(trimmedContent, 3);
-        } catch (searchError) {
-          console.warn("Erro na busca semântica:", searchError);
-        }
+        timelineSetStreamingMessage("Gerando resposta...");
 
         // 🔥 USAR STREAMING REAL COM MCP TOOLS
         let streamedContent = "";
         let thinkingContent = "";
         let isInThinkingPhase = false;
-        
+
         await api.chatStream(
           [
-            { role: "system", content: "Você é um assistente IA com acesso às ferramentas MCP. Sempre use as ferramentas quando disponíveis para ajudar o usuário. Quando estiver pensando, compartilhe seu processo de raciocínio para que o usuário possa acompanhar seu desenvolvimento." },
-            ...chatMessages.map(msg => ({ role: msg.role, content: msg.content })),
-            { role: "user", content: trimmedContent }
+            {
+              role: "system",
+              content:
+                "Você é um assistente IA com acesso às ferramentas MCP. Sempre use as ferramentas quando disponíveis para ajudar o usuário. Quando estiver pensando, compartilhe seu processo de raciocínio para que o usuário possa acompanhar seu desenvolvimento.",
+            },
+            ...timeline.chatMessages.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+            { role: "user", content: trimmedContent },
           ],
-          activeConversation.id,
+          timeline.activeConversation.id,
           (chunk) => {
-            // Handle different chunk types
-            if (typeof chunk === 'object' && chunk.thinking) {
-              // Chunk is thinking content
-              thinkingContent += chunk.content;
-              setThinkingMessage(thinkingContent);
-              setIsThinking(true);
-            } else if (typeof chunk === 'string') {
-              // Chunk is plain string - apply detection logic
-              if (chunk.includes("<thinking") || chunk.includes("Pensando:") || chunk.includes("Vou analisar") || chunk.includes("🧠")) {
-                if (!isInThinkingPhase) {
-                  isInThinkingPhase = true;
-                  setIsThinking(true);
-                  thinkingContent = "";
-                }
-              }
-              
-              if (chunk.includes("📝 **RESPOSTA FINAL:") || chunk.includes("Conclusão:") || chunk.includes("Resposta:")) {
-                if (isInThinkingPhase) {
-                  isInThinkingPhase = false;
-                  setIsThinking(false);
-                  // Don't clear thinking message - keep it for viewing
-                }
-              }
-              
-              // Processa chunk
-              if (isInThinkingPhase) {
-                thinkingContent += chunk;
-                setThinkingMessage(thinkingContent);
-              } else {
-                streamedContent += chunk;
-                setStreamingMessage(prev => prev + chunk);
-              }
-            } else {
-              // Check for additional reasoning content
-              if (chunk.includes("🧠") || chunk.includes("Analisando:") || chunk.includes("Vou considerar:") || 
-                  chunk.includes("Vou verificar:") || chunk.includes("Preciso analisar:") || 
-                  chunk.includes("Vou pesquisar:") || chunk.includes("Vou usar o")) {
-                thinkingContent += chunk + "\n";
-                setThinkingMessage(thinkingContent);
-                setIsThinking(true);
-              } else {
-                streamedContent += chunk;
-                setStreamingMessage(prev => prev + chunk);
-              }
+            if (!chunk) return;
+            if (isInThinkingPhase) {
+              isInThinkingPhase = false;
+              setIsThinking(false);
             }
+            streamedContent += chunk;
+            timelineSetStreamingMessage((prev) =>
+              prev === "Gerando resposta..." ? chunk : prev + chunk
+            );
           },
           (error) => {
             console.error("Streaming error:", error);
             toast.error("Erro no streaming da resposta");
-            setChatMessages((prev) =>
+            timelineSetChatMessages((prev) =>
               prev.filter((message) => message.id !== tempMessage.id)
             );
             setIsThinking(false);
-            setThinkingMessage("");
+            timelineSetThinkingMessage("");
           },
           async () => {
             // Salvar thinking no histórico se tiver conteúdo
             if (thinkingContent.trim()) {
-              const thinkingMessage: ChatMessage = {
-                id: `thinking-${Date.now()}`,
-                role: "assistant",
-                content: `🧠 **PROCESSO DE RACIOCÍNIO:**\n\n${thinkingContent.trim()}`,
-                createdAt: new Date().toISOString(),
-              };
-              
               try {
-                const savedThinking = await api.addMessage(activeConversation.id, {
-                  role: "assistant", 
-                  content: thinkingMessage.content
-                });
-                
-                setChatMessages((prev) => [...prev, savedThinking]);
+                const savedThinking = await api.addMessage(
+                  timeline.activeConversation.id,
+                  {
+                    role: "assistant",
+                    content: `🧠 **PROCESSO DE RACIOCÍNIO:**\n\n${thinkingContent.trim()}`,
+                  }
+                );
+
+                timelineSetChatMessages((prev) => [...prev, savedThinking]);
               } catch (saveError) {
                 console.error("Error saving thinking to history:", saveError);
               }
             }
-            
+
             // Marcar thinking como complete mas não limpar ainda (deixa usuário controlar)
             if (isInThinkingPhase) {
               setIsThinking(false);
             }
-            
+
             // Streaming completo - usar conteúdo acumulado local
             if (streamedContent.trim()) {
               const assistantMessage: ChatMessage = {
@@ -1158,79 +1196,133 @@ const BusinessIntelligenceHub: React.FC = () => {
                 content: streamedContent,
                 createdAt: new Date().toISOString(),
               };
-              
+
               try {
-                const savedResponse = await api.addMessage(activeConversation.id, {
-                  role: "assistant",
-                  content: streamedContent,
-                });
-                
-                setChatMessages((prev) => [...prev, savedResponse]);
-                
+                const savedResponse = await api.addMessage(
+                  timeline.activeConversation.id,
+                  {
+                    role: "assistant",
+                    content: streamedContent,
+                  }
+                );
+
+                timelineSetChatMessages((prev) => [...prev, savedResponse]);
+
                 // 🔗 Salvar conversa completa no Brain Cloud (com tratamento de erro)
                 try {
                   await api.saveConversation(
-                    activeConversation.id,
-                    [...chatMessages, tempMessage, savedResponse],
+                    timeline.activeConversation.id,
+                    [...timeline.chatMessages, tempMessage, savedResponse],
                     {
-                      source: 'claude',
+                      source: "claude",
                       modelId: selectedModelId,
-                      timestamp: new Date().toISOString()
+                      timestamp: new Date().toISOString(),
                     }
                   );
                 } catch (brainError) {
-                  console.warn("Erro ao salvar conversation no Brain Cloud (continuando normalmente):", brainError);
+                  console.warn(
+                    "Erro ao salvar conversation no Brain Cloud (continuando normalmente):",
+                    brainError
+                  );
                   // Não falha a conversa se o Brain Cloud salvar falhar
                 }
               } catch (saveError) {
                 console.error("Error saving streaming response:", saveError);
                 // Adicionar mensagem local mesmo se falhar save
-                setChatMessages((prev) => [...prev, assistantMessage]);
+                timelineSetChatMessages((prev) => [...prev, assistantMessage]);
               }
             } else {
               console.log("Skipping save - empty streaming response");
             }
-            
+
             // Limpar streaming state
-            setStreamingMessage("");
+            timelineSetStreamingMessage("");
           },
-          selectedModelId
+          selectedModelId,
+          (event) => {
+            if (!event) return;
+            if (event.type === "thinking") {
+              if (!isInThinkingPhase) {
+                isInThinkingPhase = true;
+                thinkingContent = "";
+              }
+              thinkingContent += event.content;
+              timelineSetThinkingMessage(thinkingContent);
+              setIsThinking(true);
+            }
+            if (event.type === "tool_summary") {
+              const summaries = Array.isArray(event.data)
+                ? event.data
+                : [event.data].filter(Boolean);
+              if (summaries.length > 0) {
+                const summaryText = summaries.join("\n");
+                streamedContent += `\n${summaryText}`;
+                timelineSetStreamingMessage((prev) =>
+                  prev === "Gerando resposta..."
+                    ? summaryText
+                    : `${prev}\n${summaryText}`
+                );
+              }
+            }
+          }
         );
       } catch (error) {
         console.error("Error sending message:", error);
         toast.error("Erro ao processar a resposta da IA");
-        setChatMessages((prev) =>
+        timelineSetChatMessages((prev) =>
           prev.filter((message) => message.id !== tempMessage.id)
         );
-        setStreamingMessage("");
+        timelineSetStreamingMessage("");
       } finally {
         setChatLoading(false);
       }
     },
-    [activeConversation, api, selectedModelId, chatMessages]
+    [
+      timeline.activeConversation,
+      api,
+      selectedModelId,
+      timeline.chatMessages,
+      timelineSetChatMessages,
+      timelineSetStreamingMessage,
+      timelineSetThinkingMessage,
+    ]
+  );
+
+  // Wrapper para handleStartChat que passa handleSendMessage automaticamente
+  const startChatWithMessage = useCallback(
+    async (initialMessage: string) => {
+      await handleStartChat(initialMessage, handleSendMessage);
+    },
+    [handleStartChat, handleSendMessage]
   );
 
   const handleBackToTimeline = useCallback(() => {
-    setChatMode("timeline");
-    setActiveConversation(null);
-    setChatMessages([]);
-    setStreamingMessage("");
-    setComposerValue("");
+    timelineSetChatMode("timeline");
+    timelineSetActiveConversation(null);
+    timelineSetChatMessages([]);
+    timelineSetStreamingMessage("");
+    timelineSetComposerValue("");
     setModelOptions([]);
     setConversationModelConfig(null);
     setSelectedModelId(null);
     setModelsLoading(false);
     setModelUpdating(false);
-  }, []);
+  }, [
+    timelineSetChatMode,
+    timelineSetActiveConversation,
+    timelineSetChatMessages,
+    timelineSetStreamingMessage,
+    timelineSetComposerValue,
+  ]);
 
   const handleModelChange = useCallback(
     async (modelId: string) => {
-      if (!activeConversation || !modelId) return;
+      if (!timeline.activeConversation || !modelId) return;
 
       try {
         setModelUpdating(true);
         const config = await api.setConversationModel(
-          activeConversation.id,
+          timeline.activeConversation.id,
           modelId
         );
         setConversationModelConfig(config);
@@ -1245,27 +1337,27 @@ const BusinessIntelligenceHub: React.FC = () => {
         setModelUpdating(false);
       }
     },
-    [activeConversation, api]
+    [timeline.activeConversation, api]
   );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(
       "ggai.layout.panelRatio",
-      panelRatio.toString()
+      ui.rightPanelRatio.toString()
     );
-  }, [panelRatio]);
+  }, [ui.rightPanelRatio]);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       if (!isResizingRef.current) return;
       event.preventDefault();
-      updatePanelRatio(event.clientX);
+      uiUpdatePanelRatio(event.clientX);
     };
 
     const handleTouchMove = (event: TouchEvent) => {
       if (!isResizingRef.current || event.touches.length !== 1) return;
-      updatePanelRatio(event.touches[0].clientX);
+      uiUpdatePanelRatio(event.touches[0].clientX);
     };
 
     const stopResizing = () => {
@@ -1286,74 +1378,110 @@ const BusinessIntelligenceHub: React.FC = () => {
       window.removeEventListener("touchend", stopResizing);
       window.removeEventListener("touchcancel", stopResizing);
     };
-  }, [updatePanelRatio]);
+  }, [uiUpdatePanelRatio]);
 
-  const loadSnapshot = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
-      if (!silent) {
-        setLoading(true);
-      } else {
-        setRefreshing(true);
-      }
-      try {
-        const data = await api.getDashboardSnapshot();
-        setSnapshot(data);
-        setError(null);
-        setCompletedTaskIds(new Set());
-      } catch (err) {
-        console.error("Failed to fetch dashboard snapshot", err);
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Falha ao carregar dados do dashboard.";
-        setError(message);
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
+  const appendEventToTimeline = useCallback(
+    (event: BrainCloudEvent) => {
+      const card = buildTimelineCardFromEvent(event);
+      timelinePushLiveTimelineCard(card);
     },
-    [api]
+    [timelinePushLiveTimelineCard]
   );
 
-  useEffect(() => {
-    loadSnapshot();
-  }, [loadSnapshot]);
+  const handleTaskEvent = useCallback(
+    (event: BrainCloudEvent) => {
+      appendEventToTimeline(event);
+      void loadDashboardSnapshot({ silent: true });
+    },
+    [appendEventToTimeline, loadDashboardSnapshot]
+  );
+
+  const handleFileEvent = useCallback(
+    (event: BrainCloudEvent) => {
+      appendEventToTimeline(event);
+      const shouldRefresh =
+        event.type === "file:created" ||
+        event.type === "file:updated" ||
+        event.type === "file:deleted";
+      if (shouldRefresh) {
+        void loadDashboardSnapshot({ silent: true });
+      }
+    },
+    [appendEventToTimeline, loadDashboardSnapshot]
+  );
+
+  const handleNoteEvent = useCallback(
+    (event: BrainCloudEvent) => {
+      appendEventToTimeline(event);
+      void loadDashboardSnapshot({ silent: true });
+    },
+    [appendEventToTimeline, loadDashboardSnapshot]
+  );
+
+  const handleConversationEvent = useCallback(
+    (event: BrainCloudEvent) => {
+      appendEventToTimeline(event);
+    },
+    [appendEventToTimeline]
+  );
+
+  const handleGraphEvent = useCallback(
+    (event: BrainCloudEvent) => {
+      appendEventToTimeline(event);
+    },
+    [appendEventToTimeline]
+  );
+
+  const handleSyncEvent = useCallback(
+    (event: BrainCloudEvent) => {
+      appendEventToTimeline(event);
+      if (event.type === "sync:completed") {
+        void loadDashboardSnapshot({ silent: true });
+      }
+    },
+    [appendEventToTimeline, loadDashboardSnapshot]
+  );
+
+  const handleWorkflowEvent = useCallback(
+    (event: BrainCloudEvent) => {
+      appendEventToTimeline(event);
+    },
+    [appendEventToTimeline]
+  );
+
+  const handleEventsConnect = useCallback(() => {
+    timelineSetEventsConnected(true);
+    timelineSetEventsError(null);
+  }, [timelineSetEventsConnected, timelineSetEventsError]);
+
+  const handleEventsDisconnect = useCallback(() => {
+    timelineSetEventsConnected(false);
+  }, [timelineSetEventsConnected]);
+
+  const handleEventsError = useCallback((err: Error) => {
+    timelineSetEventsConnected(false);
+    timelineSetEventsError(err);
+  }, [timelineSetEventsConnected, timelineSetEventsError]);
 
   useEffect(() => {
-    let mounted = true;
-    const loadCollections = async () => {
-      try {
-        if (mounted) {
-          setCollectionsLoading(true);
-        }
-        const data = await api.getDashboardCollections();
-        if (mounted) {
-          setCollections(data);
-          setCollectionsLoading(false);
-        }
-      } catch (err) {
-        console.error("Failed to fetch dashboard collections", err);
-        if (mounted) {
-          setCollectionsLoading(false);
-        }
+    const cleanup = getDashboardCollections();
+    return () => {
+      if (typeof cleanup === "function") {
+        cleanup();
       }
     };
-    loadCollections();
-    return () => {
-      mounted = false;
-    };
-  }, [api]);
+  }, [getDashboardCollections]);
 
   useEffect(() => {
-    if (activeUtility !== "inbox") return;
+    if (ui.activeUtility !== "inbox") return;
     let cancelled = false;
     const fetchInbox = async () => {
       try {
-        setInboxLoading(true);
+        inboxSetInboxLoading(true);
         const notes = await api.getInboxNotes(20);
         if (!cancelled) {
-          setInboxNotes(notes);
-          setInboxError(null);
+          inboxSetInboxNotes(notes);
+          inboxSetInboxError(null);
         }
       } catch (err) {
         if (!cancelled) {
@@ -1361,11 +1489,11 @@ const BusinessIntelligenceHub: React.FC = () => {
             err instanceof Error
               ? err.message
               : "Falha ao carregar notas da inbox.";
-          setInboxError(message);
+          inboxSetInboxError(message);
         }
       } finally {
         if (!cancelled) {
-          setInboxLoading(false);
+          inboxSetInboxLoading(false);
         }
       }
     };
@@ -1373,39 +1501,47 @@ const BusinessIntelligenceHub: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeUtility, api]);
+  }, [ui.activeUtility, api, inboxSetInboxLoading, inboxSetInboxNotes, inboxSetInboxError]);
 
   useEffect(() => {
-    if (activeUtility !== "inbox") {
-      setExpandedInboxPath(null);
-      setExpandedInboxContent(null);
-      setExpandedInboxFrontmatter(null);
-      setExpandedInboxError(null);
+    if (ui.activeUtility !== "inbox") {
+      inboxSetExpandedInboxPath(null);
+      inboxSetExpandedInboxContent(null);
+      inboxSetExpandedInboxFrontmatter(null);
+      inboxSetExpandedInboxError(null);
     }
-  }, [activeUtility]);
+  }, [ui.activeUtility, inboxSetExpandedInboxPath, inboxSetExpandedInboxContent, inboxSetExpandedInboxFrontmatter, inboxSetExpandedInboxError]);
 
   useEffect(() => {
-    if (activeUtility !== "search") {
-      setSearchTerm("");
+    if (ui.activeUtility !== "search") {
+      tasksSetSearchTerm("");
     }
-  }, [activeUtility]);
+  }, [ui.activeUtility, tasksSetSearchTerm]);
 
   useEffect(() => {
-    if (activeUtility !== "tasks") {
-      setSelectedTaskId(null);
-      setSelectedTaskPath(null);
-      setSelectedTaskTitle(null);
-      setSelectedTaskHeading(null);
-      setSelectedTaskContent(null);
-      setSelectedTaskError(null);
+    if (ui.activeUtility !== "tasks") {
+      tasksSetSelectedTaskId(null);
+      tasksSetSelectedTaskPath(null);
+      tasksSetSelectedTaskTitle(null);
+      tasksSetSelectedTaskHeading(null);
+      tasksSetSelectedTaskContent(null);
+      tasksSetSelectedTaskError(null);
     }
-  }, [activeUtility]);
+  }, [
+    ui.activeUtility,
+    tasksSetSelectedTaskId,
+    tasksSetSelectedTaskPath,
+    tasksSetSelectedTaskTitle,
+    tasksSetSelectedTaskHeading,
+    tasksSetSelectedTaskContent,
+    tasksSetSelectedTaskError,
+  ]);
 
   useEffect(() => {
-    if (activeUtility === "search" && searchInputRef.current) {
+    if (ui.activeUtility === "search" && searchInputRef.current) {
       searchInputRef.current.focus();
     }
-  }, [activeUtility]);
+  }, [ui.activeUtility]);
 
   useEffect(() => {
     if (!openPriorityMenuId) return;
@@ -1448,20 +1584,20 @@ const BusinessIntelligenceHub: React.FC = () => {
         { label: "Próximos dias", value: metrics.upcoming ?? 0 },
       ];
     }
-    return FALLBACK_FOCUS_SUMMARY;
+    return [];
   }, [snapshot]);
 
   const tasksWithPreferences = useMemo(() => {
     return tasksList.map((task, index) => {
-      const overridePriority = priorityMap?.[task.id];
+      const overridePriority = tasks.priorityMap?.[task.id];
       return {
         ...task,
         priority: overridePriority ?? task.priority,
-        pinned: pinnedTaskIds.includes(task.id),
+        pinned: tasks.pinnedTaskIds.includes(task.id),
         originalIndex: index,
       };
     });
-  }, [tasksList, priorityMap, pinnedTaskIds]);
+  }, [tasksList, tasks.priorityMap, tasks.pinnedTaskIds]);
 
   const boardColumns = useMemo(
     () => [
@@ -1479,22 +1615,31 @@ const BusinessIntelligenceHub: React.FC = () => {
   }, [tasksWithPreferences]);
 
   useEffect(() => {
-    if (!selectedTaskId) return;
+    if (!tasks.selectedTaskId) return;
     const stillExists = tasksWithPreferences.some(
-      (task) => task.id === selectedTaskId
+      (task) => task.id === tasks.selectedTaskId
     );
     if (!stillExists) {
-      setSelectedTaskId(null);
-      setSelectedTaskPath(null);
-      setSelectedTaskTitle(null);
-      setSelectedTaskHeading(null);
-      setSelectedTaskContent(null);
-      setSelectedTaskError(null);
+      tasksSetSelectedTaskId(null);
+      tasksSetSelectedTaskPath(null);
+      tasksSetSelectedTaskTitle(null);
+      tasksSetSelectedTaskHeading(null);
+      tasksSetSelectedTaskContent(null);
+      tasksSetSelectedTaskError(null);
     }
-  }, [tasksWithPreferences, selectedTaskId]);
+  }, [
+    tasksWithPreferences,
+    tasks.selectedTaskId,
+    tasksSetSelectedTaskId,
+    tasksSetSelectedTaskPath,
+    tasksSetSelectedTaskTitle,
+    tasksSetSelectedTaskHeading,
+    tasksSetSelectedTaskContent,
+    tasksSetSelectedTaskError,
+  ]);
 
   useEffect(() => {
-    setBoardOrder((prev) => {
+    tasksSetBoardOrder((prev) => {
       const columns = new Set([
         "overdue",
         "today",
@@ -1526,7 +1671,7 @@ const BusinessIntelligenceHub: React.FC = () => {
       });
       return changed ? nextLayout : prev;
     });
-  }, [tasksWithPreferences]);
+  }, [tasksWithPreferences, tasksSetBoardOrder]);
 
   const now = useMemo(() => new Date(), []);
   const agendaBuckets = useMemo(() => {
@@ -1567,8 +1712,8 @@ const BusinessIntelligenceHub: React.FC = () => {
     return result;
   }, [snapshot, now]);
 
-  const timelineCards = useMemo<TimelineCard[]>(() => {
-    if (!snapshot) return FALLBACK_TIMELINE;
+  const baseTimelineCards = useMemo<TimelineCard[]>(() => {
+    if (!snapshot) return [];
 
     const cards: TimelineCard[] = [];
     const focus = snapshot.data?.focus;
@@ -1576,7 +1721,10 @@ const BusinessIntelligenceHub: React.FC = () => {
     const tasksData = snapshot.data?.tasks;
 
     // 🧠 PRIORIDADE 1: Insights de Tarefas com Inteligência
-    if (tasksData?.summary?.recommendations && tasksData.summary.recommendations.length > 0) {
+    if (
+      tasksData?.summary?.recommendations &&
+      tasksData.summary.recommendations.length > 0
+    ) {
       const topRecommendation = tasksData.summary.recommendations[0];
       cards.push({
         id: "ai-insight-tasks",
@@ -1598,7 +1746,7 @@ const BusinessIntelligenceHub: React.FC = () => {
         title: "🎯 Foco Semanal",
         body: focus.weekly_focus.excerpt || "Resumo não disponível.",
         impact: (focus.metadata?.weekly_goal as string) || "Prioridade semanal",
-        confidence: 0.90,
+        confidence: 0.9,
         tags: focus.weekly_focus.tags || ["#semana", "#foco"],
         timestamp: focus.weekly_focus.modified
           ? new Date(focus.weekly_focus.modified).toLocaleString()
@@ -1607,8 +1755,10 @@ const BusinessIntelligenceHub: React.FC = () => {
     }
 
     // 📋 PRIORIDADE 3: Tarefas Críticas
-    if (tasksData?.metrics && (tasksData.metrics.overdue > 0 || tasksData.metrics.dueToday > 0)) {
-      const criticalCount = tasksData.metrics.overdue + tasksData.metrics.dueToday;
+    if (
+      tasksData?.metrics &&
+      (tasksData.metrics.overdue > 0 || tasksData.metrics.dueToday > 0)
+    ) {
       cards.push({
         id: "critical-tasks",
         type: "message",
@@ -1618,7 +1768,10 @@ const BusinessIntelligenceHub: React.FC = () => {
         timestamp: formatTimestampLabel(snapshot.generatedAt),
         actions: [
           { label: "Ver tarefas", icon: <ListTodo className="h-4 w-4" /> },
-          { label: "Organizar por prioridade", icon: <Sparkles className="h-4 w-4" /> },
+          {
+            label: "Organizar por prioridade",
+            icon: <Sparkles className="h-4 w-4" />,
+          },
         ],
       });
     }
@@ -1684,25 +1837,49 @@ const BusinessIntelligenceHub: React.FC = () => {
       });
     });
 
-    // Se não houver conteúdo, retorna o fallback
-    return cards.length > 0 ? cards : FALLBACK_TIMELINE;
+    // Se não houver conteúdo, retorna vazio
+    return cards;
   }, [snapshot]);
 
+  const timelineCards = useMemo(() => {
+    if (timeline.liveTimelineCards.length === 0) {
+      return baseTimelineCards;
+    }
+    return [...timeline.liveTimelineCards, ...baseTimelineCards];
+  }, [baseTimelineCards, timeline.liveTimelineCards]);
+
   const pinnedInsights = useMemo(() => {
-    const insights = [];
-    
+    const insights: Array<{
+      id: string;
+      title: string;
+      description: string;
+      source: string;
+    }> = [];
+
     // 1️⃣ Prioridade: Insights semânticos do Brain Cloud
-    if (semanticInsights.length > 0) {
-      semanticInsights.slice(0, 2).forEach((insight, index) => {
+    if (insightsList.length > 0) {
+      insightsList.slice(0, 2).forEach((insight, index) => {
+        const pathLabel = insight.path
+          ? insight.path.split("/").pop()
+          : "Insight";
+        const excerpt = insight.excerpt ?? "";
+        const scoreLabel =
+          typeof insight.score === "number"
+            ? `${Math.round(insight.score * 100)}%`
+            : "—";
+
         insights.push({
           id: `semantic-${index}`,
-          title: `🧠 ${insight.path?.split('/').pop() || 'Insight'}`,
-          description: insight.excerpt?.substring(0, 120) + (insight.excerpt?.length > 120 ? '...' : ''),
-          source: `Busca semântica • Score: ${(insight.score * 100).toFixed(0)}%`,
+          title: `🧠 ${pathLabel}`,
+          description:
+            excerpt.length > 0
+              ? `${excerpt.slice(0, 120)}${excerpt.length > 120 ? "..." : ""}`
+              : "Resumo não disponível.",
+          source: `Busca semântica • Score: ${scoreLabel}`,
         });
       });
     }
-    
+
     // 2️⃣ Recomendações de tarefas
     const recommendations = snapshot?.data?.tasks?.summary?.recommendations;
     if (recommendations && recommendations.length > 0) {
@@ -1715,34 +1892,43 @@ const BusinessIntelligenceHub: React.FC = () => {
         });
       });
     }
-    
-    // 3️⃣ Fallback se não houver conteúdo
-    if (insights.length === 0) {
-      return FALLBACK_PINNED_INSIGHTS;
-    }
-    
-    return insights.slice(0, 3); // Limitar a 3 insights pinned
-  }, [snapshot, semanticInsights]);
+
+    // Limitar a 3 insights pinned
+    return insights.slice(0, 3);
+  }, [snapshot, insightsList]);
 
   const agentCards = useMemo<AgentCardData[]>(() => {
     const runs = snapshot?.data?.agents?.recentRuns;
     if (runs && runs.length > 0) {
       return runs.slice(0, 3).map(buildAgentCard);
     }
-    return FALLBACK_AGENT_CARDS;
+    return [];
   }, [snapshot]);
 
   const dailyNotesList = useMemo(() => {
     const notes = snapshot?.data?.focus?.daily_notes || [];
-    return notes.map((note, index) => ({
-      id: note.path || `${note.title}-${index}`,
-      title: note.title || "Nota diária",
-      excerpt: note.excerpt || "Sem resumo disponível.",
-      modified: note.modified,
-    }));
+    return notes.map((note, index) => {
+      const vaultPath =
+        typeof note.path === "string" && note.path.trim().length > 0
+          ? note.path
+          : null;
+      const fallbackId = `${note.title || "nota"}-${index}`;
+      return {
+        id: vaultPath ?? fallbackId,
+        path: vaultPath ?? fallbackId,
+        vaultPath,
+        title: note.title || "Nota diária",
+        excerpt: note.excerpt || "Sem resumo disponível.",
+        modified: note.modified,
+        tags: Array.isArray(note.tags)
+          ? note.tags.map((tag: unknown) => String(tag))
+          : undefined,
+        frontmatter: note?.frontmatter ?? undefined,
+      };
+    });
   }, [snapshot]);
 
-  const workflowTemplates = useMemo(
+  const _workflowTemplates = useMemo(
     () => [
       {
         id: "weekly-review",
@@ -1826,7 +2012,7 @@ const BusinessIntelligenceHub: React.FC = () => {
   );
 
   const searchResults = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = tasks.searchTerm.trim().toLowerCase();
     if (term.length < 2) return [];
     return searchableCards
       .filter(
@@ -1835,7 +2021,15 @@ const BusinessIntelligenceHub: React.FC = () => {
           item.excerpt?.toLowerCase().includes(term)
       )
       .slice(0, 8);
-  }, [searchTerm, searchableCards]);
+  }, [tasks.searchTerm, searchableCards]);
+
+  useEffect(() => {
+    setExpandedDailyPath(null);
+    setExpandedDailyContent(null);
+    setExpandedDailyError(null);
+    setExpandedDailyTitle(null);
+    setExpandedDailyFrontmatter(null);
+  }, [snapshot?.data?.focus?.daily_notes]);
 
   const chatThreads = useMemo<ChatThread[]>(() => {
     const threads = (snapshot?.data as Record<string, unknown>)
@@ -1857,7 +2051,7 @@ const BusinessIntelligenceHub: React.FC = () => {
         }))
         .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
     }
-    return FALLBACK_CHAT_THREADS;
+    return [];
   }, [snapshot]);
 
   const chatThreadsByRecency = useMemo(() => {
@@ -1891,28 +2085,29 @@ const BusinessIntelligenceHub: React.FC = () => {
       { id: "projects", label: "Projects", icon: FolderKanban },
       { id: "chatHistory", label: "Chats", icon: MessageSquare },
       { id: "knowledgeGraph", label: "Graph", icon: Network },
+      { id: "analytics", label: "Analytics", icon: BarChart },
     ],
     []
   );
 
   const activeUtilityMeta = useMemo(() => {
-    if (activeUtility === "shortcuts") {
+    if (ui.activeUtility === "shortcuts") {
       return { id: "shortcuts", label: "Shortcuts", icon: Keyboard };
     }
-    if (activeUtility === "mcpTools") {
+    if (ui.activeUtility === "mcpTools") {
       return { id: "mcpTools", label: "Tools", icon: Cpu };
     }
     return (
-      utilityButtons.find((button) => button.id === activeUtility) ??
+      utilityButtons.find((button) => button.id === ui.activeUtility) ??
       utilityButtons[0]
     );
-  }, [utilityButtons, activeUtility]);
-  const timelineFlex = isTimelineCollapsed ? 0 : panelRatio;
-  const executionFlex = isTimelineCollapsed ? 1 : Math.max(0.3, 1 - panelRatio);
+  }, [utilityButtons, ui.activeUtility]);
+  const timelineFlex = timeline.isTimelineCollapsed ? 0 : ui.rightPanelRatio;
+  const executionFlex = timeline.isTimelineCollapsed ? 1 : Math.max(0.3, 1 - ui.rightPanelRatio);
 
   const renderUtilityContent = () => {
-    if (activeUtility === "inbox") {
-      if (inboxLoading) {
+    if (ui.activeUtility === "inbox") {
+      if (inbox.inboxLoading) {
         return (
           <div className="flex h-24 items-center justify-center gap-2 text-sm text-zinc-500">
             <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
@@ -1920,10 +2115,10 @@ const BusinessIntelligenceHub: React.FC = () => {
           </div>
         );
       }
-      if (inboxError) {
-        return <p className="text-xs text-rose-400">{inboxError}</p>;
+      if (inbox.inboxError) {
+        return <p className="text-xs text-rose-400">{inbox.inboxError}</p>;
       }
-      if (inboxNotes.length === 0) {
+      if (inbox.inboxNotes.length === 0) {
         return (
           <p className="text-xs text-zinc-500">
             Nenhuma nota bruta encontrada na inbox. Capture algo via WhatsApp ou
@@ -1932,188 +2127,20 @@ const BusinessIntelligenceHub: React.FC = () => {
         );
       }
       return (
-        <div className="space-y-3">
-          {inboxNotes.map((note) => {
-            const modifiedLabel = note.modified
-              ? new Date(note.modified).toLocaleString()
-              : null;
-            const sizeLabel =
-              typeof note.size === "number" && Number.isFinite(note.size)
-                ? `${Math.max(1, Math.round(note.size / 1024))} KB`
-                : null;
-            const isExpanded = expandedInboxPath === note.path;
-            return (
-              <div
-                key={note.path}
-                className="rounded-xl border border-neutral-800 bg-neutral-950 p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-100">
-                      {note.title}
-                    </p>
-                    <p className="mt-2 whitespace-pre-line text-sm text-zinc-300">
-                      {note.snippet}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
-                      {modifiedLabel && (
-                        <span className="rounded-full border border-neutral-800 px-2 py-0.5">
-                          Atualizado {modifiedLabel}
-                        </span>
-                      )}
-                      {sizeLabel && (
-                        <span className="rounded-full border border-neutral-800 px-2 py-0.5">
-                          {sizeLabel}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenInboxNote(note.path)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs transition ${
-                      isExpanded
-                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
-                        : "border-neutral-800 bg-neutral-900 text-emerald-300 hover:border-neutral-600 hover:bg-neutral-800"
-                    }`}
-                  >
-                    {isExpanded ? "Fechar" : "Abrir"}
-                  </button>
-                </div>
-                {isExpanded && (
-                  <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/60 px-4 py-3">
-                    {expandedInboxLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-zinc-500">
-                        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
-                        Carregando conteúdo...
-                      </div>
-                    ) : expandedInboxError ? (
-                      <p className="text-xs text-rose-400">
-                        {expandedInboxError}
-                      </p>
-                    ) : (
-                      <div className="max-h-72 space-y-3 overflow-y-auto pr-1 text-sm leading-relaxed text-zinc-100">
-                        {expandedInboxFrontmatter &&
-                          expandedInboxFrontmatter.trim() && (
-                            <div className="mb-3">
-                              <div className="mb-1.5 text-xs font-medium text-zinc-400">
-                                Frontmatter
-                              </div>
-                              <pre className="overflow-x-auto rounded border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 text-xs leading-relaxed text-emerald-200">
-                                {expandedInboxFrontmatter}
-                              </pre>
-                            </div>
-                          )}
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            p: ({ children, ...props }) => (
-                              <p
-                                className="whitespace-pre-line text-sm leading-relaxed text-zinc-200"
-                                {...props}
-                              >
-                                {children}
-                              </p>
-                            ),
-                            h1: ({ ...props }) => (
-                              <h1
-                                className="mt-4 text-lg font-semibold text-zinc-50"
-                                {...props}
-                              />
-                            ),
-                            h2: ({ ...props }) => (
-                              <h2
-                                className="mt-4 text-base font-semibold text-zinc-50"
-                                {...props}
-                              />
-                            ),
-                            h3: ({ ...props }) => (
-                              <h3
-                                className="mt-3 text-sm font-semibold text-zinc-200"
-                                {...props}
-                              />
-                            ),
-                            ul: ({ ...props }) => (
-                              <ul
-                                className="ml-4 list-disc space-y-1 text-zinc-200"
-                                {...props}
-                              />
-                            ),
-                            ol: ({ ...props }) => (
-                              <ol
-                                className="ml-4 list-decimal space-y-1 text-zinc-200"
-                                {...props}
-                              />
-                            ),
-                            li: ({ ...props }) => (
-                              <li className="leading-relaxed" {...props} />
-                            ),
-                            code: (
-                              componentProps: React.ComponentPropsWithoutRef<"code">
-                            ) => {
-                              const { children, className, ...props } =
-                                componentProps;
-                              const childArray =
-                                React.Children.toArray(children);
-                              const content = childArray
-                                .map((child) =>
-                                  typeof child === "string" ? child : ""
-                                )
-                                .join("");
-                              const trimmed = content.replace(/\n+$/, "");
-                              const isInline =
-                                !className?.includes("language-");
-                              if (isInline) {
-                                return (
-                                  <code
-                                    className="rounded border border-neutral-700 bg-neutral-900 px-1 py-0.5 text-[13px] text-emerald-300"
-                                    {...props}
-                                  >
-                                    {trimmed}
-                                  </code>
-                                );
-                              }
-                              if (
-                                !trimmed.includes("\n") &&
-                                trimmed.length <= 80
-                              ) {
-                                return (
-                                  <code
-                                    className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-[13px] text-emerald-300"
-                                    {...props}
-                                  >
-                                    {trimmed}
-                                  </code>
-                                );
-                              }
-                              return (
-                                <pre className="overflow-x-auto rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-[13px] text-emerald-300">
-                                  <code {...props}>{trimmed}</code>
-                                </pre>
-                              );
-                            },
-                            blockquote: ({ ...props }) => (
-                              <blockquote
-                                className="border-l-2 border-neutral-700 pl-3 text-zinc-300"
-                                {...props}
-                              />
-                            ),
-                          }}
-                        >
-                          {expandedInboxContent || note.snippet}
-                        </ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <InboxPanel
+          inboxNotes={inbox.inboxNotes}
+          inboxLoading={inbox.inboxLoading}
+          inboxError={inbox.inboxError}
+          expandedInboxPath={inbox.expandedInboxPath}
+          expandedInboxContent={inbox.expandedInboxContent}
+          expandedInboxFrontmatter={inbox.expandedInboxFrontmatter}
+          expandedInboxLoading={inbox.expandedInboxLoading}
+          onExpand={handleOpenInboxNote}
+        />
       );
     }
 
-    if (activeUtility === "tasks") {
+    if (ui.activeUtility === "tasks") {
       if (loading) {
         return (
           <div className="space-y-2">
@@ -2142,14 +2169,14 @@ const BusinessIntelligenceHub: React.FC = () => {
       const renderListView = () => (
         <div className="space-y-2">
           {filteredTasks.map((task) => {
-            const isActive = selectedTaskId === task.id;
+            const isActive = tasks.selectedTaskId === task.id;
             const metaParts: string[] = [];
             if (task.project) metaParts.push(task.project);
             if (task.dueDate)
               metaParts.push(`Prazo ${formatDateShort(task.dueDate)}`);
             if (task.dueTime) metaParts.push(formatTimeShort(task.dueTime));
             const descriptor = getPriorityDescriptor(task.priority);
-            const isToggling = togglingTaskId === task.id;
+            const isToggling = tasks.togglingTaskId === task.id;
 
             return (
               <div
@@ -2323,13 +2350,13 @@ const BusinessIntelligenceHub: React.FC = () => {
       const renderBoardView = () => (
         <div className="grid gap-3 md:grid-cols-3">
           {boardColumns.map((column) => {
-            const order = boardOrder[column.id] || [];
+            const order = tasks.boardOrder[column.id] || [];
             const columnTasks = order
               .map((taskId) => tasksById.get(taskId))
               .filter((value): value is Task => Boolean(value));
             const isDropTarget =
-              boardDragState?.taskId &&
-              boardDragState?.fromColumn !== column.id;
+              tasks.boardDragState?.taskId &&
+              tasks.boardDragState?.fromColumn !== column.id;
 
             return (
               <div
@@ -2338,7 +2365,7 @@ const BusinessIntelligenceHub: React.FC = () => {
                 onDrop={(event) => {
                   event.preventDefault();
                   const droppedId =
-                    boardDragState?.taskId ||
+                    tasks.boardDragState?.taskId ||
                     event.dataTransfer.getData("application/task-id");
                   if (droppedId) {
                     handleBoardDrop(droppedId, column.id);
@@ -2417,7 +2444,7 @@ const BusinessIntelligenceHub: React.FC = () => {
                   type="button"
                   onClick={() => handleViewModeChange("list")}
                   className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs transition ${
-                    taskViewMode === "list"
+                    tasks.taskViewMode === "list"
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
                       : "border-neutral-800 bg-neutral-900 text-zinc-400 hover:border-neutral-600 hover:text-zinc-100"
                   }`}
@@ -2430,7 +2457,7 @@ const BusinessIntelligenceHub: React.FC = () => {
                   type="button"
                   onClick={() => handleViewModeChange("kanban")}
                   className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs transition ${
-                    taskViewMode === "kanban"
+                    tasks.taskViewMode === "kanban"
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
                       : "border-neutral-800 bg-neutral-900 text-zinc-400 hover:border-neutral-600 hover:text-zinc-100"
                   }`}
@@ -2458,14 +2485,14 @@ const BusinessIntelligenceHub: React.FC = () => {
                         <button
                           key={option.id}
                           className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs text-zinc-300 transition hover:bg-neutral-900 ${
-                            taskSortBy === option.value
+                            tasks.taskSortBy === option.value
                               ? "text-emerald-300"
                               : ""
                           }`}
                           onClick={() => handleSortChange(option.value)}
                         >
                           {option.label}
-                          {taskSortBy === option.value && (
+                          {tasks.taskSortBy === option.value && (
                             <Sparkles className="h-4 w-4 text-emerald-300" />
                           )}
                         </button>
@@ -2478,10 +2505,10 @@ const BusinessIntelligenceHub: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleAiCleanup}
-                  disabled={aiCleanupLoading}
+                  disabled={tasks.aiCleanupLoading}
                   className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 transition hover:border-emerald-500/50 hover:text-emerald-100 disabled:opacity-50"
                 >
-                  {aiCleanupLoading ? (
+                  {tasks.aiCleanupLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Sparkles className="h-4 w-4" />
@@ -2524,7 +2551,7 @@ const BusinessIntelligenceHub: React.FC = () => {
               </div>
             ) : (
               <div className="min-h-0 overflow-y-auto pr-1">
-                {taskViewMode === "kanban"
+                {tasks.taskViewMode === "kanban"
                   ? renderBoardView()
                   : renderListView()}
               </div>
@@ -2593,25 +2620,55 @@ const BusinessIntelligenceHub: React.FC = () => {
         </>
       );
     }
-    if (activeUtility === "dailyNotes") {
+    if (ui.activeUtility === "dailyNotes") {
       return dailyNotesList.length > 0 ? (
         <div className="space-y-3">
-          {dailyNotesList.map((note) => (
-            <div
-              key={note.id}
-              className="rounded-xl border border-neutral-800 bg-neutral-950 p-4"
-            >
-              <p className="text-sm font-semibold text-zinc-100">
-                {note.title}
-              </p>
-              <p className="mt-2 text-sm text-zinc-300">{note.excerpt}</p>
-              {note.modified && (
-                <p className="mt-3 text-[11px] uppercase tracking-wide text-zinc-500">
-                  Atualizado {new Date(note.modified).toLocaleString()}
-                </p>
-              )}
+          {dailyNotesList.map((note) => {
+            const isExpanded = expandedDailyPath === note.path;
+            const enrichedNote = isExpanded
+              ? {
+                  path: note.path,
+                  title: expandedDailyTitle ?? note.title,
+                  excerpt: note.excerpt,
+                  snippet: note.excerpt,
+                  modified: note.modified,
+                  tags: note.tags,
+                  frontmatter:
+                    expandedDailyFrontmatter ?? note.frontmatter ?? undefined,
+                  content: expandedDailyContent ?? undefined,
+                }
+              : {
+                  path: note.path,
+                  title: note.title,
+                  excerpt: note.excerpt,
+                  snippet: note.excerpt,
+                  modified: note.modified,
+                  tags: note.tags,
+                  frontmatter: note.frontmatter ?? undefined,
+                };
+
+            return (
+              <div key={note.id} className="space-y-2">
+                <InboxNoteCard
+                  note={enrichedNote}
+                  isExpanded={isExpanded}
+                  onExpand={note.vaultPath ? handleToggleDailyNote : undefined}
+                />
+                {isExpanded && expandedDailyError && !expandedDailyLoading && (
+                  <p className="text-xs text-rose-400">
+                    {expandedDailyError}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+
+          {expandedDailyLoading && expandedDailyPath && (
+            <div className="flex items-center justify-center gap-2 py-2 text-sm text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+              Carregando conteúdo...
             </div>
-          ))}
+          )}
         </div>
       ) : (
         <p className="text-xs text-zinc-500">
@@ -2620,31 +2677,12 @@ const BusinessIntelligenceHub: React.FC = () => {
       );
     }
 
-    if (activeUtility === "workflows") {
-      return (
-        <div className="space-y-3">
-          {workflowTemplates.map((workflow) => (
-            <div
-              key={workflow.id}
-              className="rounded-xl border border-neutral-800 bg-neutral-950 p-4"
-            >
-              <p className="text-sm font-semibold text-zinc-100">
-                {workflow.title}
-              </p>
-              <p className="mt-2 text-sm text-zinc-300">
-                {workflow.description}
-              </p>
-              <button className="mt-3 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-neutral-600 hover:bg-neutral-800">
-                Abrir fluxo
-              </button>
-            </div>
-          ))}
-        </div>
-      );
+    if (ui.activeUtility === "workflows") {
+      return <FeedbackLoopTracker />;
     }
 
-    if (activeUtility === "search") {
-      return searchTerm.trim().length < 2 ? (
+    if (ui.activeUtility === "search") {
+      return tasks.searchTerm.trim().length < 2 ? (
         <p className="text-xs text-zinc-500">
           Digite ao menos 2 caracteres para buscar nas notas recentes.
         </p>
@@ -2676,7 +2714,7 @@ const BusinessIntelligenceHub: React.FC = () => {
       );
     }
 
-    if (activeUtility === "agents") {
+    if (ui.activeUtility === "agents") {
       return (
         <div className="space-y-3">
           {agentCards.map((agent) => (
@@ -2706,257 +2744,119 @@ const BusinessIntelligenceHub: React.FC = () => {
       );
     }
 
-    if (activeUtility === "projects") {
+    if (ui.activeUtility === "projects") {
       if (collectionsLoading) {
         return (
-          <div className="space-y-2">
-            <div className="h-20 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/50" />
-            <div className="h-20 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/50" />
+          <div className="space-y-4">
+            <ProjectOverview />
+            <div className="space-y-2">
+              <div className="h-20 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/50" />
+              <div className="h-20 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/50" />
+            </div>
           </div>
         );
       }
       if (!collections.length) {
         return (
-          <p className="text-xs text-zinc-500">
-            Crie projetos na barra lateral para agrupar notas e tarefas
-            recorrentes aqui.
-          </p>
+          <div className="space-y-4">
+            <ProjectOverview />
+            <p className="text-xs text-zinc-500">
+              Crie projetos ou coleções na barra lateral para agrupar notas e
+              tarefas vinculadas.
+            </p>
+          </div>
         );
       }
-      return (
-        <div className="space-y-3">
-          {collectionId && (
-            <button
-              type="button"
-              onClick={handleClearProjectFocus}
-              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-zinc-300 transition hover:border-neutral-600 hover:text-zinc-100"
-            >
-              Limpar projeto ativo
-            </button>
-          )}
-          {collections.map((collection) => {
-            const isActive = collection.id === collectionId;
-            const description = collection.description?.trim();
-            const filter = collection.filter?.trim();
-            const initial = collection.label.charAt(0).toUpperCase();
-            return (
-              <div
-                key={collection.id}
-                className={[
-                  "rounded-xl border bg-neutral-950 p-4 transition",
-                  isActive
-                    ? "border-emerald-500/50 shadow-emerald-500/10"
-                    : "border-neutral-800",
-                ].join(" ")}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <span
-                      className={[
-                        "flex h-10 w-10 items-center justify-center rounded-lg border text-sm font-semibold uppercase",
-                        isActive
-                          ? "border-emerald-400/60 text-emerald-200"
-                          : "border-neutral-800 text-zinc-400",
-                      ].join(" ")}
-                    >
-                      {initial}
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold text-zinc-100">
-                        {collection.label}
-                      </p>
-                      {description && (
-                        <p className="mt-1 text-xs text-zinc-400">
-                          {description}
-                        </p>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
-                        {filter && (
-                          <span className="rounded-full border border-neutral-800 px-2 py-0.5">
-                            Filtro: {filter}
-                          </span>
-                        )}
-                        {isActive && (
-                          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200">
-                            Ativo
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleProjectFocus(collection.id)}
-                    className={[
-                      "rounded-lg border px-3 py-1.5 text-xs transition",
-                      isActive
-                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
-                        : "border-neutral-800 bg-neutral-900 text-emerald-300 hover:border-neutral-600 hover:bg-neutral-800",
-                    ].join(" ")}
-                  >
-                    Focar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
-
-    if (activeUtility === "chatHistory") {
-      const { recent, older } = chatThreadsByRecency;
-
-      if (recent.length === 0 && older.length === 0) {
-        return (
-          <p className="text-xs text-zinc-500">
-            Ainda não há conversas registradas. Inicie uma conversa no painel
-            central para construir seu histórico com o Cognito.
-          </p>
-        );
-      }
-
-      const renderThreads = (threads: ChatThread[]) => (
-        <div className="space-y-2">
-          {threads.map((thread) => {
-            const dateLabel = formatDateShort(thread.updatedAt);
-            const timeLabel = formatTimestampLabel(thread.updatedAt);
-            const updatedLabel = dateLabel
-              ? `${dateLabel} • ${timeLabel}`
-              : timeLabel;
-            return (
-              <button
-                key={thread.id}
-                type="button"
-                onClick={() => handleOpenChatThread(thread.id)}
-                className="group w-full rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-left transition hover:border-neutral-600 hover:bg-neutral-900/70"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-zinc-100 group-hover:text-emerald-200">
-                        {thread.title}
-                      </p>
-                      {thread.pinned && (
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/10">
-                          <Pin className="h-3 w-3 text-emerald-300" />
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs text-zinc-400 line-clamp-2">
-                      {thread.summary}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
-                      <span className="rounded-full border border-neutral-800 px-2 py-0.5">
-                        {updatedLabel}
-                      </span>
-                      <span className="rounded-full border border-neutral-800 px-2 py-0.5">
-                        {Math.max(1, thread.messageCount)} mensagens
-                      </span>
-                      {thread.tags?.map((tag) => (
-                        <span
-                          key={`${thread.id}-${tag}`}
-                          className="rounded-full border border-neutral-800 px-2 py-0.5"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      );
-
       return (
         <div className="space-y-4">
-          {recent.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                Últimos 7 dias
-              </p>
-              {renderThreads(recent)}
-            </div>
-          )}
-          {older.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                Conversas anteriores
-              </p>
-              {renderThreads(older)}
-            </div>
-          )}
-          <p className="text-xs text-zinc-500">
-            O histórico completo também aparece abaixo do painel principal do
-            chat.
-          </p>
+          <ProjectOverview />
+          <div className="space-y-3">
+            {collectionId && (
+              <button
+                type="button"
+                onClick={handleClearProjectFocus}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-zinc-300 transition hover:border-neutral-600 hover:text-zinc-100"
+              >
+                Limpar projeto ativo
+              </button>
+            )}
+            {collections.map((collection) => {
+              const _isActive = collection.id === collectionId;
+              const projectId = collection.id;
+              const projectTitle = collection.label;
+
+              return (
+                <ProjectCard
+                  key={collection.id}
+                  project={{
+                    id: projectId,
+                    title: projectTitle,
+                    status: "ativo",
+                    progress: 75,
+                  }}
+                  onClick={() => handleProjectFocus(collection.id)}
+                />
+              );
+            })}
+          </div>
         </div>
       );
     }
 
-    if (activeUtility === "knowledgeGraph") {
+    if (ui.activeUtility === "chatHistory") {
+      return (
+        <ChatHistoryRenderer
+          chatThreads={chatThreadsByRecency.recent.concat(
+            chatThreadsByRecency.older
+          )}
+          onOpenChatThread={handleOpenChatThread}
+        />
+      );
+    }
+
+    if (ui.activeUtility === "knowledgeGraph") {
       return (
         <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
-          <KnowledgeGraphVisualizer />
+          <div className="flex h-[420px] items-center justify-center">
+            <div className="text-center">
+              <p className="text-zinc-400 mb-2">Visualização do Grafo de Conhecimento</p>
+              <p className="text-zinc-500 text-sm">Temporariamente desabilitado para build</p>
+            </div>
+          </div>
         </div>
       );
     }
 
-    if (activeUtility === "mcpTools") {
+    if (ui.activeUtility === "mcpTools") {
       return (
-        <div className="space-y-3">
-          {availableMcpTools.map((tool) => (
-            <div
-              key={tool.id}
-              className="rounded-xl border border-neutral-800 bg-neutral-950 p-4"
-            >
-              <p className="text-sm font-semibold text-emerald-300">
-                {tool.title}
-              </p>
-              <p className="mt-2 text-sm text-zinc-300">{tool.description}</p>
-              <code className="mt-3 inline-block rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-zinc-400">
-                {tool.id}
-              </code>
-            </div>
-          ))}
-        </div>
+        <McpToolsRenderer
+          availableMcpTools={availableMcpTools}
+          onToolClick={(toolId: string) => {
+            console.log(`Tool clicked: ${toolId}`);
+          }}
+        />
       );
     }
 
-    if (activeUtility === "shortcuts") {
-      return (
-        <div className="space-y-3">
-          {shortcutList.map((shortcut) => (
-            <div
-              key={shortcut.description}
-              className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3"
-            >
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
-                {shortcut.combo.map((key, index) => (
-                  <span
-                    key={`${shortcut.description}-${key}-${index}`}
-                    className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 font-semibold text-zinc-200"
-                  >
-                    {key}
-                  </span>
-                ))}
-              </div>
-              <p className="text-sm text-zinc-300">{shortcut.description}</p>
-            </div>
-          ))}
-        </div>
-      );
+    if (ui.activeUtility === "shortcuts") {
+      return <ShortcutsRenderer shortcutList={shortcutList} />;
+    }
+
+    if (ui.activeUtility === "workflows") {
+      return <WorkflowManager />;
+    }
+
+    if (ui.activeUtility === "analytics") {
+      return <AnalyticsDashboard />;
     }
 
     return null;
   };
 
   const filteredTasks = useMemo(() => {
-    if (activeUtility !== "tasks") return [];
+    if (ui.activeUtility !== "tasks") return [];
     const base = tasksWithPreferences.filter(
-      (task) => !completedTaskIds.has(task.id)
+      (task) => !tasks.completedTaskIds.has(task.id)
     );
     const computeDueValue = (task: Task) => {
       if (!task.dueDate) return Number.POSITIVE_INFINITY;
@@ -2970,14 +2870,14 @@ const BusinessIntelligenceHub: React.FC = () => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
 
-      if (taskSortBy === "priority") {
+      if (tasks.taskSortBy === "priority") {
         const delta =
           resolvePriorityWeight(a.priority) - resolvePriorityWeight(b.priority);
         if (delta !== 0) return delta;
-      } else if (taskSortBy === "due") {
+      } else if (tasks.taskSortBy === "due") {
         const delta = computeDueValue(a) - computeDueValue(b);
         if (delta !== 0) return delta;
-      } else if (taskSortBy === "project") {
+      } else if (tasks.taskSortBy === "project") {
         const aProject = a.project || "";
         const bProject = b.project || "";
         if (aProject !== bProject) {
@@ -2991,20 +2891,51 @@ const BusinessIntelligenceHub: React.FC = () => {
     });
     return sorted;
   }, [
-    activeUtility,
+    ui.activeUtility,
     tasksWithPreferences,
-    completedTaskIds,
-    taskSortBy,
+    tasks.completedTaskIds,
+    tasks.taskSortBy,
     resolvePriorityWeight,
   ]);
 
-  const focusHeadline = useMemo(() => {
-    const firstDaily = snapshot?.data?.focus?.daily_notes?.[0]?.title;
-    if (firstDaily) return firstDaily;
-    const weekly = snapshot?.data?.focus?.weekly_focus?.title;
-    if (weekly) return weekly;
-    return "Execução do piloto multi-tenant";
+  const focusDisplay = useMemo(() => {
+    const focusData = snapshot?.data?.focus;
+    if (!focusData) return null;
+
+    const dailyNotes = Array.isArray(focusData.daily_notes)
+      ? focusData.daily_notes
+      : [];
+    const firstFreshDaily = dailyNotes.find(
+      (note) => note && note.isStale === false
+    );
+    const weeklyFocus = focusData.weekly_focus || null;
+    const staleDaily = dailyNotes.find((note) => note && note.isStale);
+
+    if (firstFreshDaily) {
+      return { ...firstFreshDaily, source: "daily" as const };
+    }
+
+    if (weeklyFocus && weeklyFocus.isStale === false) {
+      return { ...weeklyFocus, source: "weekly" as const };
+    }
+
+    if (weeklyFocus) {
+      return { ...weeklyFocus, source: "weekly" as const };
+    }
+
+    if (staleDaily) {
+      return { ...staleDaily, source: "daily" as const };
+    }
+
+    return null;
   }, [snapshot]);
+
+  const focusHeadline = focusDisplay?.title ?? null;
+  const focusExcerpt = focusDisplay?.excerpt;
+  const focusSource = focusDisplay?.source ?? null;
+  const focusIsStale = focusDisplay?.isStale ?? false;
+  const focusDaysOld =
+    typeof focusDisplay?.daysOld === "number" ? focusDisplay.daysOld : null;
 
   const updatedLabel = useMemo(() => {
     if (!snapshot?.generatedAt)
@@ -3020,111 +2951,148 @@ const BusinessIntelligenceHub: React.FC = () => {
   useEffect(() => {
     if (!quickAction) return;
     if (quickAction === "new-note") {
-      setComposerValue("/nota ");
+      timelineSetComposerValue("/nota ");
     } else if (quickAction === "voice-capture") {
-      setComposerValue("/voz ");
+      timelineSetComposerValue("/voz ");
     } else if (quickAction === "media-import") {
-      setComposerValue("/midia ");
+      timelineSetComposerValue("/midia ");
     }
-  }, [quickAction]);
+  }, [quickAction, timelineSetComposerValue]);
 
   const handleTaskSelect = useCallback(
     async (task: Task) => {
       if (!task.filePath) {
-        setSelectedTaskId(null);
-        setSelectedTaskPath(null);
-        setSelectedTaskTitle(task.title);
-        setSelectedTaskHeading(task.headingContext || task.project || null);
-        setSelectedTaskContent(null);
-        setSelectedTaskError("Esta tarefa não possui nota vinculada.");
+        tasksSetSelectedTaskId(null);
+        tasksSetSelectedTaskPath(null);
+        tasksSetSelectedTaskTitle(task.title);
+        tasksSetSelectedTaskHeading(task.headingContext || task.project || null);
+        tasksSetSelectedTaskContent(null);
+        tasksSetSelectedTaskError("Esta tarefa não possui nota vinculada.");
         return;
       }
 
-      if (selectedTaskId === task.id && !selectedTaskLoading) {
-        setSelectedTaskId(null);
-        setSelectedTaskPath(null);
-        setSelectedTaskTitle(null);
-        setSelectedTaskHeading(null);
-        setSelectedTaskContent(null);
-        setSelectedTaskError(null);
+      if (tasks.selectedTaskId === task.id && !tasks.selectedTaskLoading) {
+        tasksSetSelectedTaskId(null);
+        tasksSetSelectedTaskPath(null);
+        tasksSetSelectedTaskTitle(null);
+        tasksSetSelectedTaskHeading(null);
+        tasksSetSelectedTaskContent(null);
+        tasksSetSelectedTaskError(null);
         return;
       }
 
       try {
-        setSelectedTaskId(task.id);
-        setSelectedTaskPath(task.filePath);
-        setSelectedTaskTitle(task.title);
-        setSelectedTaskHeading(task.headingContext || task.project || null);
-        setSelectedTaskLoading(true);
-        setSelectedTaskError(null);
-        setSelectedTaskContent(null);
+        tasksSetSelectedTaskId(task.id);
+        tasksSetSelectedTaskPath(task.filePath);
+        tasksSetSelectedTaskTitle(task.title);
+        tasksSetSelectedTaskHeading(task.headingContext || task.project || null);
+        tasksSetSelectedTaskLoading(true);
+        tasksSetSelectedTaskError(null);
+        tasksSetSelectedTaskContent(null);
         const result = await api.getVaultNoteContent(task.filePath);
-        setSelectedTaskContent(result.content || "");
+        tasksSetSelectedTaskContent(result.content || "");
       } catch (err) {
         const message =
           err instanceof Error
             ? err.message
             : "Falha ao carregar a nota vinculada.";
-        setSelectedTaskError(message);
+        tasksSetSelectedTaskError(message);
       } finally {
-        setSelectedTaskLoading(false);
+        tasksSetSelectedTaskLoading(false);
       }
     },
-    [api, selectedTaskId, selectedTaskLoading]
+    [
+      api,
+      tasks.selectedTaskId,
+      tasks.selectedTaskLoading,
+      tasksSetSelectedTaskId,
+      tasksSetSelectedTaskPath,
+      tasksSetSelectedTaskTitle,
+      tasksSetSelectedTaskHeading,
+      tasksSetSelectedTaskLoading,
+      tasksSetSelectedTaskError,
+      tasksSetSelectedTaskContent,
+    ]
   );
 
   const handleToggleTask = useCallback(
     async (task: Task, completed: boolean) => {
-      if (togglingTaskId) return;
+      if (tasks.togglingTaskId) return;
       if (!task.filePath) {
-        setSelectedTaskError(
+        tasksSetSelectedTaskError(
           "Não foi possível atualizar: tarefa sem nota vinculada."
         );
         return;
       }
 
       try {
-        setTogglingTaskId(task.id);
-        await api.toggleTaskCompletion({
+        tasksSetTogglingTaskId(task.id);
+        const result = await api.toggleTaskCompletion({
           filePath: task.filePath,
           lineNumber: task.lineNumber ?? undefined,
           completed,
           title: task.title,
         });
-        setCompletedTaskIds((prev) => {
+        
+        // Show success toast
+        if (completed) {
+          showSuccessToast('Tarefa concluída');
+        }
+        
+        // Dispatch admin mode activation event if path override was enabled
+        if (result?.adminModeExpiry) {
+          const event = new CustomEvent('admin-mode-activated', {
+            detail: { expiresAt: result.adminModeExpiry },
+          });
+          window.dispatchEvent(event);
+        }
+        
+        tasksSetCompletedTaskIds((prev) => {
           const next = new Set(prev);
           if (completed) next.add(task.id);
           else next.delete(task.id);
           return next;
         });
-        setSelectedTaskId(null);
-        setSelectedTaskPath(null);
-        setSelectedTaskTitle(null);
-        setSelectedTaskHeading(null);
-        setSelectedTaskContent(null);
-        setSelectedTaskError(null);
-        await loadSnapshot({ silent: true });
+        tasksSetSelectedTaskId(null);
+        tasksSetSelectedTaskPath(null);
+        tasksSetSelectedTaskTitle(null);
+        tasksSetSelectedTaskHeading(null);
+        tasksSetSelectedTaskContent(null);
+        tasksSetSelectedTaskError(null);
+        await loadDashboardSnapshot({ silent: true });
       } catch (err) {
         const message =
           err instanceof Error
             ? err.message
             : "Falha ao atualizar status da tarefa.";
-        setSelectedTaskError(message);
+        tasksSetSelectedTaskError(message);
       } finally {
-        setTogglingTaskId(null);
+        tasksSetTogglingTaskId(null);
       }
     },
-    [api, loadSnapshot, togglingTaskId]
+    [
+      api,
+      loadDashboardSnapshot,
+      tasks.togglingTaskId,
+      tasksSetTogglingTaskId,
+      tasksSetCompletedTaskIds,
+      tasksSetSelectedTaskId,
+      tasksSetSelectedTaskPath,
+      tasksSetSelectedTaskTitle,
+      tasksSetSelectedTaskHeading,
+      tasksSetSelectedTaskContent,
+      tasksSetSelectedTaskError,
+    ]
   );
 
   const handleTogglePinTask = useCallback(
     async (taskId: string) => {
-      const isPinned = pinnedTaskIds.includes(taskId);
+      const isPinned = tasks.pinnedTaskIds.includes(taskId);
       const nextPinned = isPinned
-        ? pinnedTaskIds.filter((id) => id !== taskId)
-        : [...pinnedTaskIds, taskId];
-      setPinnedTaskIds(nextPinned);
-      setTaskPreferences((prev) =>
+        ? tasks.pinnedTaskIds.filter((id) => id !== taskId)
+        : [...tasks.pinnedTaskIds, taskId];
+      tasksSetPinnedTaskIds(nextPinned);
+      tasksSetTaskPreferences((prev) =>
         prev ? { ...prev, pinnedTaskIds: nextPinned } : prev
       );
       if (!taskPrefsReady) return;
@@ -3133,26 +3101,32 @@ const BusinessIntelligenceHub: React.FC = () => {
       } catch (error) {
         console.error("Failed to update pinned tasks", error);
         toast.error("Não foi possível atualizar o destaque da tarefa.");
-        setPinnedTaskIds(pinnedTaskIds);
-        setTaskPreferences((prev) =>
-          prev ? { ...prev, pinnedTaskIds } : prev
+        tasksSetPinnedTaskIds(tasks.pinnedTaskIds);
+        tasksSetTaskPreferences((prev) =>
+          prev ? { ...prev, pinnedTaskIds: tasks.pinnedTaskIds } : prev
         );
       }
     },
-    [pinnedTaskIds, persistTaskPreferences, taskPrefsReady]
+    [
+      tasks.pinnedTaskIds,
+      persistTaskPreferences,
+      taskPrefsReady,
+      tasksSetPinnedTaskIds,
+      tasksSetTaskPreferences,
+    ]
   );
 
   const handleChangeTaskPriority = useCallback(
     async (taskId: string, priority: string | null) => {
-      const previous = priorityMap[taskId] ?? null;
+      const previous = tasks.priorityMap[taskId] ?? null;
       setOpenPriorityMenuId(null);
-      setPriorityMap((prev) => {
+      tasksSetPriorityMap((prev) => {
         const next = { ...prev };
         if (priority === null) delete next[taskId];
         else next[taskId] = priority;
         return next;
       });
-      setTaskPreferences((prev) => {
+      tasksSetTaskPreferences((prev) => {
         if (!prev) return prev;
         const nextPriorityMap = { ...(prev.priorityMap || {}) };
         if (priority === null) delete nextPriorityMap[taskId];
@@ -3167,13 +3141,13 @@ const BusinessIntelligenceHub: React.FC = () => {
       } catch (error) {
         console.error("Failed to update task priority", error);
         toast.error("Não foi possível atualizar a prioridade agora.");
-        setPriorityMap((prev) => {
+        tasksSetPriorityMap((prev) => {
           const next = { ...prev };
           if (previous === null || previous === undefined) delete next[taskId];
           else next[taskId] = previous;
           return next;
         });
-        setTaskPreferences((prev) => {
+        tasksSetTaskPreferences((prev) => {
           if (!prev) return prev;
           const nextPriorityMap = { ...(prev.priorityMap || {}) };
           if (previous === null || previous === undefined)
@@ -3183,34 +3157,45 @@ const BusinessIntelligenceHub: React.FC = () => {
         });
       }
     },
-    [persistTaskPreferences, priorityMap, taskPrefsReady]
+    [
+      persistTaskPreferences,
+      tasks.priorityMap,
+      taskPrefsReady,
+      tasksSetPriorityMap,
+      tasksSetTaskPreferences,
+    ]
   );
 
   const handleViewModeChange = useCallback(
     async (mode: "list" | "kanban") => {
-      if (taskViewMode === mode) return;
-      const previous = taskViewMode;
-      setTaskViewMode(mode);
+      if (tasks.taskViewMode === mode) return;
+      const previous = tasks.taskViewMode;
+      tasksSetTaskViewMode(mode);
       if (!taskPrefsReady) return;
       try {
         await persistTaskPreferences({ viewMode: mode });
       } catch (error) {
         console.error("Failed to update view mode", error);
         toast.error("Não foi possível alterar a visualização agora.");
-        setTaskViewMode(previous);
+        tasksSetTaskViewMode(previous);
       }
     },
-    [persistTaskPreferences, taskPrefsReady, taskViewMode]
+    [
+      persistTaskPreferences,
+      taskPrefsReady,
+      tasks.taskViewMode,
+      tasksSetTaskViewMode,
+    ]
   );
 
   const handleSortChange = useCallback(
     async (sort: "natural" | "due" | "priority" | "project") => {
-      if (taskSortBy === sort) {
+      if (tasks.taskSortBy === sort) {
         setShowSortMenu(false);
         return;
       }
-      const previous = taskSortBy;
-      setTaskSortBy(sort);
+      const previous = tasks.taskSortBy;
+      tasksSetTaskSortBy(sort);
       setShowSortMenu(false);
       if (!taskPrefsReady) return;
       try {
@@ -3218,10 +3203,15 @@ const BusinessIntelligenceHub: React.FC = () => {
       } catch (error) {
         console.error("Failed to update sort order", error);
         toast.error("Não foi possível atualizar a ordenação agora.");
-        setTaskSortBy(previous);
+        tasksSetTaskSortBy(previous);
       }
     },
-    [persistTaskPreferences, taskPrefsReady, taskSortBy]
+    [
+      persistTaskPreferences,
+      taskPrefsReady,
+      tasks.taskSortBy,
+      tasksSetTaskSortBy,
+    ]
   );
 
   const loadCompletedTasks = useCallback(
@@ -3247,8 +3237,8 @@ const BusinessIntelligenceHub: React.FC = () => {
   }, [loadCompletedTasks]);
 
   const handleAiCleanup = useCallback(async () => {
-    if (aiCleanupLoading) return;
-    setAiCleanupLoading(true);
+    if (tasks.aiCleanupLoading) return;
+    tasksSetAiCleanupLoading(true);
     try {
       const result = await api.triggerTaskCleanup({ window: "week" });
       toast.success(result.message);
@@ -3256,14 +3246,14 @@ const BusinessIntelligenceHub: React.FC = () => {
       console.error("Failed to trigger AI cleanup", error);
       toast.error("Não foi possível acionar a limpeza por IA agora.");
     } finally {
-      setAiCleanupLoading(false);
+      tasksSetAiCleanupLoading(false);
     }
-  }, [aiCleanupLoading, api]);
+  }, [tasks.aiCleanupLoading, api, tasksSetAiCleanupLoading]);
 
   const handleContextSave = useCallback(async () => {
     try {
       await persistTaskPreferences({
-        contextTemplate: { ...taskContextDraft },
+        contextTemplate: { ...tasks.taskContextDraft },
         lastContextId: "default",
       });
       toast.success("Contexto salvo para os agentes Cognito.");
@@ -3272,7 +3262,7 @@ const BusinessIntelligenceHub: React.FC = () => {
       console.error("Failed to save task context", error);
       toast.error("Não foi possível salvar o contexto agora.");
     }
-  }, [persistTaskPreferences, taskContextDraft]);
+  }, [persistTaskPreferences, tasks.taskContextDraft]);
 
   const handleOpenContextModal = useCallback(() => {
     setContextModalOpen(true);
@@ -3292,22 +3282,22 @@ const BusinessIntelligenceHub: React.FC = () => {
       taskId: string,
       column: string
     ) => {
-      setBoardDragState({ taskId, fromColumn: column });
+      tasksSetBoardDragState({ taskId, fromColumn: column });
       event.dataTransfer.setData("application/task-id", taskId);
       event.dataTransfer.effectAllowed = "move";
     },
-    []
+    [tasksSetBoardDragState]
   );
 
   const handleBoardDragEnd = useCallback(() => {
-    setBoardDragState(null);
-  }, []);
+    tasksSetBoardDragState(null);
+  }, [tasksSetBoardDragState]);
 
   const handleBoardDrop = useCallback(
     (taskId: string, targetColumn: string) => {
       if (!taskId) return;
       let nextLayout: Record<string, string[]> | null = null;
-      setBoardOrder((prev) => {
+      tasksSetBoardOrder((prev) => {
         const columns = new Set([
           "overdue",
           "today",
@@ -3332,7 +3322,7 @@ const BusinessIntelligenceHub: React.FC = () => {
         }
         return prev;
       });
-      setBoardDragState(null);
+      tasksSetBoardDragState(null);
       if (nextLayout && taskPrefsReady) {
         persistTaskPreferences({ boardOrder: nextLayout }).catch((error) => {
           console.error("Failed to persist board layout", error);
@@ -3340,111 +3330,222 @@ const BusinessIntelligenceHub: React.FC = () => {
         });
       }
     },
-    [persistTaskPreferences, taskPrefsReady]
+    [
+      persistTaskPreferences,
+      taskPrefsReady,
+      tasksSetBoardOrder,
+      tasksSetBoardDragState,
+    ]
   );
 
   const handleProjectFocus = useCallback(
     (projectId: string) => {
-      const params = new URLSearchParams(location.search);
+      const params = new URLSearchParams(searchParamsString);
       params.set("collection", projectId);
-      navigate(`/?${params.toString()}`);
+      router.replace(`/?${params.toString()}`);
     },
-    [location.search, navigate]
+    [router, searchParamsString]
   );
 
   const handleClearProjectFocus = useCallback(() => {
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(searchParamsString);
     params.delete("collection");
     const searchValue = params.toString();
-    navigate(`/${searchValue ? `?${searchValue}` : ""}`);
-  }, [location.search, navigate]);
+    router.replace(`/${searchValue ? `?${searchValue}` : ""}`);
+  }, [router, searchParamsString]);
+
+  const handleDefineFocus = useCallback(() => {
+    uiSetActiveUtility("dailyNotes");
+    timelineSetComposerValue("/foco ");
+  }, [timelineSetComposerValue, uiSetActiveUtility]);
+
+  const handleToggleDailyNote = useCallback(
+    async (path: string) => {
+      const note = dailyNotesList.find((item) => item.path === path);
+      if (!note) {
+        return;
+      }
+
+      const fetchPath = note.vaultPath;
+      if (!fetchPath) {
+        return;
+      }
+
+      if (expandedDailyPath === note.path && !expandedDailyLoading) {
+        setExpandedDailyPath(null);
+        setExpandedDailyContent(null);
+        setExpandedDailyError(null);
+        setExpandedDailyTitle(null);
+        setExpandedDailyFrontmatter(null);
+        return;
+      }
+
+      try {
+        setExpandedDailyPath(note.path);
+        setExpandedDailyLoading(true);
+        setExpandedDailyError(null);
+        setExpandedDailyContent(null);
+        setExpandedDailyTitle(note.title);
+        setExpandedDailyFrontmatter(note.frontmatter ?? null);
+
+        const result = await api.getVaultNoteContent(fetchPath);
+        setExpandedDailyContent(result.content || "");
+        setExpandedDailyTitle(result.title ?? note.title);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Falha ao carregar conteúdo da nota.";
+        setExpandedDailyError(message);
+      } finally {
+        setExpandedDailyLoading(false);
+      }
+    },
+    [
+      api,
+      dailyNotesList,
+      expandedDailyLoading,
+      expandedDailyPath,
+      setExpandedDailyContent,
+      setExpandedDailyError,
+      setExpandedDailyFrontmatter,
+      setExpandedDailyLoading,
+      setExpandedDailyPath,
+      setExpandedDailyTitle,
+    ]
+  );
 
   const handleOpenChatThread = useCallback(
     (threadId: string) => {
-      navigate(`/chat?thread=${encodeURIComponent(threadId)}`);
+      openConversationFromHistory(threadId);
     },
-    [navigate]
+    [openConversationFromHistory]
   );
 
   const handleOpenInboxNote = useCallback(
     async (path: string) => {
-      if (expandedInboxPath === path && !expandedInboxLoading) {
-        setExpandedInboxPath(null);
-        setExpandedInboxContent(null);
-        setExpandedInboxError(null);
-        setExpandedInboxFrontmatter(null);
+      if (inbox.expandedInboxPath === path && !inbox.expandedInboxLoading) {
+        inboxSetExpandedInboxPath(null);
+        inboxSetExpandedInboxContent(null);
+        inboxSetExpandedInboxError(null);
+        inboxSetExpandedInboxFrontmatter(null);
         return;
       }
       try {
-        setExpandedInboxPath(path);
-        setExpandedInboxLoading(true);
-        setExpandedInboxError(null);
-        setExpandedInboxContent(null);
-        setExpandedInboxFrontmatter(null);
+        inboxSetExpandedInboxPath(path);
+        inboxSetExpandedInboxLoading(true);
+        inboxSetExpandedInboxError(null);
+        inboxSetExpandedInboxContent(null);
+        inboxSetExpandedInboxFrontmatter(null);
         const result = await api.getInboxNoteContent(path);
-        setExpandedInboxContent(result?.content || "");
-        setExpandedInboxFrontmatter(result?.frontmatter || null);
+        inboxSetExpandedInboxContent(result?.content || "");
+        inboxSetExpandedInboxFrontmatter(result?.frontmatter || null);
       } catch (err) {
         const message =
           err instanceof Error
             ? err.message
             : "Falha ao carregar conteúdo da nota.";
-        setExpandedInboxError(message);
+        inboxSetExpandedInboxError(message);
       } finally {
-        setExpandedInboxLoading(false);
+        inboxSetExpandedInboxLoading(false);
       }
     },
-    [api, expandedInboxLoading, expandedInboxPath]
+    [
+      api,
+      inbox.expandedInboxLoading,
+      inbox.expandedInboxPath,
+      inboxSetExpandedInboxPath,
+      inboxSetExpandedInboxContent,
+      inboxSetExpandedInboxError,
+      inboxSetExpandedInboxFrontmatter,
+      inboxSetExpandedInboxLoading,
+    ]
   );
 
   return (
     <div className="flex h-[calc(100vh-3rem)] min-h-0 flex-col gap-4 overflow-hidden text-zinc-100">
+      {/* TEMPORARILY DISABLED - infinite 401 loop */}
+      {/* <EventListener
+        eventTypes={[
+          "task:created",
+          "task:updated",
+          "task:completed",
+          "conversation:saved",
+          "file:created",
+          "file:updated",
+          "file:deleted",
+          "file:moved",
+          "note:created",
+          "note:updated",
+          "graph:updated",
+          "sync:started",
+          "sync:completed",
+          "sync:failed",
+          "workflow:triggered",
+          "workflow:completed",
+          "workflow:failed",
+        ]}
+        onTaskEvent={handleTaskEvent}
+        onFileEvent={handleFileEvent}
+        onNoteEvent={handleNoteEvent}
+        onConversationEvent={handleConversationEvent}
+        onGraphEvent={handleGraphEvent}
+        onSyncEvent={handleSyncEvent}
+        onWorkflowEvent={handleWorkflowEvent}
+        showToasts={false}
+        debug={process.env.NODE_ENV === "development"}
+        onConnect={handleEventsConnect}
+        onDisconnect={handleEventsDisconnect}
+        onError={handleEventsError}
+      /> */}
       <div className="rounded-2xl border border-neutral-800/60 bg-neutral-950/80 px-6 py-4 shadow-2xl shadow-black/30">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-              Foco do dia
-            </p>
-            <h2 className="mt-1 text-2xl font-semibold text-white">
-              {focusHeadline}
-            </h2>
-            <p className="text-xs text-zinc-500">{updatedLabel}</p>
+          <div className="flex-1">
+            {focusHeadline && focusSource ? (
+              <>
+                <div className="mt-2">
+                  <FocusHeadline
+                    text={focusHeadline}
+                    excerpt={focusExcerpt}
+                    source={focusSource}
+                    isStale={focusIsStale}
+                    daysOld={focusDaysOld ?? undefined}
+                  />
+                </div>
+                <p className="text-xs text-zinc-500">{updatedLabel}</p>
+              </>
+            ) : (
+              <div className="mt-2">
+                <EmptyFocusState
+                  message="Nenhum foco definido recentemente"
+                  onDefine={handleDefineFocus}
+                />
+                <p className="mt-2 text-xs text-zinc-500">{updatedLabel}</p>
+              </div>
+            )}
             {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
             {activeCollection && (
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
-                <Sparkles className="h-3 w-3" />
-                <span>
-                  Projeto ativo:&nbsp;
-                  <strong className="text-emerald-100">
-                    {activeCollection.label}
-                  </strong>
-                </span>
+              <div className="mt-3">
+                <ActiveProjectBanner
+                  activeCollection={activeCollection}
+                  onClearProject={handleClearProjectFocus}
+                />
               </div>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {focusSummary.map((item) => (
-              <div
-                key={item.label}
-                className="min-w-[88px] rounded-lg bg-neutral-900/70 px-3 py-2 text-center"
-              >
-                <p className="text-lg font-semibold text-zinc-100">
-                  {item.value}
-                </p>
-                <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                  {item.label}
-                </p>
-              </div>
-            ))}
-            <button
-              onClick={() => loadSnapshot({ silent: true })}
-              className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs font-medium uppercase tracking-wide text-zinc-300 transition hover:border-neutral-600 hover:text-zinc-100"
-            >
-              <RefreshCw
-                className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`}
-              />
-              Recarregar
-            </button>
+            <FocusSummaryWidget
+              focusSummary={focusSummary}
+              eventsConnected={timeline.eventsConnected}
+              eventsError={timeline.eventsError}
+              refreshing={refreshing}
+              onRefresh={() => loadDashboardSnapshot({ silent: true })}
+              eventsTooltipMessage={
+                timeline.eventsConnected
+                  ? "Conectado ao Brain Cloud"
+                  : timeline.eventsError?.message || "Tentando reconectar aos eventos"
+              }
+            />
           </div>
         </div>
       </div>
@@ -3453,7 +3554,7 @@ const BusinessIntelligenceHub: React.FC = () => {
         <div ref={layoutRef} className="flex flex-1 min-h-0 gap-4">
           <section
             className={`flex min-h-0 flex-col overflow-hidden rounded-2xl border border-neutral-800/60 bg-neutral-950/80 shadow-2xl shadow-black/30 transition-all duration-300 ${
-              isTimelineCollapsed
+              timeline.isTimelineCollapsed
                 ? "pointer-events-none opacity-0 w-0"
                 : "opacity-100"
             }`}
@@ -3462,133 +3563,38 @@ const BusinessIntelligenceHub: React.FC = () => {
               flexBasis: timelineFlex === 0 ? "0%" : "0",
             }}
           >
-            {chatMode === "conversation" ? (
-                <ConversationView
-                  conversation={activeConversation}
-                  messages={chatMessages}
-                  streamingMessage={streamingMessage}
-                  thinkingMessage={thinkingMessage}
-                  isLoading={chatLoading}
-                  isThinking={isThinking}
-                  onSendMessage={handleSendMessage}
-                  onBackToTimeline={handleBackToTimeline}
-                  models={modelOptions}
-                  selectedModelId={selectedModelId}
-                  onModelChange={handleModelChange}
-                  modelsLoading={modelsLoading || modelUpdating}
-                  currentModelConfig={conversationModelConfig}
-                />
-            ) : (
-              <>
-                <div className="flex items-center justify-between border-b border-neutral-800/60 px-6 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                    Timeline IA
-                  </p>
-                  <button
-                    onClick={handleCollapseTimeline}
-                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-zinc-300 transition hover:border-neutral-600 hover:text-zinc-100"
-                    aria-label="Recolher timeline"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
-                  {snapshot?.warnings && snapshot.warnings.length > 0 && (
-                    <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-                      {snapshot.warnings.map((warning, index) => (
-                        <p key={index}>
-                          <strong className="uppercase tracking-wide">
-                            {warning.scope || "Aviso"}:
-                          </strong>{" "}
-                          {warning.message}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  {loading ? (
-                    <div className="flex h-full items-center justify-center text-sm text-zinc-500">
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin text-zinc-400" />
-                      Carregando inteligência em tempo real...
-                    </div>
-                  ) : (
-                    timelineCards.map((card) => (
-                      <TimelineCard key={card.id} card={card} />
-                    ))
-                  )}
-                </div>
-                <div className="border-t border-neutral-800/60 bg-neutral-950/60 px-6 py-4">
-                  <div className="flex flex-col gap-3 rounded-lg border border-neutral-700 bg-neutral-950/70 px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
-                      <span className="flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-900 px-2 py-0.5">
-                        <Sparkles className="h-3 w-3 text-emerald-300" />
-                        Assistente IA ativo
-                      </span>
-                      <span className="flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-900 px-2 py-0.5">
-                        <Mic className="h-3 w-3 text-zinc-300" />
-                        Pressione M para falar
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-1 items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/90 px-4 py-3">
-                        <Sparkles className="h-5 w-5 text-emerald-300" />
-                        <input
-                          value={composerValue}
-                          onChange={(event) =>
-                            setComposerValue(event.target.value)
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" && composerValue.trim()) {
-                              handleStartChat(composerValue.trim());
-                              setComposerValue("");
-                            }
-                          }}
-                          placeholder="Pergunte, capture uma nota ou gere um insight..."
-                          className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
-                        />
-                      </div>
-                      <button className="flex h-11 w-11 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-zinc-200 transition hover:border-neutral-600 hover:bg-neutral-800">
-                        <Mic className="h-5 w-5 text-zinc-200" />
-                      </button>
-                      <button className="flex h-11 w-11 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-zinc-200 transition hover:border-neutral-600 hover:bg-neutral-800">
-                        <FilePlus2 className="h-5 w-5 text-zinc-200" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (composerValue.trim()) {
-                            handleStartChat(composerValue.trim());
-                            setComposerValue("");
-                          }
-                        }}
-                        className="flex h-11 w-11 items-center justify-center rounded-xl border border-neutral-700 bg-neutral-200 text-zinc-950 transition hover:border-neutral-500 hover:bg-neutral-100"
-                      >
-                        <Play className="h-5 w-5" />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                      <span>
-                        Use{" "}
-                        <kbd className="rounded border border-neutral-800 bg-neutral-950 px-1">
-                          /nota
-                        </kbd>{" "}
-                        <kbd className="rounded border border-neutral-800 bg-neutral-950 px-1">
-                          /tarefa
-                        </kbd>{" "}
-                        <kbd className="rounded border border-neutral-800 bg-neutral-950 px-1">
-                          /resumo
-                        </kbd>
-                      </span>
-                      <span>{composerValue.length}/500</span>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
+            <ConversationSection
+              chatMode={timeline.chatMode}
+              activeConversation={timeline.activeConversation}
+              chatMessages={timeline.chatMessages}
+              streamingMessage={timeline.streamingMessage}
+              thinkingMessage={timeline.thinkingMessage}
+              chatLoading={chatLoading}
+              isThinking={isThinking}
+              composerValue={timeline.composerValue}
+              timelineCards={timelineCards}
+              loading={loading}
+              snapshot={snapshot}
+              onSendMessage={handleSendMessage}
+              onBackToTimeline={handleBackToTimeline}
+              onModelChange={handleModelChange}
+              handleModelChange={handleModelChange}
+              modelsLoading={modelsLoading}
+              modelUpdating={modelUpdating}
+              conversationModelConfig={conversationModelConfig}
+              selectedModelId={selectedModelId}
+              modelOptions={modelOptions}
+              handleCollapseTimeline={timeline.handleCollapseTimeline}
+              isTimelineCollapsed={timeline.isTimelineCollapsed}
+              setComposerValue={timelineSetComposerValue}
+              handleStartChat={startChatWithMessage}
+            />
           </section>
 
-          {isTimelineCollapsed ? (
+          {timeline.isTimelineCollapsed ? (
             <div className="flex items-center">
               <button
-                onClick={handleExpandTimeline}
+                onClick={timeline.handleExpandTimeline}
                 className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-zinc-300 shadow-lg shadow-black/20 transition hover:border-neutral-600 hover:text-zinc-100"
                 aria-label="Exibir timeline"
               >
@@ -3620,19 +3626,19 @@ const BusinessIntelligenceHub: React.FC = () => {
                   </h3>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {activeUtility === "tasks" && (
+                  {ui.activeUtility === "tasks" && (
                     <button className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-neutral-600 hover:bg-neutral-800">
                       <ListTodo className="h-3 w-3" />
                       Nova tarefa
                     </button>
                   )}
-                  {activeUtility === "search" && (
+                  {ui.activeUtility === "search" && (
                     <div className="flex w-full max-w-xs items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-sm text-zinc-100">
                       <SearchIcon className="h-4 w-4 text-zinc-400" />
                       <input
                         ref={searchInputRef}
-                        value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
+                        value={tasks.searchTerm}
+                        onChange={(event) => tasksSetSearchTerm(event.target.value)}
                         placeholder="Buscar no snapshot..."
                         className="flex-1 bg-transparent text-sm focus:outline-none"
                       />
@@ -3640,25 +3646,25 @@ const BusinessIntelligenceHub: React.FC = () => {
                   )}
                 </div>
               </div>
-              {activeUtility !== "search" && activeUtility !== "tasks" && (
+              {ui.activeUtility !== "search" && ui.activeUtility !== "tasks" && (
                 <p className="mt-2 text-xs text-zinc-500">
-                  {activeUtility === "inbox"
+                  {ui.activeUtility === "inbox"
                     ? "Notas brutas e capturas rápidas vindas do Segundo Cérebro."
-                    : activeUtility === "dailyNotes"
+                    : ui.activeUtility === "dailyNotes"
                     ? "Notas capturadas automaticamente e curadoria diária."
-                    : activeUtility === "workflows"
-                    ? "Fluxos assistidos para revisões e rituais estratégicos."
-                    : activeUtility === "agents"
+                    : ui.activeUtility === "workflows"
+                    ? "Execute e monitore workflows automáticos para Daily Review, Weekly Review, Sync e Embeddings."
+                    : ui.activeUtility === "agents"
                     ? "Status dos agentes autônomos e execuções recentes."
-                    : activeUtility === "projects"
+                    : ui.activeUtility === "projects"
                     ? "Organize e ative projetos do Vectal em um painel dedicado."
-                    : activeUtility === "chatHistory"
+                    : ui.activeUtility === "chatHistory"
                     ? "Histórico resumido das conversas recentes com o Cognito."
-                    : activeUtility === "knowledgeGraph"
+                    : ui.activeUtility === "knowledgeGraph"
                     ? "Visualização do grafo de conhecimento do seu Segundo Cérebro."
-                    : activeUtility === "mcpTools"
+                    : ui.activeUtility === "mcpTools"
                     ? "Ferramentas MCP disponíveis para o contexto atual."
-                    : activeUtility === "shortcuts"
+                    : ui.activeUtility === "shortcuts"
                     ? "Atalhos para acelerar sua navegação."
                     : null}
                 </p>
@@ -3673,7 +3679,7 @@ const BusinessIntelligenceHub: React.FC = () => {
         <aside className="flex w-16 flex-col items-center gap-2 rounded-2xl border border-neutral-800/60 bg-neutral-950/80 py-3 shadow-2xl shadow-black/30">
           {utilityButtons.map((button) => {
             const Icon = button.icon;
-            const isActive = button.id === activeUtility;
+            const isActive = button.id === ui.activeUtility;
             return (
               <button
                 key={button.id}
@@ -3699,7 +3705,7 @@ const BusinessIntelligenceHub: React.FC = () => {
               type="button"
               onClick={() => handleUtilitySelect("shortcuts")}
               className={`flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:text-emerald-200 ${
-                activeUtility === "shortcuts"
+                ui.activeUtility === "shortcuts"
                   ? "bg-emerald-500/20 text-emerald-300"
                   : ""
               }`}
@@ -3714,16 +3720,16 @@ const BusinessIntelligenceHub: React.FC = () => {
         </aside>
       </div>
 
-      {selectedTaskId && (
+      {tasks.selectedTaskId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={() => {
-            setSelectedTaskId(null);
-            setSelectedTaskPath(null);
-            setSelectedTaskTitle(null);
-            setSelectedTaskHeading(null);
-            setSelectedTaskContent(null);
-            setSelectedTaskError(null);
+            tasksSetSelectedTaskId(null);
+            tasksSetSelectedTaskPath(null);
+            tasksSetSelectedTaskTitle(null);
+            tasksSetSelectedTaskHeading(null);
+            tasksSetSelectedTaskContent(null);
+            tasksSetSelectedTaskError(null);
           }}
         >
           <div
@@ -3733,22 +3739,22 @@ const BusinessIntelligenceHub: React.FC = () => {
             <div className="flex items-start justify-between border-b border-neutral-800 px-6 py-4">
               <div className="flex-1 pr-4">
                 <h2 className="text-lg font-semibold text-zinc-100">
-                  {selectedTaskTitle || "Detalhes da Tarefa"}
+                  {tasks.selectedTaskTitle || "Detalhes da Tarefa"}
                 </h2>
-                {selectedTaskHeading && (
+                {tasks.selectedTaskHeading && (
                   <p className="mt-1 text-sm text-zinc-400">
-                    {selectedTaskHeading}
+                    {tasks.selectedTaskHeading}
                   </p>
                 )}
               </div>
               <button
                 onClick={() => {
-                  setSelectedTaskId(null);
-                  setSelectedTaskPath(null);
-                  setSelectedTaskTitle(null);
-                  setSelectedTaskHeading(null);
-                  setSelectedTaskContent(null);
-                  setSelectedTaskError(null);
+                  tasksSetSelectedTaskId(null);
+                  tasksSetSelectedTaskPath(null);
+                  tasksSetSelectedTaskTitle(null);
+                  tasksSetSelectedTaskHeading(null);
+                  tasksSetSelectedTaskContent(null);
+                  tasksSetSelectedTaskError(null);
                 }}
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-800 text-zinc-400 transition hover:border-neutral-600 hover:bg-neutral-900 hover:text-zinc-100"
                 aria-label="Fechar"
@@ -3757,14 +3763,14 @@ const BusinessIntelligenceHub: React.FC = () => {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              {selectedTaskLoading ? (
+              {tasks.selectedTaskLoading ? (
                 <div className="flex items-center gap-2 text-zinc-500">
                   <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
                   Carregando nota...
                 </div>
-              ) : selectedTaskError ? (
-                <p className="text-sm text-rose-400">{selectedTaskError}</p>
-              ) : selectedTaskPath && selectedTaskContent ? (
+              ) : tasks.selectedTaskError ? (
+                <p className="text-sm text-rose-400">{tasks.selectedTaskError}</p>
+              ) : tasks.selectedTaskPath && tasks.selectedTaskContent ? (
                 <div className="prose prose-invert max-w-none">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -3845,10 +3851,10 @@ const BusinessIntelligenceHub: React.FC = () => {
                       ),
                     }}
                   >
-                    {selectedTaskContent}
+                    {tasks.selectedTaskContent}
                   </ReactMarkdown>
                 </div>
-              ) : selectedTaskPath ? (
+              ) : tasks.selectedTaskPath ? (
                 <p className="text-sm text-zinc-500">Nota vinculada vazia.</p>
               ) : (
                 <p className="text-sm text-zinc-500">
@@ -3856,10 +3862,10 @@ const BusinessIntelligenceHub: React.FC = () => {
                 </p>
               )}
             </div>
-            {selectedTaskPath && (
+            {tasks.selectedTaskPath && (
               <div className="border-t border-neutral-800 px-6 py-3">
                 <p className="text-xs text-zinc-500">
-                  Nota: <span className="font-mono">{selectedTaskPath}</span>
+                  Nota: <span className="font-mono">{tasks.selectedTaskPath}</span>
                 </p>
               </div>
             )}
@@ -3996,9 +4002,9 @@ const BusinessIntelligenceHub: React.FC = () => {
                   Work description
                 </label>
                 <textarea
-                  value={taskContextDraft.workDescription}
+                  value={tasks.taskContextDraft.workDescription}
                   onChange={(event) =>
-                    setTaskContextDraft((prev) => ({
+                    tasksSetTaskContextDraft((prev) => ({
                       ...prev,
                       workDescription: event.target.value,
                     }))
@@ -4013,9 +4019,9 @@ const BusinessIntelligenceHub: React.FC = () => {
                   Short term focus
                 </label>
                 <textarea
-                  value={taskContextDraft.shortTermFocus}
+                  value={tasks.taskContextDraft.shortTermFocus}
                   onChange={(event) =>
-                    setTaskContextDraft((prev) => ({
+                    tasksSetTaskContextDraft((prev) => ({
                       ...prev,
                       shortTermFocus: event.target.value,
                     }))
@@ -4030,9 +4036,9 @@ const BusinessIntelligenceHub: React.FC = () => {
                   Long term goals
                 </label>
                 <textarea
-                  value={taskContextDraft.longTermGoals}
+                  value={tasks.taskContextDraft.longTermGoals}
                   onChange={(event) =>
-                    setTaskContextDraft((prev) => ({
+                    tasksSetTaskContextDraft((prev) => ({
                       ...prev,
                       longTermGoals: event.target.value,
                     }))
@@ -4047,9 +4053,9 @@ const BusinessIntelligenceHub: React.FC = () => {
                   Other context
                 </label>
                 <textarea
-                  value={taskContextDraft.otherContext}
+                  value={tasks.taskContextDraft.otherContext}
                   onChange={(event) =>
-                    setTaskContextDraft((prev) => ({
+                    tasksSetTaskContextDraft((prev) => ({
                       ...prev,
                       otherContext: event.target.value,
                     }))
@@ -4079,18 +4085,21 @@ const BusinessIntelligenceHub: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Integrated Chat Widget */}
+      <ChatWidget className="fixed bottom-0 right-6 z-50" />
     </div>
   );
 };
 
-type TimelineCardProps = {
+type HubTimelineCardProps = {
   card: TimelineCard;
 };
 
-const TimelineCard: React.FC<TimelineCardProps> = ({ card }) => {
+const _HubTimelineCard: React.FC<HubTimelineCardProps> = ({ card }) => {
   if (card.type === "message") {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 p-5 shadow-lg shadow-black/20 transition hover:border-neutral-600 hover:shadow-black/10">
+      <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 p-5 shadow-lg shadow-black/20 transition hover:border-neutral-600 hover:shadow-black/10 animate-[fadeInUp_0.3s_ease-out]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-zinc-200">{card.title}</p>
@@ -4121,7 +4130,7 @@ const TimelineCard: React.FC<TimelineCardProps> = ({ card }) => {
 
   if (card.type === "insight") {
     return (
-      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5 shadow-lg shadow-emerald-500/10 transition hover:border-emerald-400/50">
+      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5 shadow-lg shadow-emerald-500/10 transition hover:border-emerald-400/50 animate-[fadeInUp_0.3s_ease-out]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-wide text-emerald-200">
@@ -4156,7 +4165,7 @@ const TimelineCard: React.FC<TimelineCardProps> = ({ card }) => {
 
   if (card.type === "note") {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 p-5 shadow-lg shadow-black/15 transition hover:border-neutral-600 hover:shadow-black/10">
+      <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 p-5 shadow-lg shadow-black/15 transition hover:border-neutral-600 hover:shadow-black/10 animate-[fadeInUp_0.3s_ease-out]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">
@@ -4186,7 +4195,7 @@ const TimelineCard: React.FC<TimelineCardProps> = ({ card }) => {
   }
 
   return (
-    <div className="rounded-2xl border border-sky-500/25 bg-sky-500/10 p-5 shadow-lg shadow-sky-500/10 transition hover:border-sky-400/40">
+    <div className="rounded-2xl border border-sky-500/25 bg-sky-500/10 p-5 shadow-lg shadow-sky-500/10 transition hover:border-sky-400/40 animate-[fadeInUp_0.3s_ease-out]">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] uppercase tracking-wide text-sky-200">

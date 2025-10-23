@@ -16,6 +16,14 @@
 
 import { logger } from "../src/utils/logger.js";
 
+logger.warn(
+  "[DEPRECATED] brainCloudMCP.js será consolidado no BrainCloudService.ts. Consulte docs/BRAIN_CLOUD_MIGRATION_GUIDE.md para detalhes."
+);
+
+console.warn(
+  "\n⚠️  WARNING: brainCloudMCP está obsoleto. Migre para BrainCloudService v2.0 conforme docs/BRAIN_CLOUD_MIGRATION_GUIDE.md.\n"
+);
+
 class BrainCloudMCP {
   constructor() {
     this.mcpServerName = "obsidian-brain-cloud";
@@ -23,6 +31,10 @@ class BrainCloudMCP {
     this.baseUrl =
       process.env.VITE_BRAINCLOUD_BASE_URL ||
       "https://obsidian-mcp.ggailabs.com";
+
+    console.warn(
+      "\n⚠️  WARNING: brainCloudMCP será removido na Sprint 4. Utilize BrainCloudService v2.0.\n"
+    );
   }
 
   /**

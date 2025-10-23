@@ -34,11 +34,23 @@ import brainCloudREST from "./brainCloudREST.js";
 import brainCloudMCP from "./brainCloudMCP.js";
 import { logger } from "../src/utils/logger.js";
 
+logger.warn(
+  "[DEPRECATED] brainCloudHybrid.js será descontinuado em breve. Utilize server/services/brainCloud/BrainCloudService.ts conforme documento docs/BRAIN_CLOUD_MIGRATION_GUIDE.md."
+);
+
+console.warn(
+  "\n⚠️  WARNING: Você está utilizando brainCloudHybrid (deprecated). Migre para BrainCloudService v2.0 – consulte docs/BRAIN_CLOUD_MIGRATION_GUIDE.md.\n"
+);
+
 class BrainCloudHybrid {
   constructor() {
     this.restService = brainCloudREST;
     this.mcpService = brainCloudMCP;
     this.preferredMode = "auto"; // auto, rest, mcp
+
+    console.warn(
+      "\n⚠️  WARNING: brainCloudHybrid será removido na Sprint 4. Migre para BrainCloudService v2.0 (docs/BRAIN_CLOUD_MIGRATION_GUIDE.md).\n"
+    );
   }
 
   /**

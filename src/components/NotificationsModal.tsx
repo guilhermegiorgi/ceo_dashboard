@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Check, Trash2, Settings, Filter, Search, X } from 'lucide-react';
+import { Bell, Check, Trash2, Settings, Search, X } from 'lucide-react';
 
 interface Notification {
   id: number;

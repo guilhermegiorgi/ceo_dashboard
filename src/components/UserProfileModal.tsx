@@ -1,505 +1,309 @@
-import React, { useState } from 'react';
-import { 
-  User, 
-  X, 
-  Edit, 
-  Save, 
-  Camera, 
-  Mail, 
-  Phone, 
-  MapPin, 
+'use client';
+
+import React, { useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
+import {
   Calendar,
-  Shield,
-  CreditCard,
-  Activity,
+  CheckCircle2,
+  Clock,
+  Globe,
+  Loader2,
   LogOut,
-  Key,
-  Bell
+  Mail,
+  Settings,
+  ShieldCheck,
+  Smartphone,
 } from 'lucide-react';
+import apiClient, { CurrentUserProfile } from '@/services/apiClient';
 
-interface UserProfileModalProps {
+type UserProfileModalProps = {
   onClose: () => void;
-}
+  onOpenSettings?: () => void;
+};
 
-const UserProfileModal: React.FC<UserProfileModalProps> = ({ onClose }) => {
-  const [activeTab, setActiveTab] = useState('profile');
-  const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState({
-    name: 'CEO Dashboard Admin',
-    email: 'admin@gg-ai-labs.com',
-    phone: '+1 (555) 123-4567',
-    location: 'San Francisco, CA',
-    title: 'Chief Executive Officer',
-    company: 'GG.AI Labs',
-    joinDate: '2024-01-01',
-    avatar: null as string | null,
-    bio: 'Passionate about AI-driven business intelligence and strategic decision making.',
-    timezone: 'America/Los_Angeles',
-    language: 'en'
+type SessionSnapshot = {
+  device: string;
+  location?: string;
+  lastActivity: string;
+};
+
+type FetchState =
+  | { status: 'idle'; data: null; error: null }
+  | { status: 'loading'; data: null; error: null }
+  | { status: 'loaded'; data: CurrentUserProfile; error: null }
+  | { status: 'error'; data: null; error: string };
+
+const UserProfileModal: React.FC<UserProfileModalProps> = ({
+  onClose,
+  onOpenSettings,
+}) => {
+  const [profileState, setProfileState] = useState<FetchState>({
+    status: 'idle',
+    data: null,
+    error: null,
   });
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const tabs = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'security', label: 'Security', icon: Shield },
-    { id: 'billing', label: 'Billing', icon: CreditCard },
-    { id: 'activity', label: 'Activity', icon: Activity }
-  ];
-
-  const handleSaveProfile = () => {
-    // In a real app, this would save to the backend
-    console.log('Saving profile:', profile);
-    setIsEditing(false);
-    alert('Profile updated successfully!');
-  };
-
-  const handleAvatarChange = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setProfile({ ...profile, avatar: e.target?.result as string });
-        };
-        reader.readAsDataURL(file);
+  useEffect(() => {
+    let mounted = true;
+    const loadProfile = async () => {
+      setProfileState({ status: 'loading', data: null, error: null });
+      try {
+        const user = await apiClient.getCurrentUser();
+        if (!mounted) return;
+        setProfileState({ status: 'loaded', data: user, error: null });
+      } catch (error) {
+        console.error('Failed to load user profile', error);
+        if (!mounted) return;
+        setProfileState({
+          status: 'error',
+          data: null,
+          error: 'Não foi possível carregar o perfil do usuário.',
+        });
       }
     };
-    input.click();
-  };
+    loadProfile();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  const handleSignOut = () => {
-    if (confirm('Are you sure you want to sign out?')) {
-      // In a real app, this would handle sign out
-      alert('Signing out...');
-      onClose();
+  const sessionSnapshot: SessionSnapshot = useMemo(() => {
+    const device =
+      typeof window !== 'undefined'
+        ? window.navigator.userAgent
+        : 'Dispositivo não identificado';
+    const lastActivity = new Date().toLocaleString();
+    return {
+      device,
+      lastActivity,
+      location: 'Detecção automática (em breve)',
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await apiClient.logout();
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      toast.success('Sessão encerrada.');
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    } catch (error) {
+      console.error('Logout failed', error);
+      toast.error('Não foi possível encerrar a sessão agora.');
+    } finally {
+      setLoggingOut(false);
     }
   };
 
-  const renderProfile = () => (
-    <div className="space-y-6">
-      {/* Avatar Section */}
-      <div className="flex items-center space-x-6">
-        <div className="relative">
-          <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-            {profile.avatar ? (
-              <img src={profile.avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-            ) : (
-              <User className="h-12 w-12 text-white" />
-            )}
-          </div>
-          {isEditing && (
-            <button
-              onClick={handleAvatarChange}
-              className="absolute -bottom-2 -right-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-colors"
-            >
-              <Camera className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        
-        <div>
-          <h3 className="text-xl font-semibold text-white">{profile.name}</h3>
-          <p className="text-slate-400">{profile.title}</p>
-          <p className="text-slate-500 text-sm">{profile.company}</p>
-        </div>
-      </div>
+  const profile = profileState.status === 'loaded' ? profileState.data : null;
 
-      {/* Profile Form */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Full Name</label>
-          <input
-            type="text"
-            value={profile.name}
-            onChange={(e) => setProfile({...profile, name: e.target.value})}
-            disabled={!isEditing}
-            className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Job Title</label>
-          <input
-            type="text"
-            value={profile.title}
-            onChange={(e) => setProfile({...profile, title: e.target.value})}
-            disabled={!isEditing}
-            className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="email"
-              value={profile.email}
-              onChange={(e) => setProfile({...profile, email: e.target.value})}
-              disabled={!isEditing}
-              className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg pl-10 pr-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Phone</label>
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="tel"
-              value={profile.phone}
-              onChange={(e) => setProfile({...profile, phone: e.target.value})}
-              disabled={!isEditing}
-              className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg pl-10 pr-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Location</label>
-          <div className="relative">
-            <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              value={profile.location}
-              onChange={(e) => setProfile({...profile, location: e.target.value})}
-              disabled={!isEditing}
-              className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg pl-10 pr-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Company</label>
-          <input
-            type="text"
-            value={profile.company}
-            onChange={(e) => setProfile({...profile, company: e.target.value})}
-            disabled={!isEditing}
-            className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-300 mb-2">Bio</label>
-        <textarea
-          value={profile.bio}
-          onChange={(e) => setProfile({...profile, bio: e.target.value})}
-          disabled={!isEditing}
-          rows={3}
-          className="w-full bg-slate-600/50 border border-slate-500/50 rounded-lg px-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-        />
-      </div>
-
-      <div className="flex items-center justify-between pt-4 border-t border-slate-700">
-        <div className="flex items-center space-x-2 text-slate-400">
-          <Calendar className="h-4 w-4" />
-          <span className="text-sm">Joined {new Date(profile.joinDate).toLocaleDateString()}</span>
-        </div>
-        
-        <div className="flex space-x-3">
-          {isEditing ? (
-            <>
-              <button
-                onClick={() => setIsEditing(false)}
-                className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveProfile}
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                <Save className="h-4 w-4" />
-                <span>Save Changes</span>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              <Edit className="h-4 w-4" />
-              <span>Edit Profile</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSecurity = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Security Settings</h3>
-        <p className="text-slate-400 text-sm mb-6">Manage your account security and authentication</p>
-      </div>
-
-      <div className="space-y-4">
-        <div className="bg-slate-700/30 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h4 className="text-white font-medium">Password</h4>
-              <p className="text-slate-400 text-sm">Last changed 30 days ago</p>
-            </div>
-            <button className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded text-sm transition-colors">
-              Change Password
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-slate-700/30 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h4 className="text-white font-medium">Two-Factor Authentication</h4>
-              <p className="text-slate-400 text-sm">Add an extra layer of security</p>
-            </div>
-            <button className="bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-1 rounded text-sm transition-colors">
-              Enable 2FA
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-slate-700/30 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h4 className="text-white font-medium">API Keys</h4>
-              <p className="text-slate-400 text-sm">Manage your API access keys</p>
-            </div>
-            <button className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 px-3 py-1 rounded text-sm transition-colors">
-              Manage Keys
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-slate-700/30 rounded-lg p-4">
-          <h4 className="text-white font-medium mb-3">Active Sessions</h4>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between p-2 bg-slate-600/30 rounded">
-              <div>
-                <p className="text-white text-sm">Current Session</p>
-                <p className="text-slate-400 text-xs">Chrome on macOS • San Francisco, CA</p>
-              </div>
-              <span className="text-green-400 text-xs">Active</span>
-            </div>
-            <div className="flex items-center justify-between p-2 bg-slate-600/30 rounded">
-              <div>
-                <p className="text-white text-sm">Mobile App</p>
-                <p className="text-slate-400 text-xs">iOS App • 2 hours ago</p>
-              </div>
-              <button className="text-red-400 text-xs hover:text-red-300">Revoke</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderBilling = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Billing & Subscription</h3>
-        <p className="text-slate-400 text-sm mb-6">Manage your subscription and billing information</p>
-      </div>
-
-      <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h4 className="text-white font-semibold text-lg">Pro Plan</h4>
-            <p className="text-blue-400">$99/month • Billed annually</p>
-          </div>
-          <span className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-sm">Active</span>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <p className="text-slate-400 text-sm">Next billing date</p>
-            <p className="text-white">February 1, 2024</p>
-          </div>
-          <div>
-            <p className="text-slate-400 text-sm">Amount</p>
-            <p className="text-white">$1,188.00</p>
-          </div>
-        </div>
-        
-        <div className="flex space-x-3">
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-            Manage Subscription
-          </button>
-          <button className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded-lg transition-colors">
-            View Invoices
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-slate-700/30 rounded-lg p-4">
-        <h4 className="text-white font-medium mb-3">Usage This Month</h4>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-300">API Calls</span>
-            <span className="text-white">12,450 / 50,000</span>
-          </div>
-          <div className="w-full bg-slate-600 rounded-full h-2">
-            <div className="bg-blue-500 h-2 rounded-full" style={{ width: '25%' }}></div>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <span className="text-slate-300">Storage</span>
-            <span className="text-white">2.3 GB / 10 GB</span>
-          </div>
-          <div className="w-full bg-slate-600 rounded-full h-2">
-            <div className="bg-green-500 h-2 rounded-full" style={{ width: '23%' }}></div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-slate-700/30 rounded-lg p-4">
-        <h4 className="text-white font-medium mb-3">Payment Method</h4>
-        <div className="flex items-center space-x-3">
-          <div className="w-12 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded flex items-center justify-center">
-            <CreditCard className="h-4 w-4 text-white" />
-          </div>
-          <div>
-            <p className="text-white">•••• •••• •••• 4242</p>
-            <p className="text-slate-400 text-sm">Expires 12/26</p>
-          </div>
-          <button className="ml-auto bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1 rounded text-sm transition-colors">
-            Update
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderActivity = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Account Activity</h3>
-        <p className="text-slate-400 text-sm mb-6">Recent activity and login history</p>
-      </div>
-
-      <div className="space-y-4">
-        {[
-          { action: 'Logged in', time: '2 minutes ago', location: 'San Francisco, CA', device: 'Chrome on macOS' },
-          { action: 'Created strategic session', time: '1 hour ago', location: 'San Francisco, CA', device: 'Chrome on macOS' },
-          { action: 'Updated profile', time: '3 hours ago', location: 'San Francisco, CA', device: 'Chrome on macOS' },
-          { action: 'Generated AI insights', time: '5 hours ago', location: 'San Francisco, CA', device: 'Mobile App' },
-          { action: 'Logged in', time: '1 day ago', location: 'San Francisco, CA', device: 'Chrome on macOS' }
-        ].map((activity, index) => (
-          <div key={index} className="bg-slate-700/30 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white font-medium">{activity.action}</p>
-                <p className="text-slate-400 text-sm">{activity.device} • {activity.location}</p>
-              </div>
-              <span className="text-slate-500 text-sm">{activity.time}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-slate-700/30 rounded-lg p-4">
-        <h4 className="text-white font-medium mb-3">Account Statistics</h4>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-slate-400 text-sm">Total logins</p>
-            <p className="text-white text-xl font-semibold">1,247</p>
-          </div>
-          <div>
-            <p className="text-slate-400 text-sm">Insights generated</p>
-            <p className="text-white text-xl font-semibold">3,456</p>
-          </div>
-          <div>
-            <p className="text-slate-400 text-sm">Decisions recorded</p>
-            <p className="text-white text-xl font-semibold">89</p>
-          </div>
-          <div>
-            <p className="text-slate-400 text-sm">Sessions planned</p>
-            <p className="text-white text-xl font-semibold">23</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'profile': return renderProfile();
-      case 'security': return renderSecurity();
-      case 'billing': return renderBilling();
-      case 'activity': return renderActivity();
-      default: return renderProfile();
+  const initials = useMemo(() => {
+    if (!profile?.name) return 'GG';
+    const parts = profile.name.trim().split(' ');
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
     }
-  };
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [profile?.name]);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50">
-      <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex">
-        {/* Sidebar */}
-        <div className="w-64 border-r border-slate-700 p-4">
-          <div className="flex items-center space-x-2 mb-6">
-            <User className="h-5 w-5 text-slate-400" />
-            <h2 className="text-lg font-semibold text-white">Account</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Perfil do usuário"
+    >
+      <div className="w-full max-w-lg space-y-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-neutral-800/80 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900 text-lg font-semibold text-emerald-300">
+              {initials}
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-100">
+                {profile?.name ?? 'Carregando usuário...'}
+              </h2>
+              <p className="text-sm text-zinc-500">
+                {profile?.email ?? 'Sincronizando credenciais'}
+              </p>
+            </div>
           </div>
-          
-          <nav className="space-y-1">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                    activeTab === tab.id
-                      ? 'bg-blue-600/20 text-blue-400'
-                      : 'text-slate-300 hover:bg-slate-700/50'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="text-sm">{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-neutral-800 px-3 py-1 text-sm text-zinc-300 transition hover:border-neutral-600 hover:text-white"
+          >
+            Fechar
+          </button>
+        </header>
 
-          <div className="mt-8 pt-4 border-t border-slate-700">
+        {profileState.status === 'loading' && (
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6 text-sm text-zinc-400">
+            <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+            Carregando perfil do usuário...
+          </div>
+        )}
+
+        {profileState.status === 'error' && (
+          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200">
+            {profileState.error}
+          </div>
+        )}
+
+        {profile && (
+          <>
+            <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                Informações da conta
+              </h3>
+              <dl className="mt-3 grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                    Nome
+                  </dt>
+                  <dd className="flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                    {profile.name}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                    Email
+                  </dt>
+                  <dd className="flex items-center gap-2">
+                    <Mail className="h-3.5 w-3.5 text-zinc-500" />
+                    {profile.email}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                    Função
+                  </dt>
+                  <dd className="capitalize">{profile.role ?? 'Padrão'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                    Status
+                  </dt>
+                  <dd className="capitalize">{profile.status ?? 'Ativo'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                    Criado em
+                  </dt>
+                  <dd className="flex items-center gap-2 text-xs text-zinc-400">
+                    <Calendar className="h-3.5 w-3.5 text-zinc-500" />
+                    {profile.createdAt
+                      ? new Date(profile.createdAt).toLocaleDateString()
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                    Último acesso
+                  </dt>
+                  <dd className="flex items-center gap-2 text-xs text-zinc-400">
+                    <Clock className="h-3.5 w-3.5 text-zinc-500" />
+                    {profile.lastLoginAt
+                      ? formatRelative(profile.lastLoginAt)
+                      : 'Não registrado'}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                <Smartphone className="h-4 w-4 text-emerald-400" />
+                Sessão atual
+              </h3>
+              <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+                <li className="rounded-lg border border-neutral-800 bg-neutral-900/80 px-3 py-2">
+                  <span className="text-xs uppercase tracking-wide text-zinc-500">
+                    Dispositivo
+                  </span>
+                  <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                    <Smartphone className="h-3.5 w-3.5 text-zinc-500" />
+                    {sessionSnapshot.device}
+                  </p>
+                </li>
+                {sessionSnapshot.location && (
+                  <li className="rounded-lg border border-neutral-800 bg-neutral-900/80 px-3 py-2">
+                    <span className="text-xs uppercase tracking-wide text-zinc-500">
+                      Localização
+                    </span>
+                    <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                      <Globe className="h-3.5 w-3.5 text-zinc-500" />
+                      {sessionSnapshot.location}
+                    </p>
+                  </li>
+                )}
+                <li className="rounded-lg border border-neutral-800 bg-neutral-900/80 px-3 py-2">
+                  <span className="text-xs uppercase tracking-wide text-zinc-500">
+                    Última atividade
+                  </span>
+                  <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                    <Clock className="h-3.5 w-3.5 text-zinc-500" />
+                    {sessionSnapshot.lastActivity}
+                  </p>
+                </li>
+              </ul>
+            </section>
+          </>
+        )}
+
+        <section className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/70 p-4 text-sm text-zinc-200 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-medium text-zinc-100">
+              Acesso rápido às preferências
+            </p>
+            <p className="text-xs text-zinc-500">
+              Ajuste integrações e provedores de IA diretamente no painel de
+              configurações.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleSignOut}
-              className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-red-400 hover:bg-red-500/10 transition-colors"
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenSettings?.();
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-medium text-zinc-200 transition hover:border-emerald-500/50 hover:text-emerald-300"
             >
-              <LogOut className="h-4 w-4" />
-              <span className="text-sm">Sign Out</span>
+              <Settings className="h-3.5 w-3.5" />
+              Abrir configurações
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="inline-flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-200 transition hover:border-rose-500/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loggingOut ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <LogOut className="h-3.5 w-3.5" />
+              )}
+              Sair
             </button>
           </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-700">
-            <h3 className="text-xl font-semibold text-white">
-              {tabs.find(tab => tab.id === activeTab)?.label}
-            </h3>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {renderTabContent()}
-          </div>
-        </div>
+        </section>
       </div>
     </div>
   );
+};
+
+const formatRelative = (value: string): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Data inválida';
+  return date.toLocaleString();
 };
 
 export default UserProfileModal;

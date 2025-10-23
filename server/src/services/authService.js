@@ -572,6 +572,44 @@ class AuthService {
       refreshToken: tokens.refreshToken,
     };
   }
+
+  /**
+   * Recupera o perfil básico de um usuário pelo ID.
+   * @param {string} userId
+   * @returns {Promise<object|null>}
+   */
+  async getUserById(userId) {
+    if (!userId) {
+      throw new Error("User ID is required");
+    }
+
+    const result = await query(
+      `SELECT id, tenant_id, email, name, picture, role, status, last_login_at, metadata, created_at, updated_at
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      email: row.email,
+      name: row.name,
+      picture: row.picture,
+      role: row.role,
+      status: row.status,
+      lastLoginAt: row.last_login_at,
+      metadata: row.metadata,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
 }
 
 // Exporta uma instância única do serviço

@@ -29,6 +29,7 @@ router.post("/toggle", authenticateToken, async (req, res, next) => {
           : null,
       completed: Boolean(completed),
       title: title || null,
+      user: req.user, // Pass user context for settings lookup
     });
 
     res.json({

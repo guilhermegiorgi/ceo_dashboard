@@ -1,13 +1,17 @@
+'use client';
+
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { Bell, Settings, User, Search } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../hooks/useAuth';
 import LanguageToggle from './LanguageToggle';
 import NotificationsModal from './NotificationsModal';
 import UserProfileModal from './UserProfileModal';
 
 const Header: React.FC = () => {
   const { t } = useLanguage();
+  const { user, loading: userLoading } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -95,9 +99,9 @@ const Header: React.FC = () => {
             
             {/* Settings */}
             <Link 
-              to="/settings"
+              href="/settings"
               className="p-2 hover:bg-slate-800 rounded-lg transition-colors block"
-              onClick={closeAllModals} // Fecha outros modais ao navegar
+              onClick={closeAllModals}
             >
               <Settings className="h-5 w-5 text-slate-400" />
             </Link>
@@ -108,12 +112,40 @@ const Header: React.FC = () => {
                 onClick={handleUserClick}
                 className="flex items-center space-x-2 p-1 hover:bg-slate-800 rounded-lg transition-colors"
               >
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                {user?.picture ? (
+                  <img 
+                    src={user.picture} 
+                    alt={user.name || 'User'} 
+                    className="w-8 h-8 rounded-full object-cover"
+                    onError={(e) => {
+                      // Fallback to gradient if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <div 
+                  className={`w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center ${user?.picture ? 'hidden' : ''}`}
+                >
                   <User className="h-4 w-4 text-white" />
                 </div>
                 <div className="hidden md:block text-left">
-                  <div className="text-sm font-medium text-white">Admin CEO</div>
-                  <div className="text-xs text-slate-400">GG.AI Labs</div>
+                  {userLoading ? (
+                    <>
+                      <div className="text-sm font-medium text-white">Carregando...</div>
+                      <div className="text-xs text-slate-400">...</div>
+                    </>
+                  ) : user ? (
+                    <>
+                      <div className="text-sm font-medium text-white">{user.name || 'Usuário'}</div>
+                      <div className="text-xs text-slate-400">{user.email || ''}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm font-medium text-white">Admin CEO</div>
+                      <div className="text-xs text-slate-400">GG.AI Labs</div>
+                    </>
+                  )}
                 </div>
               </button>
             </div>
@@ -132,6 +164,10 @@ const Header: React.FC = () => {
       {showUserMenu && (
         <UserProfileModal 
           onClose={() => setShowUserMenu(false)}
+          onOpenSettings={() => {
+            // Navigate to settings - implement as needed
+            setShowUserMenu(false);
+          }}
         />
       )}
 

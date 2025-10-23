@@ -1,187 +1,374 @@
-import express from 'express';
-import { getDatabase, dbAll, dbRun, dbGet, ensureDbHelpers } from '../services/database.js';
-import { cacheGet, cacheSet, cacheDel } from '../services/cache.js';
+import { Router } from "express";
+import { randomUUID } from "crypto";
+import { query } from "../database/pg-pool.js";
+import { cacheDel, cacheGet, cacheSet } from "../services/cache.js";
 
-const router = express.Router();
+const router = Router();
 
-// Get all projects
-router.get('/', async (req, res) => {
+const PROJECT_COLUMNS = `id, tenant_id, user_id, name, status, progress, team_size, budget, deadline, priority, roi, description, created_at, updated_at`;
+
+let ensureProjectsTablePromise = null;
+
+async function ensureProjectsTable() {
+  if (!ensureProjectsTablePromise) {
+    ensureProjectsTablePromise = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS projects (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          status TEXT,
+          progress INTEGER DEFAULT 0,
+          team_size INTEGER DEFAULT 0,
+          budget TEXT,
+          deadline TIMESTAMPTZ,
+          priority TEXT,
+          roi TEXT,
+          description TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+      
+      // Add missing columns if table already exists (migration compatibility)
+      await query(`
+        ALTER TABLE projects 
+        ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS team_size INTEGER DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS budget TEXT,
+        ADD COLUMN IF NOT EXISTS deadline TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS priority TEXT,
+        ADD COLUMN IF NOT EXISTS roi TEXT;
+        CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects (tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_projects_tenant_user ON projects (tenant_id, user_id);
+      `);
+    })().catch((error) => {
+      ensureProjectsTablePromise = null;
+      throw error;
+    });
+  }
+
+  return ensureProjectsTablePromise;
+}
+
+function requireContext(user) {
+  const tenantId = user?.tenantId;
+  const userId = user?.id;
+
+  if (!tenantId || !userId) {
+    const error = new Error(
+      "Contexto de tenant e usuário é obrigatório para operar projetos."
+    );
+    error.status = 400;
+    throw error;
+  }
+
+  return { tenantId, userId };
+}
+
+function normalizeProjectRow(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status ?? "Planning",
+    progress: Number(row.progress ?? 0),
+    team_size: Number(row.team_size ?? 0),
+    budget: row.budget ?? "",
+    deadline: row.deadline ? new Date(row.deadline).toISOString() : null,
+    priority: row.priority ?? "medium",
+    roi: row.roi ?? "+0%",
+    description: row.description ?? "",
+    created_at: row.created_at
+      ? new Date(row.created_at).toISOString()
+      : undefined,
+    updated_at: row.updated_at
+      ? new Date(row.updated_at).toISOString()
+      : undefined,
+  };
+}
+
+router.get("/", async (req, res, next) => {
   try {
-    ensureDbHelpers(); // Inicializa helpers do SQLite
-    const cacheKey = 'projects:all';
+    const ctx = requireContext(req.user);
+    await ensureProjectsTable();
+
+    const cacheKey = `projects:all:${ctx.tenantId}`;
     const cached = await cacheGet(cacheKey);
     if (cached) {
       return res.json(cached);
     }
 
-    const projects = await dbAll(`
-      SELECT * FROM projects 
-      ORDER BY created_at DESC
-    `);
-    
-    await cacheSet(cacheKey, projects, 120); // Cache for 2 minutes
+    const result = await query(
+      `SELECT ${PROJECT_COLUMNS} FROM projects WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      [ctx.tenantId],
+      ctx
+    );
+    const projects = result.rows.map(normalizeProjectRow);
+
+    await cacheSet(cacheKey, projects, 60);
+
     res.json(projects);
   } catch (error) {
-    console.error('Error fetching projects:', error);
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 });
 
-// Create new project
-router.post('/', async (req, res) => {
+router.post("/", async (req, res, next) => {
   try {
+    const ctx = requireContext(req.user);
+    await ensureProjectsTable();
+
     const {
       name,
-      status = 'Planning',
+      status = "Planning",
       progress = 0,
       team_size = 1,
       budget,
       deadline,
-      priority = 'medium',
-      roi = '+0%',
-      description = ''
+      priority = "medium",
+      roi = "+0%",
+      description = "",
     } = req.body;
 
     if (!name || !budget || !deadline) {
-      return res.status(400).json({ 
-        error: 'Name, budget, and deadline are required' 
+      return res.status(400).json({
+        error: "Name, budget, and deadline are required",
       });
     }
 
-    const id = Date.now().toString();
-    
-    await dbRun(`
-      INSERT INTO projects (id, name, status, progress, team_size, budget, deadline, priority, roi, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, name, status, progress, team_size, budget, deadline, priority, roi, description]);
+    const progressValue = Number(progress);
+    if (!Number.isFinite(progressValue) || progressValue < 0 || progressValue > 100) {
+      return res.status(400).json({ error: "Progress must be a number between 0 and 100" });
+    }
 
-    // Clear cache
-    await cacheDel('projects:all');
+    const teamSizeValue = Number(team_size);
+    if (!Number.isFinite(teamSizeValue) || teamSizeValue < 0) {
+      return res.status(400).json({ error: "Team size must be a positive number" });
+    }
 
-    // Broadcast update to WebSocket clients
+    const deadlineValue = deadline ? new Date(deadline) : null;
+    if (deadline && Number.isNaN(deadlineValue?.getTime())) {
+      return res.status(400).json({ error: "Invalid deadline" });
+    }
+
+    const id = randomUUID();
+
+    const result = await query(
+      `
+        INSERT INTO projects (
+          id, tenant_id, user_id, name, status, progress, team_size, budget, deadline, priority, roi, description
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING ${PROJECT_COLUMNS}
+      `,
+      [
+        id,
+        ctx.tenantId,
+        ctx.userId,
+        name.trim(),
+        status,
+        progressValue,
+        teamSizeValue,
+        budget,
+        deadlineValue ? deadlineValue.toISOString() : null,
+        priority,
+        roi,
+        description,
+      ],
+      ctx
+    );
+
+    const project = normalizeProjectRow(result.rows[0]);
+
+    const cacheKey = `projects:all:${ctx.tenantId}`;
+    await cacheDel(cacheKey);
+
     if (global.broadcastToClients) {
       global.broadcastToClients({
-        type: 'project_created',
-        data: { id, name, status, progress, team_size, budget, deadline, priority, roi, description }
+        type: "project_created",
+        data: project,
       });
     }
 
-    res.json({ 
-      message: 'Project created successfully', 
+    res.status(201).json({
+      message: "Project created successfully",
       id,
-      project: { id, name, status, progress, team_size, budget, deadline, priority, roi, description }
+      project,
     });
   } catch (error) {
-    console.error('Error creating project:', error);
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 });
 
-// Update project
-router.put('/:id', async (req, res) => {
+router.put("/:id", async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const updates = req.body;
+    const ctx = requireContext(req.user);
+    await ensureProjectsTable();
 
-    // Check if project exists
-    const project = await dbGet('SELECT * FROM projects WHERE id = ?', [id]);
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' });
+    const { id } = req.params;
+    const updates = req.body || {};
+
+    const existing = await query(
+      `SELECT ${PROJECT_COLUMNS} FROM projects WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [id, ctx.tenantId],
+      ctx
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Project not found" });
     }
 
-    // Build update query dynamically
-    const allowedFields = ['name', 'status', 'progress', 'team_size', 'budget', 'deadline', 'priority', 'roi', 'description'];
-    const updateFields = [];
-    const updateValues = [];
+    const allowedFields = {
+      name: (value) => (typeof value === "string" ? value.trim() : undefined),
+      status: (value) => value,
+      progress: (value) => {
+        if (value === undefined) return undefined;
+        const num = Number(value);
+        if (!Number.isFinite(num) || num < 0 || num > 100) {
+          throw new Error("Progress must be a number between 0 and 100");
+        }
+        return num;
+      },
+      team_size: (value) => {
+        if (value === undefined) return undefined;
+        const num = Number(value);
+        if (!Number.isFinite(num) || num < 0) {
+          throw new Error("Team size must be a positive number");
+        }
+        return num;
+      },
+      budget: (value) => value,
+      deadline: (value) => {
+        if (value === undefined) return undefined;
+        if (value === null || value === "") {
+          return null;
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          throw new Error("Invalid deadline");
+        }
+        return date.toISOString();
+      },
+      priority: (value) => value,
+      roi: (value) => value,
+      description: (value) => value,
+    };
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (allowedFields.includes(key)) {
-        updateFields.push(`${key} = ?`);
-        updateValues.push(value);
+    const setClauses = [];
+    const params = [];
+    let paramIndex = 1;
+
+    for (const [field, transform] of Object.entries(allowedFields)) {
+      if (Object.prototype.hasOwnProperty.call(updates, field)) {
+        let transformed;
+        try {
+          transformed = transform(updates[field]);
+        } catch (err) {
+          return res.status(400).json({ error: err.message });
+        }
+
+        if (transformed !== undefined) {
+          setClauses.push(`${field} = $${paramIndex}`);
+          params.push(transformed);
+          paramIndex += 1;
+        }
       }
     }
 
-    if (updateFields.length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
     }
 
-    updateValues.push(id); // Add id for WHERE clause
+    const idParamIndex = paramIndex;
+    const tenantParamIndex = paramIndex + 1;
 
-    await dbRun(`
-      UPDATE projects 
-      SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, updateValues);
+    const updateSql = `
+      UPDATE projects
+      SET ${setClauses.join(", ")}, updated_at = NOW()
+      WHERE id = $${idParamIndex} AND tenant_id = $${tenantParamIndex}
+      RETURNING ${PROJECT_COLUMNS}
+    `;
 
-    // Clear cache
-    await cacheDel('projects:all');
+    params.push(id, ctx.tenantId);
 
-    // Get updated project
-    const updatedProject = await dbGet('SELECT * FROM projects WHERE id = ?', [id]);
+    const result = await query(updateSql, params, ctx);
 
-    // Broadcast update to WebSocket clients
+    const project = normalizeProjectRow(result.rows[0]);
+
+    const cacheKey = `projects:all:${ctx.tenantId}`;
+    await cacheDel(cacheKey);
+
     if (global.broadcastToClients) {
       global.broadcastToClients({
-        type: 'project_updated',
-        data: updatedProject
+        type: "project_updated",
+        data: project,
       });
     }
 
-    res.json({ 
-      message: 'Project updated successfully',
-      project: updatedProject
+    res.json({
+      message: "Project updated successfully",
+      project,
     });
   } catch (error) {
-    console.error('Error updating project:', error);
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 });
 
-// Get project by ID
-router.get('/:id', async (req, res) => {
+router.get("/:id", async (req, res, next) => {
   try {
+    const ctx = requireContext(req.user);
+    await ensureProjectsTable();
+
     const { id } = req.params;
-    
-    const project = await dbGet('SELECT * FROM projects WHERE id = ?', [id]);
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' });
+
+    const result = await query(
+      `SELECT ${PROJECT_COLUMNS} FROM projects WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+      [id, ctx.tenantId],
+      ctx
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Project not found" });
     }
 
-    res.json(project);
+    res.json(normalizeProjectRow(result.rows[0]));
   } catch (error) {
-    console.error('Error fetching project:', error);
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 });
 
-// Delete project
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res, next) => {
   try {
+    const ctx = requireContext(req.user);
+    await ensureProjectsTable();
+
     const { id } = req.params;
 
-    // Check if project exists
-    const project = await dbGet('SELECT * FROM projects WHERE id = ?', [id]);
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' });
+    const result = await query(
+      `DELETE FROM projects WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [id, ctx.tenantId],
+      ctx
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Project not found" });
     }
 
-    await dbRun('DELETE FROM projects WHERE id = ?', [id]);
+    const cacheKey = `projects:all:${ctx.tenantId}`;
+    await cacheDel(cacheKey);
 
-    // Clear cache
-    await cacheDel('projects:all');
-
-    // Broadcast update to WebSocket clients
     if (global.broadcastToClients) {
       global.broadcastToClients({
-        type: 'project_deleted',
-        data: { id }
+        type: "project_deleted",
+        data: { id },
       });
     }
 
-    res.json({ message: 'Project deleted successfully' });
+    res.json({ message: "Project deleted successfully" });
   } catch (error) {
-    console.error('Error deleting project:', error);
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 });
 

@@ -4,71 +4,72 @@ import { query } from '../database/pg-pool.js';
 import { getProviderApiKey } from '../services/aiProviderService.js';
 import { generateChatCompletion, buildSystemPrompt } from '../services/aiChatClient.js';
 import { logger } from '../src/utils/logger.js';
+import mcpSessionManager from '../services/mcpSessionManager.js';
 
-const MCP_PROTOCOL_VERSION = '2024-11-05';
+const router = Router();
 
-const buildMcpBaseUrl = () => {
-  const baseUrl = (process.env.BRAINCLOUD_BASE_URL || 'https://obsidian-mcp.ggailabs.com').replace(/\/+$/, '');
-  return `${baseUrl}/api/v1/mcp/http/`;
-};
+const extractStructuredPayload = (output) => {
+  if (!output) return null;
 
-const buildMcpHeaders = (token, sessionId = null) => {
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json, text/event-stream',
-    'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION
-  };
-  if (sessionId) {
-    headers['Mcp-Session-Id'] = sessionId;
-  }
-  return headers;
-};
-
-const parseMcpResponse = async (response) => {
-  const raw = await response.text();
-  if (!raw) {
-    return { data: null, raw };
-  }
-
-  const sseLines = raw.split('\n').filter(line => line.startsWith('data:'));
-  for (let idx = sseLines.length - 1; idx >= 0; idx -= 1) {
-    const payload = sseLines[idx].replace(/^data:\s*/, '');
-    if (!payload) continue;
+  if (typeof output === 'string') {
     try {
-      return { data: JSON.parse(payload), raw };
+      return JSON.parse(output);
     } catch (err) {
-      // continue searching earlier payloads
+      return null;
     }
   }
 
-  try {
-    return { data: JSON.parse(raw), raw };
-  } catch (err) {
-    return { data: null, raw };
+  if (Array.isArray(output)) {
+    return null;
   }
+
+  if (output?.content && Array.isArray(output.content)) {
+    for (const block of output.content) {
+      if (block?.type === 'text' && typeof block.text === 'string') {
+        try {
+          return JSON.parse(block.text);
+        } catch (err) {
+          // ignore parse error
+        }
+      }
+    }
+  }
+
+  return output;
 };
 
-const extractSessionId = (response, parsedData) => {
-  const headerKeys = ['mcp-session-id', 'Mcp-Session-Id', 'x-mcp-session-id'];
-  for (const key of headerKeys) {
-    const value = response.headers?.get?.(key);
-    if (value) return value.trim();
-  }
-  return (
-    parsedData?.result?.serverInfo?.mcpSessionId ||
-    parsedData?.result?.sessionId ||
-    parsedData?.result?.mcpSessionId ||
-    parsedData?.result?.session?.id ||
-    parsedData?.result?.session?.sessionId ||
-    parsedData?.session_id ||
-    parsedData?.mcpSessionId ||
-    parsedData?.result?.mcp_session_id ||
-    null
-  );
-};
+const summarizeToolResultForFallback = (result) => {
+  const name = result.resolvedName || result.name || 'Ferramenta';
 
-const router = Router();
+  if (result.error) {
+    return `${name}: erro (${result.error}).`;
+  }
+
+  const structured = extractStructuredPayload(result.output);
+
+  const tags = structured?.data?.tags || structured?.result?.data?.tags || structured?.result?.tags;
+  if (Array.isArray(tags) && tags.length > 0) {
+    const topTags = tags
+      .slice(0, 5)
+      .map((tag) => {
+        const label = tag?.tag || tag?.name || String(tag);
+        const count = tag?.count ?? tag?.occurrences ?? null;
+        return count ? `${label} (${count})` : label;
+      })
+      .filter(Boolean)
+      .join(', ');
+
+    if (topTags) {
+      return `${name}: principais itens — ${topTags}.`;
+    }
+  }
+
+  if (structured?.result?.summary) {
+    return `${name}: ${structured.result.summary}`;
+  }
+
+  return `${name}: execução concluída.`;
+};
 
 // Helper para obter provider ativo do usuário
 async function getActiveProviders(userId) {
@@ -107,10 +108,109 @@ router.post('/query-stream', async (req, res) => {
   res.end();
 });
 
-// Endpoint REAL com LLM + TODAS as ferramentas MCP dinâmicas
+// Endpoint para assistant-ui usando formato AI SDK
 router.post('/chat/stream', async (req, res) => {
+  const { messages, temperature = 0.7, maxTokens = 2000 } = req.body;
+
+  if (!messages || messages.length === 0) {
+    return res.status(400).json({ error: 'messages are required' });
+  }
+
+  try {
+    // Configurar headers para streaming compatível com AI SDK
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Enviar as mensagens para o sistema MCP existente
+    // Adaptar formato do assistant-ui para nosso formato MCP
+    const mcpMessages = messages.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
+    const sessionId = `assistant-${Date.now()}`;
+
+    // Stream de dados usando nosso sistema MCP existente
+    let fullContent = '';
+    
+    const response = await fetch(`${req.protocol}://${req.get('host')}/api/mcp/query-stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': req.headers.authorization || '',
+      },
+      body: JSON.stringify({
+        messages: mcpMessages,
+        sessionId,
+        tools: true
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Failed to get response reader");
+    }
+
+    const decoder = new TextDecoder();
+
+    // Processar stream e converter para formato AI SDK
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+
+            // Converter para formato AI SDK
+            const deltaContent = parsed.choices?.[0]?.delta?.content || '';
+            if (deltaContent) {
+              fullContent += deltaContent;
+              
+              // Enviar para assistant-ui em formato AI SDK
+              res.write(`data: ${JSON.stringify({
+                type: 'text-delta',
+                textDelta: deltaContent,
+                content: fullContent
+              })}\n\n`);
+            }
+          } catch (e) {
+            // Ignorar erros de parsing
+          }
+        }
+      }
+    }
+
+    // Finalizar stream
+    res.write('data: [DONE]\n\n');
+    res.end();
+
+  } catch (error) {
+    logger.error('[Assistant-UI] Chat error:', error);
+    res.write(`data: ${JSON.stringify({
+      type: 'error',
+      error: error.message
+    })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+});
+
+// Endpoint LEGADO - mantido para compatibilidade com uso existente
+router.post('/query-stream', async (req, res) => {
   const { messages, sessionId, tools = true } = req.body;
-  const braincloudToken = process.env.BRAINCLOUD_API_TOKEN;
 
   if (!messages || messages.length === 0) {
     return res.status(400).json({ error: 'messages are required' });
@@ -124,313 +224,50 @@ router.post('/chat/stream', async (req, res) => {
 
     console.log(`[CognitoAgent] Processando ${messages.length} mensagens com tools=${tools}`);
 
-    // 1. Inicializa sessão MCP dinamicamente
-    let mcpSessionId = null;
-    let mcpBaseUrl = null;
-  let allMcpTools = [];
-  const toolNameMap = {};
-    
+    // 1. Inicializa sessão MCP dinamicamente (sem fallback)
+    let mcpSession = null;
+    let allMcpTools = [];
+
     if (tools) {
       try {
-        if (!braincloudToken) {
-          logger.error('[CognitoAgent] BRAINCLOUD_API_TOKEN not set in environment');
-          throw new Error('BRAINCLOUD_API_TOKEN environment variable is not set');
-        }
-
-        mcpBaseUrl = buildMcpBaseUrl();
-
-        logger.info('[CognitoAgent] MCP Base URL:', mcpBaseUrl);
-        logger.info('[CognitoAgent] MCP Token available:', !!braincloudToken);
-        logger.info('[CognitoAgent] MCP Token length:', braincloudToken?.length || 0);
-
-        const initPayload = {
-          jsonrpc: '2.0',
-          id: Date.now(),
-          method: 'initialize',
-          params: {
-            protocolVersion: MCP_PROTOCOL_VERSION,
-            clientInfo: { name: 'Cognito Agent', version: '1.0.0' },
-            capabilities: {}
-          }
-        };
-
-        logger.info('[CognitoAgent] MCP Initialize Payload:', initPayload);
-
-        const initResponse = await fetch(mcpBaseUrl, {
-          method: 'POST',
-          headers: buildMcpHeaders(braincloudToken),
-          body: JSON.stringify(initPayload)
+        mcpSession = await mcpSessionManager.createSession([
+          req.user?.id || "anonymous",
+          sessionId || "default",
+        ]);
+        allMcpTools = mcpSession.llmTools;
+        res.setHeader("mcp-session-id", mcpSession.sessionId);
+        logger.info("[CognitoAgent] MCP session ready", {
+          sessionId: mcpSession.sessionId,
+          tools: allMcpTools.length,
         });
-
-        if (!initResponse.ok) {
-          const errorPayload = await initResponse.text();
-          throw new Error(`MCP initialize failed: ${initResponse.status} ${initResponse.statusText} | ${errorPayload}`);
-        }
-
-        const { data: initData, raw: initRaw } = await parseMcpResponse(initResponse);
-        logger.info('[CognitoAgent] MCP Init raw response:', initRaw);
-        logger.info('[CognitoAgent] MCP Init parsed keys:', initData ? Object.keys(initData) : []);
-
-        mcpSessionId = extractSessionId(initResponse, initData);
-
-        if (!mcpSessionId) {
-          throw new Error(`Failed to initialize MCP session: No session ID returned. Response: ${initRaw}`);
-        }
-
-        res.setHeader('mcp-session-id', mcpSessionId);
-        logger.info(`[CognitoAgent] MCP Session initialized: ${mcpSessionId}`);
-
-        const toolsPayload = {
-          jsonrpc: '2.0',
-          id: Date.now(),
-          method: 'tools/list',
-          params: {
-            cursor: null,
-            _meta: { progressToken: null }
-          }
-        };
-
-        const toolsResponse = await fetch(mcpBaseUrl, {
-          method: 'POST',
-          headers: buildMcpHeaders(braincloudToken, mcpSessionId),
-          body: JSON.stringify(toolsPayload)
-        });
-
-        if (!toolsResponse.ok) {
-          const listError = await toolsResponse.text();
-          throw new Error(`MCP tools/list failed: ${toolsResponse.status} ${toolsResponse.statusText} | ${listError}`);
-        }
-
-        const { data: toolsData, raw: toolsRaw } = await parseMcpResponse(toolsResponse);
-        logger.info('[CognitoAgent] MCP tools/list raw response:', toolsRaw);
-
-        const toolsList = toolsData?.result?.tools || toolsData?.tools || [];
-        if (Array.isArray(toolsList) && toolsList.length > 0) {
-          allMcpTools = toolsList.map(tool => ({
-            type: tool.type || 'function',
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters || tool.inputSchema || {
-                type: 'object',
-                properties: {},
-                required: []
-              }
-            }
-          }));
-          logger.info(`[CognitoAgent] Parsed ${allMcpTools.length} tools from MCP`);
-          logger.info('[CognitoAgent] Sample MCP tools:', toolsList.slice(0, 5).map(tool => ({
-            name: tool.name,
-            description: tool.description,
-            hasInputSchema: !!tool.inputSchema
-          })));
-          for (const tool of toolsList) {
-            const toolName = tool.name;
-            if (typeof toolName === 'string') {
-              const normalizedName = toolName.replace(/^obsidian-brain-cloud__/, '');
-              toolNameMap[normalizedName] = toolName;
-              toolNameMap[toolName] = toolName;
-            }
-          }
-        } else {
-          logger.warn('[CognitoAgent] tools/list returned no tools, falling back to static definitions');
-        }
       } catch (mcpError) {
-        logger.error('[CognitoAgent] Failed to initialize MCP session:', mcpError);
-        logger.error('[CognitoAgent] MCP Error details:', {
-          message: mcpError.message,
-          stack: mcpError.stack,
-          timestamp: new Date().toISOString()
-        });
-        logger.warn('[CognitoAgent] Working without MCP tools. Configure OBC credentials.');
-      }
-    }
-
-    if (!tools || allMcpTools.length === 0) {
-      allMcpTools = [
-        {
-          type: "function",
-          function: {
-            name: "semantic_search",
-            description: "Busca semântica no vault do Brain Cloud",
-            parameters: {
-              type: "object",
-              properties: {
-                query: { type: "string" },
-                limit: { type: "integer", default: 10 }
+        logger.error("[CognitoAgent] Failed to initialize MCP session:", mcpError);
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  content:
+                    "⚠️ Não foi possível abrir sessão com o Brain Cloud MCP. Verifique BRAINCLOUD_API_TOKEN/Base URL e tente novamente.",
+                },
               },
-              required: ["query"]
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__semantic_search"
-        },
-        {
-          type: "function",
-          function: {
-            name: "get_due_tasks",
-            description: "Busca tarefas com prazo do Brain Cloud",
-            parameters: {
-              type: "object",
-              properties: {
-                status: { type: "string", enum: ["active", "pending", "completed", "all"] },
-                window: { type: "string", enum: ["current", "week", "month", "year"] },
-                limit: { type: "integer", default: 10 }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__get_due_tasks"
-        },
-        {
-          type: "function",
-          function: {
-            name: "get_current_focus",
-            description: "Retorna foco diário e notas relevantes",
-            parameters: {
-              type: "object",
-              properties: {
-                context_type: { type: "string", enum: ["daily", "weekly", "monthly"] }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__get_current_focus"
-        },
-        {
-          type: "function",
-          function: {
-            name: "get_vault_tree",
-            description: "Obtém estrutura do vault para navegação",
-            parameters: {
-              type: "object",
-              properties: {
-                directory: { type: "string" },
-                depth: { type: "number", default: 2 },
-                include_files: { type: "boolean", default: true }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__get_vault_tree"
-        },
-        {
-          type: "function",
-          function: {
-            name: "get_graph_data",
-            description: "Obtém dados do grafo de conhecimento",
-            parameters: {
-              type: "object",
-              properties: {
-                directory: { type: "string" },
-                include_orphans: { type: "boolean", default: true }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__get_graph_data"
-        },
-        {
-          type: "function",
-          function: {
-            name: "get_main_tags",
-            description: "Retorna ranking de tags do vault",
-            parameters: {
-              type: "object",
-              properties: {
-                limit: { type: "number", default: 20 }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__get_main_tags"
-        },
-        {
-          type: "function",
-          function: {
-            name: "get_main_links",
-            description: "Retorna wikilinks mais referenciados",
-            parameters: {
-              type: "object",
-              properties: {
-                limit: { type: "number", default: 20 }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__get_main_links"
-        },
-        {
-          type: "function",
-          function: {
-            name: "check_overdue",
-            description: "Lista tarefas atrasadas por severidade",
-            parameters: {
-              type: "object",
-              properties: {
-                severity: { type: "string", enum: ["all", "high", "medium", "low"] },
-                directories: { type: "array", items: { type: "string" } }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__check_overdue"
-        },
-        {
-          type: "function",
-          function: {
-            name: "get_time_based_context",
-            description: "Contexto temporal consolidado",
-            parameters: {
-              type: "object",
-              properties: {
-                reference_date: { type: "string" },
-                recent_days: { type: "number", default: 3 },
-                upcoming_window: { type: "string", default: "week" }
-              }
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__get_time_based_context"
-        },
-        {
-          type: "function",
-          function: {
-            name: "create_note_from_template",
-            description: "Cria nota baseada em template",
-            parameters: {
-              type: "object",
-              properties: {
-                template_name: { type: "string" },
-                variables: { type: "object" },
-                target_path: { type: "string" },
-                create_directories: { type: "boolean", default: true }
-              },
-              required: ["template_name", "variables"]
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__create_note_from_template"
-        },
-        {
-          type: "function",
-          function: {
-            name: "search_files",
-            description: "Busca arquivos com padrões glob",
-            parameters: {
-              type: "object",
-              properties: {
-                patterns: { type: "array", items: { type: "string" } },
-                excludePatterns: { type: "array", items: { type: "string" } },
-                directory: { type: "string" }
-              },
-              required: ["patterns"]
-            }
-          },
-          mcpToolName: "obsidian-brain-cloud__search_files"
-        }
-      ];
-      for (const tool of allMcpTools) {
-        toolNameMap[tool.function.name] = tool.mcpToolName;
+            ],
+          })}\n\n`
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+        return;
       }
     }
 
     // 2. Adiciona system prompt com contexto completo do MCP
+    const llmTools = tools ? allMcpTools : [];
+
     const enhancedMessages = [
       {
         role: "system",
         content: buildSystemPrompt({
-          availableTools: allMcpTools.map(tool => `${tool.function.name}: ${tool.function.description}`),
+          availableTools: llmTools.map(tool => `${tool.function.name}: ${tool.function.description}`),
           toolsEnabled: tools,
           context_type: req.body.context_type,
           project_name: req.body.project_name,
@@ -506,7 +343,7 @@ router.post('/chat/stream', async (req, res) => {
       temperature,
       maxTokens,
       systemPrompt: enhancedMessages[0]?.content, // Pass system prompt for reference
-      tools: allMcpTools,
+      tools: llmTools,
       tool_choice: tools ? 'auto' : 'none',
       stream: true,
       requestId: `cognito-${sessionId}-${Date.now()}`
@@ -516,10 +353,12 @@ router.post('/chat/stream', async (req, res) => {
     if (completion && typeof completion[Symbol.asyncIterator] === 'function') {
       let buffer = '';
       let chunksProcessed = 0;
-      let functionCallResults = []; // Separate buffer for function results
       const pendingToolCalls = new Map();
+      const functionCallResults = [];
+      let toolCallHappened = false;
+      let assistantContentAfterTools = false;
       
-      logger.info(`[CognitoAgent] Starting streaming processing with ${allMcpTools.length} MCP tools`);
+      logger.info(`[CognitoAgent] Starting streaming processing with ${llmTools.length} MCP tools`);
       
       for await (const chunk of completion) {
         chunksProcessed++;
@@ -564,57 +403,53 @@ router.post('/chat/stream', async (req, res) => {
             }
 
             try {
-              if (!mcpSessionId || !braincloudToken) {
-                throw new Error('Missing MCP session or token');
+              if (!mcpSession) {
+                throw new Error('MCP session not initialized');
               }
 
-              const callUrl = mcpBaseUrl || buildMcpBaseUrl();
-              const mappedName = toolNameMap[existingCall.name] || existingCall.name;
-              const toolPayload = {
-                jsonrpc: '2.0',
-                id: Date.now(),
-                method: 'tools/call',
-                params: {
-                  name: mappedName,
-                  arguments: parsedArguments,
-                  _meta: { progressToken: null }
-                }
+              const toolExecution = await mcpSession.callTool(existingCall.name, parsedArguments);
+
+              const toolResultPayload = {
+                name: existingCall.name,
+                resolvedName: toolExecution.toolName || existingCall.name,
+                arguments: parsedArguments,
+                output: toolExecution.data?.result ?? toolExecution.data ?? null,
+                raw: toolExecution.raw || null,
+                error: null
               };
 
-              logger.info(`[CognitoAgent] Executing MCP tool ${mappedName} with session ${mcpSessionId}`);
-              logger.info('[CognitoAgent] MCP tool payload:', toolPayload);
+              logger.info(`[CognitoAgent] Tool ${toolResultPayload.resolvedName} executed successfully`);
 
-              const mcpResult = await fetch(callUrl, {
-                method: 'POST',
-                headers: buildMcpHeaders(braincloudToken, mcpSessionId),
-                body: JSON.stringify(toolPayload)
-              });
+              res.write(`data: ${JSON.stringify({ tool_result: toolResultPayload })}\n\n`);
+              res.flush && res.flush();
 
-              if (!mcpResult.ok) {
-                const errorPayload = await mcpResult.text();
-                throw new Error(`MCP tools/call failed: ${mcpResult.status} ${mcpResult.statusText} | ${errorPayload}`);
-              }
+              functionCallResults.push(toolResultPayload);
+              toolCallHappened = true;
 
-              const { data: resultData, raw: resultRaw } = await parseMcpResponse(mcpResult);
-              logger.info('[CognitoAgent] MCP tool raw response:', resultRaw);
-
-              functionCallResults.push({
-                name: mappedName,
-                result: resultData || { raw: resultRaw }
-              });
               pendingToolCalls.delete(callId);
               
             } catch (toolError) {
               logger.error(`[CognitoAgent] Error executing MCP tool ${existingCall.name}:`, toolError);
-              functionCallResults.push({
+
+              const errorPayload = {
                 name: existingCall.name,
-                error: toolError.message
-              });
+                resolvedName: existingCall.name,
+                arguments: parsedArguments,
+                output: null,
+                raw: null,
+                error: toolError.message || 'Unknown MCP tool error'
+              };
+
+              res.write(`data: ${JSON.stringify({ tool_result: errorPayload })}\n\n`);
+              res.flush && res.flush();
+
+              functionCallResults.push(errorPayload);
+              toolCallHappened = true;
               pendingToolCalls.delete(callId);
             }
           }
         }
-        
+
         // Stream normal - detect and handle thinking mode
         if (chunk.content) {
           let processedContent = chunk.content;
@@ -658,30 +493,33 @@ router.post('/chat/stream', async (req, res) => {
             isThinking: isThinkingContent,
             responseDataLength: responseData.length
           });
-          
+
           res.write(responseData);
           res.flush && res.flush(); // Force immediate flush for streaming
+
+          if (toolCallHappened) {
+            assistantContentAfterTools = true;
+          }
         }
       }
-      
-      // After completion, if there were function call results, send them as a separate message
-      if (functionCallResults.length > 0) {
-        const functionCallSummary = functionCallResults.map(result => {
-          if (result.error) {
-            return `⚠️ Failed to execute ${result.name}: ${result.error}`;
-          } else {
-            return `🔧 MCP Tool Result (${result.name}):\n${JSON.stringify(result.result, null, 2)}`;
-          }
-        }).join('\n\n');
-        
-        const finalData = `data: ${JSON.stringify({ 
-          choices: [{ delta: { content: `\n\n---\n\n${functionCallSummary}\n\n---` } }] 
-        })}\n\n`;
-        res.write(finalData);
-        res.flush && res.flush();
+
+      if (toolCallHappened && !assistantContentAfterTools && functionCallResults.length > 0) {
+        const summaries = functionCallResults
+          .map(summarizeToolResultForFallback)
+          .filter(Boolean);
+
+        if (summaries.length > 0) {
+          res.write(`data: ${JSON.stringify({
+            tool_summary: {
+              summaries,
+              results: functionCallResults,
+            }
+          })}\n\n`);
+          res.flush && res.flush();
+        }
       }
-      
-      logger.info(`[CognitoAgent] Stream completed: ${chunksProcessed} chunks processed, ${functionCallResults.length} function calls executed`);
+
+      logger.info(`[CognitoAgent] Stream completed: ${chunksProcessed} chunks processed`);
       
       res.write('data: [DONE]\n\n');
       res.end();

@@ -21,6 +21,11 @@ interface AIMessageContentProps {
 
 const AIMessageContent: React.FC<AIMessageContentProps> = ({ text }) => {
   const parseResponse = (responseText: string): ParsedResponse | null => {
+    // Guard against undefined/null responseText
+    if (!responseText || typeof responseText !== 'string') {
+      return null;
+    }
+    
     const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
     if (jsonMatch && jsonMatch[1]) {
       try {
@@ -32,6 +37,11 @@ const AIMessageContent: React.FC<AIMessageContentProps> = ({ text }) => {
     }
     return null;
   };
+
+  // Guard against undefined text prop
+  if (!text) {
+    return null;
+  }
 
   const data = parseResponse(text);
 

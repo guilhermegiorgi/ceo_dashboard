@@ -8,6 +8,14 @@
 import fetch from "node-fetch";
 import { logger } from "../src/utils/logger.js";
 
+logger.warn(
+  "[DEPRECATED] brainCloudREST.js será substituído pelo BrainCloudService.ts. Consulte docs/BRAIN_CLOUD_MIGRATION_GUIDE.md para migração."
+);
+
+console.warn(
+  "\n⚠️  WARNING: brainCloudREST está em processo de descontinuação. Migre para BrainCloudService v2.0 (docs/BRAIN_CLOUD_MIGRATION_GUIDE.md).\n"
+);
+
 class BrainCloudREST {
   constructor() {
     this.baseUrl =
@@ -15,6 +23,10 @@ class BrainCloudREST {
       "https://obsidian-mcp.ggailabs.com";
     this.apiToken = process.env.VITE_BRAINCLOUD_API_TOKEN || "";
     this.connected = false;
+
+    console.warn(
+      "\n⚠️  WARNING: brainCloudREST será removido na Sprint 4. Atualize para BrainCloudService v2.0.\n"
+    );
   }
 
   /**

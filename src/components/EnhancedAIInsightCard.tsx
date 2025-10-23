@@ -9,12 +9,9 @@ import {
   MessageSquare,
   FileText,
   Target,
-  CheckCircle,
   ArrowRight,
   Brain,
   Link2,
-  Calendar,
-  Users,
   Plus,
   Trash2
 } from 'lucide-react';
