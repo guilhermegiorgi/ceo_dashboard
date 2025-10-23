@@ -1,119 +1,140 @@
-# 🚀 CEO Dashboard - GG.AI Labs
+# 🚀 CEO Dashboard — Refatoração App Router
 
-## Status: 100% Funcional ✅
+O CEO Dashboard é a plataforma executiva da GG.AI Labs que conecta dados operacionais, Obsidian Brain Cloud e serviços MCP. Esta branch (`feature/app-router-refactor`) está migrando o frontend para **Next.js 14 (App Router)** enquanto mantemos o backend Express/Node rodando em paralelo.
 
-Dashboard executivo integrado com PostgreSQL (Supabase) e Obsidian Brain Cloud para inteligência aumentada.
+## 🧭 Estado atual
 
----
+| Área | Status | Observações |
+| --- | --- | --- |
+| App Router (Next.js 14) | ✅ Base criada | Rotas `/`, `/projects`, `/knowledge-graph`, `/session-planner`, `/agents`, `/chat`, `/chat-centered`, `/login` já usam App Router. |
+| Backend Express | ✅ | Continua servindo em `server/` (porta `3001`). Integrações Supabase/PostgreSQL e Brain Cloud preservadas. |
+| Integração Brain Cloud | ✅ | Endpoints REST (`/api/brain/*`) ativos. Busca semântica usada em cards do dashboard. |
+| Módulos MCP / Agents legados | ⚠️ Em reconstrução | Componentes antigos foram substituídos por placeholders informativos (detalhes abaixo). |
+| Lint e revisão de código | ✅ | `npm run lint` finaliza sem warnings. |
 
-## 🎯 Visão Geral
+### Componentes ainda em placeholder
 
-O CEO Dashboard é uma plataforma de inteligência executiva que combina:
+Para evitar warnings e manter a UX razoável durante a migração, alguns módulos continuam exibindo mensagens informativas:
 
-- **Backend PostgreSQL**: Database multi-tenant com 14 tabelas
-- **Autenticação JWT**: Access + Refresh tokens, OAuth Google
-- **Brain Cloud**: Integração com Obsidian via REST API
-- **Frontend React**: Interface moderna com TailwindCSS
+- `AIAgentOrchestrator`
+- `FeedbackLoopTracker`
+- `MCPIntegration`
+- `MarketIntelligenceEngine`
+- `ProjectOverview`
+- `ProactiveSynergyPanel`
+- `UserProfileModal`
 
-### ✅ Funcionando 100%
+✅ `SettingsModal`, `StrategicSessionPlanner` e `StrategicInsights` foram implementados na fase atual e já consomem as respectivas APIs. Os placeholders `AgentManager` e `PredictiveAnalytics` foram removidos (fluxos cobertos por `AgentsPage` e roadmap futuro).
 
-- ✅ Autenticação completa (JWT + OAuth Google)
-- ✅ Database PostgreSQL 17.6 (Supabase)
-- ✅ Integração Obsidian Brain Cloud (REST)
-- ✅ Health monitoring (Kubernetes-ready)
-- ✅ Logs estruturados (Winston)
-- ✅ API REST completa
-
----
-
-## 🛠 Tecnologias
-
-- **Backend**: Node.js 18+, Express, PostgreSQL
-- **Auth**: JWT, Passport.js, bcrypt
-- **Frontend**: React 18, TypeScript, Vite, TailwindCSS
-- **Integração**: Obsidian Brain Cloud (REST API)
-- **Logging**: Winston
-- **Migrations**: node-pg-migrate
+Os restantes serão reimplementados conforme cada fluxo entrar no Sprint dedicado.
 
 ---
 
-## ⚙️ Configuração Rápida
+## 🧱 Stack principal
+
+- **Frontend**: Next.js 14 (App Router), React 18, TypeScript, TailwindCSS
+- **Backend**: Node.js 18+, Express, PostgreSQL (Supabase)
+- **Autenticação**: JWT + refresh token, Passport Google OAuth2
+- **Integrações**: Obsidian Brain Cloud REST, serviços MCP (refatoração)
+- **Ferramentas**: ESLint, prettier (via lint), node-pg-migrate, react-hot-toast
+
+---
+
+## ⚙️ Como rodar
 
 ```bash
-# 1. Instalar dependências
 npm install
-
-# 2. Configurar .env (ver seção abaixo)
-cp .env.example .env
-
-# 3. Rodar migrations
-npm run db:setup
-
-# 4. Iniciar servidor
-npm run dev
+npm run dev     # inicia Next (porta 3000) + backend Express (porta 3001)
 ```
 
-### Credenciais de Desenvolvimento
+### Variáveis de ambiente
+
+1. Copie o exemplo de variáveis para o backend:
+   ```bash
+   cp server/.env.example server/.env
+   ```
+2. Ajuste credenciais de Supabase, Brain Cloud e OAuth conforme sua stack.
+
+### Credenciais de desenvolvimento
+
 - Email: `dev@ggai.dev`
 - Senha: `Dev@2025!`
 
+## 💬 Preview Assistant UI
+
+- Acesse `/chat-preview` (já autenticado) para testar a nova experiência baseada na biblioteca [assistant-ui](https://github.com/assistant-ui/assistant-ui).
+- O preview conversa com o endpoint existente `/api/mcp/chat/stream`, exibindo streaming de mensagens, raciocínio e retornos de ferramentas.
+- Use essa rota para validar UI/UX antes de substituir o chat principal.
+
 ---
 
-## 📡 API Endpoints
+## 📡 Endpoints principais
 
-### Auth
-- `POST /api/auth/login` - Login
-- `POST /api/auth/refresh` - Renovar token
-- `POST /api/auth/logout` - Logout
-- `GET /api/auth/google` - OAuth Google
+Backend continua exposto em `http://localhost:3001`.
+
+### Autenticação
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/google`
 
 ### Health
-- `GET /api/health` - Status geral
-- `GET /api/health/db` - Status database
-- `GET /api/health/ready` - Readiness probe
-- `GET /api/health/live` - Liveness probe
+- `GET /api/health`
+- `GET /api/health/db`
+- `GET /api/health/ready`
+- `GET /api/health/live`
 
 ### Brain Cloud
-- `GET /api/brain/status` - Status conexão
-- `POST /api/brain/search` - Buscar no vault
-- `GET /api/brain/graph` - Grafo de conhecimento
-- `GET /api/brain/focus` - Notas diárias/semanais
-- `GET /api/brain/tasks` - Tarefas com prazo
-- `POST /api/brain/context` - Contexto histórico
+- `GET /api/brain/status`
+- `POST /api/brain/search`
+- `GET /api/brain/graph`
+- `GET /api/brain/focus`
+- `GET /api/brain/tasks`
 
 ---
 
-## 🧪 Teste Rápido
+## 🧪 Lint e verificação
 
 ```bash
-# Login
-TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"dev@ggai.dev","password":"Dev@2025!"}' | jq -r '.token')
+npm run lint
+```
 
-# Status Brain Cloud
-curl http://localhost:3001/api/brain/status \
-  -H "Authorization: Bearer $TOKEN"
+Os warnings foram zerados nesta branch; mantenha-os assim ao implementar novos módulos.
 
-# Buscar no vault
-curl http://localhost:3001/api/brain/search \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"dashboard","limit":5}'
+---
+
+## 🗂 Estrutura relevante
+
+```
+app/                    # Rotas Next.js App Router
+├─ (dashboard)/         # Seções autenticadas (DashboardLayout + RequireAuth)
+├─ (auth)/              # Fluxo de login e callback OAuth
+src/
+├─ components/          # Componentes React; vários placeholders aguardam reimplementação
+├─ pages/               # Páginas antigas (react-router); em processo de migração
+├─ services/            # apiClient + integrações
+├─ hooks/contexts/      # Hooks e providers compartilhados
+server/                 # Backend Express
+migrations/             # Migrations node-pg-migrate (ASCII)
 ```
 
 ---
 
-## 📚 Documentação
+## 🛣 Próximos passos sugeridos
 
-- [Integração Completa](./docs/INTEGRACAO_COMPLETA.md) - Detalhes técnicos completos
-- [MCP Reference](./docs/mcp_reference.md) - Referência protocolo MCP
-- [API Swagger](https://obsidian-mcp.ggailabs.com/docs) - Obsidian Brain Cloud API
+1. **Reimplementar módulos placeholder** usando o App Router (seguir ordem de prioridade do produto).
+2. **Migrar páginas antigas** em `src/pages/` para rotas dentro de `app/(dashboard)` e remover `react-router-dom` do bundle.
+3. **Restaurar as configurações avançadas** (Settings, User Profile, MCP Integration) com a nova estrutura de dados.
+4. **Automatizar tests/build** com `next build` e pipelines CI, após estabilizar os fluxos principais.
 
 ---
 
-## 🎉 Status
+## 📚 Documentação relacionada
 
-**Sistema 100% operacional e pronto para produção!**
+- `docs/APP_ROUTER_MIGRATION_NOTES.md` — status detalhado da migração
+- `docs/INTEGRACAO_COMPLETA.md` — visão geral da integração Brain Cloud
+- `docs/mcp_reference.md` — referência do protocolo MCP
 
-Desenvolvido com ❤️ por GG.AI Labs
+---
+
+Desenvolvido com ❤️ por GG.AI Labs — apoie a migração contribuindo com PRs focados em cada módulo.

@@ -1,23 +1,48 @@
 {
   "braincloud": {
-    "baseUrl": "",
-    "apiToken": "",
+    "baseUrl": "https://obsidian-mcp.ggailabs.com/api/v1",
+    "apiToken": "ggai_90e2c6b20c8315906f843798bbc1598df596978a2ec79457e6d00563c76d03dc",
     "tenantId": "",
     "tenantPlan": "",
-    "mcpWs": "",
+    "mcpWs": "wss://obsidian-mcp.ggailabs.com/mcp",
     "mcpHttp": "",
     "enableRest": true,
-    "enableMcp": true
+    "enableMcp": true,
+    "connectionMode": "auto",
+    "mcpEnabled": false,
+    "restEnabled": false,
+    "mcpServerUrl": "http://localhost:3100",
+    "restApiUrl": "https://obsidian-brain.cloud/api/v1",
+    "restApiKey": ""
+  },
+  "interface": {
+    "theme": "auto",
+    "language": "pt-BR",
+    "enableSounds": true,
+    "enableAnimations": true,
+    "compactMode": false,
+    "showBetaFeatures": false
+  },
+  "aiKeys": {
+    "openai": "",
+    "anthropic": "",
+    "google": "",
+    "perplexity": ""
+  },
+  "system": {
+    "allowEditAllDirectories": false,
+    "adminApiToken": "",
+    "pathOverrideTTL": 600,
+    "autoSaveInterval": 30,
+    "enableDebugMode": true
   },
   "dashboard": {
     "collections": [],
     "taskPreferences": {
       "viewMode": "list",
-      "sortBy": "natural",
+      "sortBy": "due",
       "pinnedTaskIds": [],
-      "priorityMap": {
-        "5 - INSIGHTS-IA/Reunioes/ATA - REUNIÃO - 24-09-2025 - Planejamento Estratégico do Aplicativo de Finanças Pessoais com IA.md:87": "p1"
-      },
+      "priorityMap": {},
       "boardOrder": {},
       "lastContextId": null,
       "contextTemplate": {

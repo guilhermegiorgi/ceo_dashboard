@@ -2,7 +2,9 @@ import brainCloudClient from "./brainCloudClient.js";
 import {
   getTaskPreferences as loadTaskPreferences,
   updateTaskPreferences as persistTaskPreferences,
+  loadSettings,
 } from "./settingsService.js";
+import { loadUserSettings } from "./settingsServiceDB.js";
 
 const CHECKBOX_REGEX = /(-\s*\[)( |x|X)(\])/;
 
@@ -36,9 +38,55 @@ export async function toggleTaskCompletion({
   lineNumber,
   title,
   completed = true,
+  user = null,
 }) {
   if (!filePath) {
     throw new Error("filePath é obrigatório para atualizar uma tarefa.");
+  }
+
+  console.log('[toggleTaskCompletion] Input:', { filePath, lineNumber, title: title?.substring(0, 50), completed, hasUser: !!user });
+
+  // Check if file is in writable area (5 - INSIGHTS-IA/) unless allowEditAllDirectories is enabled
+  // Use loadUserSettings if user context is available, otherwise fallback to loadSettings
+  const settings = user ? await loadUserSettings(user) : await loadSettings();
+  const allowEditAllDirectories = settings.system?.allowEditAllDirectories || false;
+  
+  console.log('[toggleTaskCompletion] Settings check:', {
+    allowEditAllDirectories,
+    filePath: filePath.substring(0, 50),
+    adminToken: settings.system?.adminApiToken ? '[configured]' : '[missing]',
+  });
+  const isWritable = allowEditAllDirectories || filePath.startsWith('5 - INSIGHTS-IA/');
+  
+  if (!isWritable) {
+    console.log('[toggleTaskCompletion] File is in read-only area:', filePath);
+    throw new Error(
+      "Esta tarefa está em uma área somente leitura. Para editá-la, abra o arquivo no Obsidian " +
+      "ou ative 'Permitir edição em todos os diretórios' nas Configurações do Sistema."
+    );
+  }
+
+  // If allowEditAllDirectories is enabled, ensure path override is active
+  let pathOverrideResult = null;
+  if (allowEditAllDirectories && !filePath.startsWith('5 - INSIGHTS-IA/')) {
+    console.log('[toggleTaskCompletion] Enabling path override for admin mode');
+    try {
+      const pathOverrideTTL = settings.system?.pathOverrideTTL || 600;
+      const adminToken = settings.system?.adminApiToken;
+      
+      if (!adminToken) {
+        throw new Error('Admin API Token não configurado. Configure em Settings → System → Admin API Token.');
+      }
+      
+      console.log('[toggleTaskCompletion] Admin token available, enabling path override for', pathOverrideTTL, 'seconds');
+      pathOverrideResult = await brainCloudClient.enablePathOverride(pathOverrideTTL, adminToken);
+      console.log('[toggleTaskCompletion] ✅ Path override enabled successfully', pathOverrideResult);
+    } catch (error) {
+      console.error('[toggleTaskCompletion] Failed to enable path override:', error.message);
+      throw new Error(
+        `Falha ao ativar modo admin: ${error.message}`
+      );
+    }
   }
 
   const file = await brainCloudClient.getFile(filePath);
@@ -48,6 +96,75 @@ export async function toggleTaskCompletion({
     throw new Error("Não foi possível ler o conteúdo da nota associada.");
   }
 
+  // Check if this is a project note (has frontmatter with due date, no lineNumber)
+  const isProjectNote = lineNumber === null || lineNumber === undefined || lineNumber === 0;
+  const hasFrontmatter = content.startsWith('---');
+  
+  console.log('[toggleTaskCompletion] Type detection:', { isProjectNote, hasFrontmatter });
+  
+  if (isProjectNote) {
+    if (hasFrontmatter) {
+      console.log('[toggleTaskCompletion] Detected project note with frontmatter, updating status field');
+      
+      // Parse frontmatter and update status field
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (frontmatterMatch) {
+        const frontmatterContent = frontmatterMatch[1];
+        
+        // Update or add status field
+        let updatedFrontmatter;
+        if (frontmatterContent.includes('status:')) {
+          // Replace existing status
+          updatedFrontmatter = frontmatterContent.replace(
+            /status:\s*[^\n]*/,
+            `status: ${completed ? 'concluída' : 'em_andamento'}`
+          );
+        } else {
+          // Add status field
+          updatedFrontmatter = frontmatterContent + `\nstatus: ${completed ? 'concluída' : 'em_andamento'}`;
+        }
+        
+        const newContent = content.replace(
+          /^---\n[\s\S]*?\n---/,
+          `---\n${updatedFrontmatter}\n---`
+        );
+        
+        await brainCloudClient.writeFile(filePath, newContent, false);
+        
+        console.log('[toggleTaskCompletion] Project note status updated successfully');
+        return {
+          success: true,
+          filePath,
+          completed,
+          updatedFrontmatter: true,
+          adminModeExpiry: pathOverrideResult?.expires_at || null,
+        };
+      }
+    } else {
+      // Project note without frontmatter - add frontmatter
+      console.log('[toggleTaskCompletion] Project note without frontmatter, adding frontmatter with status');
+      
+      const newFrontmatter = `---
+status: ${completed ? 'concluída' : 'em_andamento'}
+---
+
+`;
+      const newContent = newFrontmatter + content;
+      await brainCloudClient.writeFile(filePath, newContent, false);
+      
+      console.log('[toggleTaskCompletion] Added frontmatter with status to project note');
+      return {
+        success: true,
+        filePath,
+        completed,
+        updatedFrontmatter: true,
+        addedFrontmatter: true,
+        adminModeExpiry: pathOverrideResult?.expires_at || null,
+      };
+    }
+  }
+
+  // Original checkbox logic for tasks (only for non-project notes)
   const newline = computeNewline(content);
   const lines = content.split(/\r?\n/);
   const targetIndex =
@@ -105,18 +222,22 @@ export async function toggleTaskCompletion({
   }
 
   if (!updated) {
+    console.error('[toggleTaskCompletion] Could not find checkbox. Is this a project note?');
     throw new Error(
-      "Não foi possível localizar o checkbox da tarefa dentro da nota."
+      "Não foi possível localizar o checkbox da tarefa dentro da nota. Se for uma nota de projeto, ela deve ter frontmatter com campo 'status'."
     );
   }
 
   const newContent = lines.join(newline);
   await brainCloudClient.writeFile(filePath, newContent, false);
 
+  console.log('[toggleTaskCompletion] Checkbox task updated successfully');
   return {
     success: true,
     filePath,
     completed,
+    updatedFrontmatter: false,
+    adminModeExpiry: pathOverrideResult?.expires_at || null,
   };
 }
 

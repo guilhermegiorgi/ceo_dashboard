@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Debug Auth</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+    button { padding: 10px; margin: 5px; cursor: pointer; }
+    pre { background: #2a2a2a; padding: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Debug Authentication</h1>
+  
+  <button onclick="checkToken()">1. Check Token in LocalStorage</button>
+  <button onclick="testAuthAPI()">2. Test /api/auth/me</button>
+  <button onclick="checkUser()">3. Check User in LocalStorage</button>
+  <button onclick="clearAll()">4. Clear All & Logout</button>
+  
+  <div id="output"></div>
+
+  <script>
+    const output = document.getElementById('output');
+    
+    function log(msg, data) {
+      output.innerHTML += `<pre><strong>${msg}</strong>\n${data ? JSON.stringify(data, null, 2) : ''}</pre>`;
+    }
+    
+    function checkToken() {
+      output.innerHTML = '';
+      const token = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refreshToken');
+      log('🔑 Token:', token ? token.substring(0, 50) + '...' : 'NOT FOUND');
+      log('🔄 Refresh Token:', refreshToken ? refreshToken.substring(0, 50) + '...' : 'NOT FOUND');
+    }
+    
+    async function testAuthAPI() {
+      output.innerHTML = '';
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        log('❌ No token found in localStorage');
+        return;
+      }
+      
+      try {
+        log('🚀 Fetching /api/auth/me...');
+        const res = await fetch('http://localhost:3002/api/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await res.json();
+        log(`📊 Status: ${res.status}`, data);
+        
+        if (data.user) {
+          log('✅ User Data:', data.user);
+        }
+      } catch (err) {
+        log('❌ Error:', err.message);
+      }
+    }
+    
+    function checkUser() {
+      output.innerHTML = '';
+      const user = localStorage.getItem('user');
+      log('👤 User in LocalStorage:', user ? JSON.parse(user) : 'NOT FOUND');
+    }
+    
+    function clearAll() {
+      localStorage.clear();
+      log('🗑️ All localStorage cleared');
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

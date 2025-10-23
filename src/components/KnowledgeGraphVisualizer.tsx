@@ -1,26 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Network, 
-  Search, 
-  Filter, 
+import React, { useState } from 'react';
+import {
+  Network,
+  Search,
+  Filter,
   Maximize2,
   Minimize2,
   RefreshCw,
   Zap,
   FileText,
-  Link2,
   Tag,
-  Calendar,
   TrendingUp,
   Settings,
   Download,
   Share,
-  Eye,
-  EyeOff,
   Play,
   Pause
 } from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
 import { useKnowledgeGraph } from '../hooks/useKnowledgeGraph';
 
 interface KnowledgeNode {
@@ -36,8 +31,9 @@ interface KnowledgeNode {
   y?: number;
 }
 
+type ViewMode = 'network' | 'hierarchy' | 'timeline';
+
 const KnowledgeGraphVisualizer: React.FC = () => {
-  const { t } = useLanguage();
   const { nodes, loading, analyzeGraph } = useKnowledgeGraph();
   
   const [isExpanded, setIsExpanded] = useState(false);
@@ -47,7 +43,7 @@ const KnowledgeGraphVisualizer: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isAnimating, setIsAnimating] = useState(true);
-  const [viewMode, setViewMode] = useState<'network' | 'hierarchy' | 'timeline'>('network');
+  const [viewMode, setViewMode] = useState<ViewMode>('network');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const typeConfig = {
@@ -111,7 +107,7 @@ const KnowledgeGraphVisualizer: React.FC = () => {
           text: `Knowledge graph with ${filteredNodes.length} nodes`,
           url: window.location.href
         });
-      } catch (error) {
+      } catch {
         console.log('Share cancelled');
       }
     } else {
@@ -127,12 +123,6 @@ const KnowledgeGraphVisualizer: React.FC = () => {
       node.tags.forEach(tag => allTags.add(tag));
     });
     return Array.from(allTags).sort();
-  };
-
-  const getNodeSize = (importance: number) => {
-    if (importance >= 90) return 'w-4 h-4';
-    if (importance >= 80) return 'w-3 h-3';
-    return 'w-2 h-2';
   };
 
   const renderNetworkView = () => (
@@ -225,7 +215,12 @@ const KnowledgeGraphVisualizer: React.FC = () => {
               <label className="block text-sm text-slate-300 mb-1">View Mode</label>
               <select
                 value={viewMode}
-                onChange={(e) => setViewMode(e.target.value as any)}
+                onChange={(event) => {
+                  const value = event.target.value as ViewMode;
+                  if (value === 'network' || value === 'hierarchy' || value === 'timeline') {
+                    setViewMode(value);
+                  }
+                }}
                 className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm"
               >
                 <option value="network">Network</option>

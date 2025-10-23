@@ -17,6 +17,8 @@ import { setupWebSocketHandlers } from "./services/websocket.js";
 import { startBackgroundServices } from "./services/background.js";
 import { seedInitialAgent } from "./services/agentService.js";
 import { closePool } from "./database/pg-pool.js";
+import { workflowManager } from "./services/brainCloud/WorkflowManager.ts";
+import WorkflowScheduler from "./services/workflowScheduler.js";
 
 dotenv.config();
 
@@ -114,10 +116,13 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: NODE_ENV === "production",
+      secure: false, // Allow cookies over HTTP in development
       httpOnly: true,
+      sameSite: 'lax', // Allow cookies in cross-origin requests from same site
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: '/', // Ensure cookie is sent for all paths
     },
+    proxy: NODE_ENV === 'production', // Trust proxy in production
   })
 );
 
@@ -176,6 +181,13 @@ async function initializeServer() {
     await initializeCache();
     console.log("✅ Cache inicializado");
 
+    await workflowManager.start();
+    console.log("✅ Workflow Manager inicializado");
+
+    // Inicializa o scheduler de workflows
+    WorkflowScheduler.initialize();
+    console.log("✅ Workflow Scheduler inicializado");
+
     // Inicia o servidor
     server.listen(PORT, () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
@@ -227,23 +239,37 @@ process.on("uncaughtException", (error) => {
 const gracefulShutdown = () => {
   console.log("\n🛑 Recebido sinal de encerramento. Encerrando servidor...");
 
-  // Encerra o servidor HTTP
-  server.close(async () => {
-    console.log("✅ Servidor HTTP encerrado");
+  workflowManager
+    .stop()
+    .then(() => {
+      console.log("✅ Workflow Manager encerrado");
+    })
+    .catch((error) => {
+      console.error("❌ Erro ao encerrar Workflow Manager:", error);
+    })
+    .finally(() => {
+      // Stop workflow scheduler
+      try {
+        WorkflowScheduler.stopAll();
+        console.log("✅ Workflow Scheduler encerrado");
+      } catch (error) {
+        console.error("❌ Erro ao encerrar Workflow Scheduler:", error);
+      }
+      server.close(async () => {
+        console.log("✅ Servidor HTTP encerrado");
 
-    // Fecha o pool de conexões PostgreSQL
-    try {
-      await closePool();
-      console.log("✅ Pool PostgreSQL encerrado");
-    } catch (error) {
-      console.error("❌ Erro ao encerrar pool PostgreSQL:", error);
-    }
+        try {
+          await closePool();
+          console.log("✅ Pool PostgreSQL encerrado");
+        } catch (error) {
+          console.error("❌ Erro ao encerrar pool PostgreSQL:", error);
+        }
 
-    console.log("👋 Tchau!");
-    process.exit(0);
-  });
+        console.log("👋 Tchau!");
+        process.exit(0);
+      });
+    });
 
-  // Força o encerramento após 10 segundos se necessário
   setTimeout(() => {
     console.error("❌ Forçando encerramento...");
     process.exit(1);

@@ -26,3 +26,8 @@ dist-ssr
 
 # Vector store / local databases
 cognito/chroma_db/
+
+# Next.js build artifacts
+.next/
+out/
+build/

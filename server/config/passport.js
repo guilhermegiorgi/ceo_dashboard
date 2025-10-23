@@ -72,9 +72,22 @@ async function findOrCreateOAuthUser(
         ]
       );
 
+      // Update user picture if it changed
+      const picture = profile.photos?.[0]?.value || null;
+      console.log('🔍 [Passport] Updating user picture:', { userId, picture });
+      
+      await client.query(
+        `UPDATE users
+         SET picture = $1, 
+             last_login_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $2`,
+        [picture, userId]
+      );
+
       // Get user
       const userResult = await client.query(
-        `SELECT id, tenant_id, email, name, role, status
+        `SELECT id, tenant_id, email, name, role, status, picture
          FROM users
          WHERE id = $1`,
         [userId]
@@ -89,7 +102,7 @@ async function findOrCreateOAuthUser(
 
     // Check if user with this email already exists
     const userResult = await client.query(
-      `SELECT id, tenant_id, email, name, role, status
+      `SELECT id, tenant_id, email, name, role, status, picture
        FROM users
        WHERE email = $1`,
       [email]
@@ -128,15 +141,20 @@ async function findOrCreateOAuthUser(
       const tenantId = tenantResult.rows[0].id;
 
       // Create user
+      const picture = profile.photos?.[0]?.value || null;
+      console.log('🔍 [Passport] Creating new user with picture:', { email, picture });
+      
       const newUserResult = await client.query(
-        `INSERT INTO users (tenant_id, email, password_hash, name, role, status)
-         VALUES ($1, $2, $3, $4, 'admin', 'active')
-         RETURNING id, tenant_id, email, name, role, status`,
+        `INSERT INTO users (tenant_id, email, password_hash, name, role, status, picture, auth_provider)
+         VALUES ($1, $2, $3, $4, 'admin', 'active', $5, $6)
+         RETURNING id, tenant_id, email, name, role, status, picture`,
         [
           tenantId,
           email,
           "", // No password for OAuth users
           profile.displayName || email.split("@")[0],
+          picture,
+          provider,
         ]
       );
 
@@ -207,6 +225,15 @@ export function configurePassport() {
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
+            // Debug: Log what Google is returning
+            console.log('🔍 [Passport] Google profile received:', {
+              id: profile.id,
+              displayName: profile.displayName,
+              emails: profile.emails,
+              photos: profile.photos,
+              _json: profile._json
+            });
+            
             const user = await findOrCreateOAuthUser(
               "google",
               profile,
@@ -217,6 +244,7 @@ export function configurePassport() {
             logger.info("Google OAuth login successful", {
               userId: user.id,
               email: user.email,
+              picture: user.picture,
             });
 
             done(null, user);
@@ -245,7 +273,7 @@ export function configurePassport() {
   passport.deserializeUser(async (id, done) => {
     try {
       const result = await query(
-        `SELECT id, tenant_id, email, name, role, status
+        `SELECT id, tenant_id, email, name, role, status, picture
          FROM users
          WHERE id = $1`,
         [id]
@@ -255,7 +283,19 @@ export function configurePassport() {
         return done(new Error("User not found"), null);
       }
 
-      done(null, result.rows[0]);
+      // Convert snake_case to camelCase for compatibility
+      const user = result.rows[0];
+      const normalizedUser = {
+        id: user.id,
+        tenantId: user.tenant_id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        status: user.status,
+        picture: user.picture,
+      };
+
+      done(null, normalizedUser);
     } catch (error) {
       done(error, null);
     }

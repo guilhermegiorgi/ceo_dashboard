@@ -630,7 +630,7 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
   const timeout = setTimeout(() => controller.abort(), 60000);
 
   const run = async () => {
-    logger.info('[openRouterStreamRequest] Fetch function source:', fetch.toString());
+    logger.debug('[openRouterStreamRequest] Fetch helper available');
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -641,7 +641,7 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
       body: JSON.stringify({ ...body, stream: true }),
       signal: controller.signal,
     });
-    logger.info('[openRouterStreamRequest] Response object constructor:', response.constructor.name);
+    logger.debug(`[openRouterStreamRequest] Response status: ${response.status}`);
 
     if (!response.ok) {
       const data = await response.json().catch(() => null);
@@ -703,8 +703,7 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
       throw new Error("OpenRouter Streaming: No response body");
     }
 
-    logger.info(`[openRouterStreamRequest] response.body constructor: ${response.body.constructor.name}`);
-    logger.info(`[openRouterStreamRequest] response.body keys: ${Object.keys(response.body)}`);
+    logger.debug(`[openRouterStreamRequest] response.body constructor: ${response.body.constructor.name}`);
 
     // Handle Node.js PassThrough stream
     let reader;

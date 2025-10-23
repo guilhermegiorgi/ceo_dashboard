@@ -47,8 +47,9 @@ const DecisionJournal = () => {
       setContext('');
       setOutcome('');
       refetch(); 
-    } catch (err: any) {
-      setSubmitError(err.message || 'Failed to submit decision.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to submit decision.';
+      setSubmitError(message);
     }
   };
 

@@ -1,503 +1,361 @@
-import React, { useState } from 'react';
-import { 
-  Briefcase, 
-  Users, 
-  Calendar, 
-  DollarSign, 
-  TrendingUp,
-  Plus,
-  Trash2,
-  X,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  BarChart3,
-  Search
-} from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
-import { useProjects } from '../hooks/useProjects';
+'use client';
 
-interface Project {
+import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  BarChart3,
+  Calendar,
+  CheckCircle2,
+  Loader2,
+  Target,
+} from 'lucide-react';
+import apiClient from '@/services/apiClient';
+
+type Project = {
   id: string;
   name: string;
-  status: 'Planejamento' | 'Em Andamento' | 'Em Espera' | 'Concluído' | 'Cancelado';
-  progress: number;
-  team_size: number;
-  budget: string;
-  deadline: string;
-  priority: 'alta' | 'média' | 'baixa';
-  roi: string;
-  description?: string;
-  created_at?: string;
-  updated_at?: string;
-}
+  description?: string | null;
+  status?: string | null;
+  progress?: number | null;
+  team_size?: number | null;
+  budget?: string | null;
+  deadline?: string | null;
+  priority?: string | null;
+  roi?: string | null;
+};
+
+type StatusFilter = 'all' | 'planning' | 'on_track' | 'at_risk' | 'delayed';
+type PriorityFilter = 'all' | 'high' | 'medium' | 'low';
+
+const statusLabels: Record<Exclude<StatusFilter, 'all'>, string> = {
+  planning: 'Planejamento',
+  on_track: 'No prazo',
+  at_risk: 'Em risco',
+  delayed: 'Atrasado',
+};
+
+const statusStyles: Record<Exclude<StatusFilter, 'all'>, string> = {
+  planning: 'border-sky-500/40 bg-sky-500/10 text-sky-200',
+  on_track: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
+  at_risk: 'border-amber-500/40 bg-amber-500/10 text-amber-200',
+  delayed: 'border-rose-500/40 bg-rose-500/10 text-rose-200',
+};
+
+const normalizeStatus = (status?: string | null): StatusFilter => {
+  const value = (status || '').toLowerCase();
+  if (value.includes('risk')) return 'at_risk';
+  if (value.includes('delay')) return 'delayed';
+  if (value.includes('track') || value.includes('active')) return 'on_track';
+  if (value.includes('plan')) return 'planning';
+  return 'on_track';
+};
+
+const normalizePriority = (priority?: string | null): PriorityFilter => {
+  const value = (priority || '').toLowerCase();
+  if (value.startsWith('hi')) return 'high';
+  if (value.startsWith('lo')) return 'low';
+  if (value) return 'medium';
+  return 'medium';
+};
 
 const ProjectOverview: React.FC = () => {
-  const { t } = useLanguage();
-  const { data: projects, loading, refetch: refetchProjects } = useProjects();
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterPriority, setFilterPriority] = useState<string>('all');
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
 
-  const [newProject, setNewProject] = useState<Partial<Project>>({
-    name: '',
-    status: 'Planejamento',
-    progress: 0,
-    team_size: 1,
-    budget: '',
-    deadline: '',
-    priority: 'média',
-    roi: '+0%',
-    description: ''
-  });
+  useEffect(() => {
+    let mounted = true;
+    const loadProjects = async () => {
+      setLoading(true);
+      try {
+        const data = await apiClient.getProjects();
+        if (!mounted) return;
+        setProjects(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to load projects overview', error);
+        toast.error('Não foi possível carregar os projetos.');
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+    loadProjects();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  const statusConfig = {
-    'Planejamento': { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
-    'Em Andamento': { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
-    'Em Espera': { color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
-    'Concluído': { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30' },
-    'Cancelado': { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' }
-  };
+  const filteredProjects = useMemo(() => {
+    return projects.filter((project) => {
+      const normalizedStatus = normalizeStatus(project.status);
+      const normalizedPriority = normalizePriority(project.priority);
+      if (statusFilter !== 'all' && normalizedStatus !== statusFilter) {
+        return false;
+      }
+      if (priorityFilter !== 'all' && normalizedPriority !== priorityFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [projects, statusFilter, priorityFilter]);
 
-  const priorityColors = {
-    alta: 'bg-red-500/20 border-red-500/30',
-    média: 'bg-yellow-500/20 border-yellow-500/30',
-    baixa: 'bg-green-500/20 border-green-500/30'
-  };
-
-  const filteredProjects = (projects || []).filter((project: Project) => {
-    const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (project.description && project.description.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesStatus = filterStatus === 'all' || project.status === filterStatus;
-    const matchesPriority = filterPriority === 'all' || project.priority === filterPriority;
-    return matchesSearch && matchesStatus && matchesPriority;
-  }).sort((a: Project, b: Project) => a.name.localeCompare(b.name));
-
-  // Mockup para createProject e updateProject - a lógica real virá do useAPI ou hook específico
-  const createProject = async (projectData: Partial<Project>) => {
-    console.log('Criando projeto:', projectData);
-    // Simula uma chamada de API bem-sucedida
-    return Promise.resolve();
-  };
-
-  const handleCreateProject = async () => {
-    if (!newProject.name || !newProject.budget || !newProject.deadline) {
-      alert('Por favor, preencha todos os campos obrigatórios');
-      return;
+  const summary = useMemo(() => {
+    if (projects.length === 0) {
+      return {
+        total: 0,
+        onTrack: 0,
+        atRisk: 0,
+        dueSoon: 0,
+      };
     }
+    let onTrack = 0;
+    let atRisk = 0;
+    let dueSoon = 0;
+    const now = Date.now();
 
-    try {
-      await createProject(newProject);
-      setShowCreateForm(false);
-      setNewProject({
-        name: '',
-        status: 'Planejamento',
-        progress: 0,
-        team_size: 1,
-        budget: '',
-        deadline: '',
-        priority: 'média',
-        roi: '+0%',
-        description: ''
-      });
-      refetchProjects(); // Atualiza a lista de projetos
-      alert('Projeto criado com sucesso!');
-    } catch (error) {
-      console.error('Falha ao criar projeto:', error);
-      alert('Falha ao criar projeto. Tente novamente.');
-    }
-  };
+    projects.forEach((project) => {
+      const normalizedStatus = normalizeStatus(project.status);
+      if (normalizedStatus === 'on_track' || normalizedStatus === 'planning') {
+        onTrack += 1;
+      }
+      if (normalizedStatus === 'at_risk' || normalizedStatus === 'delayed') {
+        atRisk += 1;
+      }
 
-  const handleDeleteProject = async (projectId: string) => {
-    if (!confirm(`Tem certeza que deseja excluir o projeto ${projectId}?`)) {
-      return;
-    }
+      if (project.deadline) {
+        const deadline = new Date(project.deadline).getTime();
+        if (!Number.isNaN(deadline) && deadline > now) {
+          const diffDays = (deadline - now) / (1000 * 60 * 60 * 24);
+          if (diffDays <= 14) {
+            dueSoon += 1;
+          }
+        }
+      }
+    });
 
-    try {
-      // Em uma aplicação real, isso chamaria a API de exclusão
-      console.log(`Simulando a exclusão do projeto com ID: ${projectId}`);
-      alert('Projeto excluído com sucesso!');
-      refetchProjects();
-    } catch (error) {
-      console.error('Falha ao excluir projeto:', error);
-      alert('Falha ao excluir projeto. Tente novamente.');
-    }
-  };
-
-  const getProjectStats = () => {
-    if (!projects) return { total: 0, completed: 0, inProgress: 0, overdue: 0 };
-    const total = projects.length;
-    const completed = projects.filter((p: Project) => p.status === 'Concluído').length;
-    const inProgress = projects.filter((p: Project) => p.status === 'Em Andamento').length;
-    const overdue = projects.filter((p: Project) => {
-      const deadline = new Date(p.deadline);
-      return deadline < new Date() && p.status !== 'Concluído';
-    }).length;
-
-    return { total, completed, inProgress, overdue };
-  };
-
-  const stats = getProjectStats();
-
-  if (loading) {
-    return (
-      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
-        <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (showCreateForm) {
-    return (
-      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Criar Novo Projeto</h2>
-          <button 
-            onClick={() => {
-              setShowCreateForm(false);
-              setNewProject({
-                name: '',
-                status: 'Planejamento',
-                progress: 0,
-                team_size: 1,
-                budget: '',
-                deadline: '',
-                priority: 'média',
-                roi: '+0%',
-                description: ''
-              });
-            }}
-            className="text-slate-400 hover:text-white transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Nome do Projeto *</label>
-            <input
-              type="text"
-              value={newProject.name}
-              onChange={(e) => setNewProject({...newProject, name: e.target.value})}
-              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              placeholder="Digite o nome do projeto..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Status</label>
-              <select
-                value={newProject.status}
-                onChange={(e) => setNewProject({...newProject, status: e.target.value as any})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              >
-                <option value="Planejamento">Planejamento</option>
-                <option value="Em Andamento">Em Andamento</option>
-                <option value="Em Espera">Em Espera</option>
-                <option value="Concluído">Concluído</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Prioridade</label>
-              <select
-                value={newProject.priority}
-                onChange={(e) => setNewProject({...newProject, priority: e.target.value as any})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              >
-                <option value="alta">Alta Prioridade</option>
-                <option value="média">Média Prioridade</option>
-                <option value="baixa">Baixa Prioridade</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Orçamento *</label>
-              <input
-                type="text"
-                value={newProject.budget}
-                onChange={(e) => setNewProject({...newProject, budget: e.target.value})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                placeholder="ex: R$ 150K"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Tamanho da Equipe</label>
-              <input
-                type="number"
-                value={newProject.team_size}
-                onChange={(e) => setNewProject({...newProject, team_size: parseInt(e.target.value)})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                min="1"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Prazo *</label>
-              <input
-                type="date"
-                value={newProject.deadline}
-                onChange={(e) => setNewProject({...newProject, deadline: e.target.value})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">ROI Esperado</label>
-              <input
-                type="text"
-                value={newProject.roi}
-                onChange={(e) => setNewProject({...newProject, roi: e.target.value})}
-                className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                placeholder="ex: +35%"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Progresso: {newProject.progress}%
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={newProject.progress}
-              onChange={(e) => setNewProject({...newProject, progress: parseInt(e.target.value)})}
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Descrição</label>
-            <textarea
-              value={newProject.description}
-              onChange={(e) => setNewProject({...newProject, description: e.target.value})}
-              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white h-20 focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              placeholder="Descrição do projeto..."
-            />
-          </div>
-
-          <div className="flex space-x-3 pt-4">
-            <button
-              onClick={handleCreateProject}
-              className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
-            >
-              Criar Projeto
-            </button>
-            <button
-              onClick={() => {
-                setShowCreateForm(false);
-                setNewProject({
-                  name: '',
-                  status: 'Planejamento',
-                  progress: 0,
-                  team_size: 1,
-                  budget: '',
-                  deadline: '',
-                  priority: 'média',
-                  roi: '+0%',
-                  description: ''
-                });
-              }}
-              className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    return {
+      total: projects.length,
+      onTrack,
+      atRisk,
+      dueSoon,
+    };
+  }, [projects]);
 
   return (
-    <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-gradient-to-r from-green-500 to-teal-600 rounded-lg">
-            <Briefcase className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-white">{t('projects.title')}</h2>
-            <p className="text-sm text-slate-400">{t('projects.subtitle')}</p>
-          </div>
+    <section className="space-y-4">
+      <header className="flex flex-col gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/95 p-4 shadow-inner shadow-black/30 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="flex items-center gap-2 text-base font-semibold text-zinc-100">
+            <Target className="h-5 w-5 text-emerald-400" />
+            Project Overview
+          </h3>
+          <p className="text-sm text-zinc-400">
+            Panorama executivo dos projetos ativos, progresso e riscos
+            emergentes.
+          </p>
         </div>
-        
         <button
-          onClick={() => setShowCreateForm(true)}
-          className="flex items-center space-x-2 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200"
+          type="button"
+          onClick={() => router.push('/projects')}
+          className="inline-flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs font-medium text-zinc-200 transition hover:border-emerald-500/60 hover:text-emerald-300"
         >
-          <Plus className="h-4 w-4" />
-          <span>Novo Projeto</span>
+          Ver detalhes
+          <ArrowUpRight className="h-3.5 w-3.5" />
         </button>
+      </header>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <SummaryCard
+          label="Projetos ativos"
+          value={summary.total}
+          description="Total de iniciativas em acompanhamento"
+          tone="default"
+        />
+        <SummaryCard
+          label="No ritmo planejado"
+          value={summary.onTrack}
+          description="Planejamento alinhado com milestones"
+          tone="success"
+        />
+        <SummaryCard
+          label="Ativos críticos"
+          value={summary.atRisk}
+          description="Projetos com risco ou atraso"
+          tone="warning"
+        />
       </div>
 
-      {/* Project Statistics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
-          <div className="flex items-center space-x-2 mb-1">
-            <BarChart3 className="h-4 w-4 text-blue-400" />
-            <span className="text-sm text-slate-400">Total</span>
-          </div>
-          <div className="text-xl font-bold text-blue-400">{stats.total}</div>
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4 text-xs text-zinc-300">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-zinc-500" />
+          <span className="uppercase tracking-wide text-zinc-500">
+            Filtros:
+          </span>
         </div>
-
-        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
-          <div className="flex items-center space-x-2 mb-1">
-            <CheckCircle className="h-4 w-4 text-green-400" />
-            <span className="text-sm text-slate-400">Concluídos</span>
-          </div>
-          <div className="text-xl font-bold text-green-400">{stats.completed}</div>
-        </div>
-
-        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
-          <div className="flex items-center space-x-2 mb-1">
-            <Clock className="h-4 w-4 text-yellow-400" />
-            <span className="text-sm text-slate-400">Em Andamento</span>
-          </div>
-          <div className="text-xl font-bold text-yellow-400">{stats.inProgress}</div>
-        </div>
-
-        <div className="bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
-          <div className="flex items-center space-x-2 mb-1">
-            <AlertTriangle className="h-4 w-4 text-red-400" />
-            <span className="text-sm text-slate-400">Atrasados</span>
-          </div>
-          <div className="text-xl font-bold text-red-400">{stats.overdue}</div>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="flex space-x-4 mb-6">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Pesquisar projetos..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-10 pr-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/50"
-          />
-        </div>
-        
         <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+          className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-zinc-100 focus:border-emerald-500/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+          value={statusFilter}
+          onChange={(event) =>
+            setStatusFilter(event.target.value as StatusFilter)
+          }
         >
-          <option value="all">Todos os Status</option>
-          <option value="Planejamento">Planejamento</option>
-          <option value="Em Andamento">Em Andamento</option>
-          <option value="Em Espera">Em Espera</option>
-          <option value="Concluído">Concluído</option>
+          <option value="all">Todos os status</option>
+          <option value="planning">Planejamento</option>
+          <option value="on_track">No prazo</option>
+          <option value="at_risk">Em risco</option>
+          <option value="delayed">Atrasado</option>
         </select>
-
         <select
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+          className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-zinc-100 focus:border-emerald-500/60 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+          value={priorityFilter}
+          onChange={(event) =>
+            setPriorityFilter(event.target.value as PriorityFilter)
+          }
         >
-          <option value="all">Todas as Prioridades</option>
-          <option value="alta">Alta</option>
-          <option value="média">Média</option>
-          <option value="baixa">Baixa</option>
+          <option value="all">Todas as prioridades</option>
+          <option value="high">Alta</option>
+          <option value="medium">Média</option>
+          <option value="low">Baixa</option>
         </select>
       </div>
-      
-      {/* Projects List */}
-      <div className="space-y-4">
-        {filteredProjects.map((project: Project) => {
-          const statusConf = statusConfig[project.status as keyof typeof statusConfig];
-          const isOverdue = new Date(project.deadline) < new Date() && project.status !== 'Concluído';
-          
-          return (
-            <div key={project.id} className={`border border-slate-600/50 rounded-lg p-4 hover:bg-slate-700/30 transition-all duration-200 ${priorityColors[project.priority as keyof typeof priorityColors]}`}>
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h3 className="text-lg font-semibold text-white">{project.name}</h3>
-                    <div className="flex space-x-1">
-                      {/* A funcionalidade de edição será reativada no futuro */}
-                      <button
-                        onClick={() => handleDeleteProject(project.id)}
-                        className="p-1 text-slate-400 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {project.description && (
-                    <p className="text-sm text-slate-300 mb-2">{project.description}</p>
-                  )}
-                  
-                  <div className="flex items-center space-x-4 mt-2">
-                    <span className={`px-2 py-1 text-xs rounded-full border ${statusConf.bg} ${statusConf.border} ${statusConf.color}`}>
-                      {project.status}
-                    </span>
-                    
-                    <div className="flex items-center space-x-1 text-slate-400">
-                      <Users className="h-3 w-3" />
-                      <span className="text-xs">{project.team_size} membros</span>
-                    </div>
-                    
-                    <div className="flex items-center space-x-1 text-slate-400">
-                      <Calendar className="h-3 w-3" />
-                      <span className={`text-xs ${isOverdue ? 'text-red-400' : ''}`}>
-                        {project.deadline}
-                        {isOverdue && ' (Atrasado)'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="text-right">
-                  <div className="flex items-center space-x-1 text-green-400 mb-1">
-                    <TrendingUp className="h-3 w-3" />
-                    <span className="text-sm font-medium">ROI {project.roi}</span>
-                  </div>
-                  <div className="flex items-center space-x-1 text-slate-400">
-                    <DollarSign className="h-3 w-3" />
-                    <span className="text-sm">{project.budget}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-400">Progresso</span>
-                  <span className="text-sm text-white font-medium">{project.progress}%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-green-500 to-teal-500 transition-all duration-1000"
-                    style={{ width: `${project.progress}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
-      {filteredProjects.length === 0 && (
-        <div className="text-center py-8">
-          <Briefcase className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400">Nenhum projeto encontrado com os critérios especificados</p>
+      {loading ? (
+        <div className="flex h-40 items-center justify-center gap-2 rounded-2xl border border-neutral-800 bg-neutral-950 text-sm text-zinc-400">
+          <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+          Carregando visão geral dos projetos...
+        </div>
+      ) : filteredProjects.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-neutral-800 bg-neutral-900/60 p-6 text-center text-sm text-zinc-500">
+          Nenhum projeto corresponde aos filtros selecionados.
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {filteredProjects.map((project) => {
+            const normalizedStatus = normalizeStatus(project.status);
+            const statusBadge = statusStyles[normalizedStatus] ?? statusStyles.on_track;
+            const progressValue = Math.min(
+              100,
+              Math.max(0, project.progress ?? 0)
+            );
+            const priority = normalizePriority(project.priority);
+
+            const deadlineLabel = project.deadline
+              ? new Date(project.deadline).toLocaleDateString()
+              : 'Sem data';
+
+            return (
+              <article
+                key={project.id}
+                className="flex flex-col gap-4 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-4 transition hover:border-emerald-500/40 hover:bg-neutral-900"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-base font-semibold text-zinc-100">
+                    {project.name}
+                  </h4>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] ${statusBadge}`}
+                  >
+                    {statusLabels[normalizedStatus] ?? 'Em andamento'}
+                  </span>
+                </div>
+
+                {project.description && (
+                  <p className="text-sm text-zinc-400 line-clamp-3">
+                    {project.description}
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span>Progresso</span>
+                    <span>{progressValue}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full border border-neutral-800 bg-neutral-900">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all"
+                      style={{ width: `${progressValue}%` }}
+                    />
+                  </div>
+                </div>
+
+                <dl className="grid gap-3 text-xs text-zinc-400 md:grid-cols-2">
+                  <div>
+                    <dt className="uppercase tracking-wide text-zinc-500">
+                      Deadline
+                    </dt>
+                    <dd className="mt-1 flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-zinc-500" />
+                      {deadlineLabel}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="uppercase tracking-wide text-zinc-500">
+                      Budget
+                    </dt>
+                    <dd className="mt-1 text-zinc-300">
+                      {project.budget ?? '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="uppercase tracking-wide text-zinc-500">
+                      Prioridade
+                    </dt>
+                    <dd className="mt-1 capitalize">{priority}</dd>
+                  </div>
+                  <div>
+                    <dt className="uppercase tracking-wide text-zinc-500">
+                      ROI estimado
+                    </dt>
+                    <dd className="mt-1 text-zinc-300">
+                      {project.roi ?? '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            );
+          })}
         </div>
       )}
+    </section>
+  );
+};
+
+type SummaryCardProps = {
+  label: string;
+  value: number;
+  description: string;
+  tone: 'default' | 'success' | 'warning';
+};
+
+const SummaryCard: React.FC<SummaryCardProps> = ({
+  label,
+  value,
+  description,
+  tone,
+}) => {
+  const toneStyles =
+    tone === 'success'
+      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+      : tone === 'warning'
+      ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+      : 'border-neutral-800 bg-neutral-950/90 text-zinc-100';
+
+  return (
+    <div
+      className={`rounded-2xl border ${toneStyles} p-4 shadow-inner shadow-black/20`}
+    >
+      <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <p className="mt-2 text-xs text-zinc-300">{description}</p>
     </div>
   );
 };
 
 export default ProjectOverview;
+

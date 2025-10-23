@@ -244,7 +244,7 @@ interface MessageBubbleProps {
   streaming?: boolean;
 }
 
-const ThinkingBubble: React.FC<{message: string; onComplete?: () => void}> = ({ message, onComplete }) => {
+const ThinkingBubble: React.FC<{ message: string }> = ({ message }) => {
   const [dots, setDots] = useState('.');
   const [isExpanded, setIsExpanded] = useState(false);
   const [isComplete, setIsComplete] = useState(false);

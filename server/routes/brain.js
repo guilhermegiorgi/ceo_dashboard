@@ -3,22 +3,23 @@
  *
  * Endpoints para integração com Obsidian Brain Cloud
  *
- * ARQUITETURA HÍBRIDA:
- * - Usa serviço híbrido que detecta automaticamente o tipo de chamador
- * - REST API para requisições HTTP tradicionais (dashboard web)
- * - MCP tools para agentes IA (Claude, GPT) quando aplicável
+ * ARQUITETURA UNIFICADA (v2.0):
+ * - Usa BrainCloudService com Strategy Pattern
+ * - Auto-detecção entre REST e MCP baseada em contexto
+ * - Fallback automático de MCP para REST se configurado
+ * - Emissão de eventos em tempo real via globalEventBus
  *
- * O serviço híbrido decide automaticamente qual usar baseado no contexto.
+ * O serviço decide automaticamente qual adapter usar (REST ou MCP).
  */
 
 import express from "express";
-import brainCloudHybrid from "../services/brainCloudHybrid.js";
+import { brainCloudService } from "../services/brainCloud/BrainCloudService.ts";
 import { logger } from "../src/utils/logger.js";
 
 const router = express.Router();
 
-// Usa serviço híbrido que roteia automaticamente entre REST e MCP
-const brainService = brainCloudHybrid;
+// Usa serviço unificado com auto-detection de adapter
+const brainService = brainCloudService;
 
 /**
  * GET /api/brain/status
@@ -26,8 +27,8 @@ const brainService = brainCloudHybrid;
  */
 router.get("/status", async (req, res) => {
   try {
-    // Passa contexto da requisição para roteamento híbrido
-    const status = await brainService.checkConnection({ req });
+    // Usa fluent API com contexto de requisição
+    const status = await brainService.withContext({ req }).checkConnection();
     res.json(status);
   } catch (error) {
     logger.error("Erro ao obter status do Brain Cloud", {
@@ -42,11 +43,11 @@ router.get("/status", async (req, res) => {
 
 /**
  * GET /api/brain/info
- * Retorna informações sobre o serviço híbrido
+ * Retorna informações sobre o serviço unificado
  */
 router.get("/info", async (req, res) => {
   try {
-    const info = brainService.getInfo();
+    const info = brainService.withContext({ req }).getInfo();
     res.json(info);
   } catch (error) {
     logger.error("Erro ao obter informações do Brain Cloud", {
@@ -61,7 +62,7 @@ router.get("/info", async (req, res) => {
 
 /**
  * POST /api/brain/search
- * Busca semântica no vault
+ * Busca no vault (semantic search quando disponível)
  */
 router.post("/search", async (req, res) => {
   try {
@@ -74,15 +75,19 @@ router.post("/search", async (req, res) => {
       });
     }
 
-    const results = await brainService.semanticSearch(query, limit, { req });
+    const result = await brainService.withContext({ req }).search({
+      query,
+      limit,
+    });
 
     res.json({
-      success: true,
+      success: result.success,
       query,
-      results,
+      results: result.results || [],
+      total: result.total || 0,
     });
   } catch (error) {
-    logger.error("Erro na busca semântica", {
+    logger.error("Erro na busca", {
       error: error.message,
       query: req.body.query,
     });
@@ -101,13 +106,10 @@ router.get("/graph", async (req, res) => {
   try {
     const { directory = "", includeOrphans = true } = req.query;
 
-    const graphData = await brainService.getGraphData(
-      {
-        directory,
-        includeOrphans: includeOrphans === "true",
-      },
-      { req }
-    );
+    const graphData = await brainService.withContext({ req }).getGraphData({
+      directory,
+      includeOrphans: includeOrphans === "true",
+    });
 
     res.json({
       success: true,
@@ -130,7 +132,7 @@ router.get("/graph", async (req, res) => {
  */
 router.get("/focus", async (req, res) => {
   try {
-    const focus = await brainService.getCurrentFocus({}, { req });
+    const focus = await brainService.withContext({ req }).getCurrentFocus();
 
     res.json({
       success: true,
@@ -155,13 +157,10 @@ router.get("/tasks", async (req, res) => {
   try {
     const { window = "all", includeCompleted = false } = req.query;
 
-    const tasks = await brainService.getDueTasks(
-      {
-        window,
-        includeCompleted: includeCompleted === "true",
-      },
-      { req }
-    );
+    const tasks = await brainService.withContext({ req }).getDueTasks({
+      window,
+      includeCompleted: includeCompleted === "true",
+    });
 
     res.json({
       success: true,
@@ -186,13 +185,12 @@ router.post("/context", async (req, res) => {
   try {
     const { query, limit = 5 } = req.body;
 
-    const context = await brainService.getHistoricalContext(
-      {
+    const context = await brainService
+      .withContext({ req })
+      .getHistoricalContext({
         query,
         limit,
-      },
-      { req }
-    );
+      });
 
     res.json({
       success: true,
@@ -223,7 +221,7 @@ router.post("/conversation/save", async (req, res) => {
       metadata = {},
       chunking_strategy = "auto",
       auto_tag = true,
-      save_to_vault = null
+      save_to_vault = null,
     } = req.body;
 
     if (!conversation_id || !messages || !Array.isArray(messages)) {
@@ -233,15 +231,15 @@ router.post("/conversation/save", async (req, res) => {
       });
     }
 
-    const result = await brainService.saveConversationHistory({
+    const result = await brainService.withContext({ req }).saveConversation({
       source,
-      conversation_id,
+      conversationId: conversation_id,
       messages,
       metadata,
-      chunking_strategy,
-      auto_tag,
-      save_to_vault,
-    }, { req });
+      chunkingStrategy: chunking_strategy,
+      autoTag: auto_tag,
+      saveToVault: save_to_vault,
+    });
 
     res.json({
       success: true,
@@ -269,7 +267,7 @@ router.post("/conversation/search", async (req, res) => {
       query,
       limit = 5,
       return_full_context = false,
-      filters = {}
+      filters = {},
     } = req.body;
 
     if (!query) {
@@ -279,12 +277,14 @@ router.post("/conversation/search", async (req, res) => {
       });
     }
 
-    const results = await brainService.searchConversations({
-      query,
-      limit,
-      return_full_context,
-      filters,
-    }, { req });
+    const results = await brainService
+      .withContext({ req })
+      .searchConversations({
+        query,
+        limit,
+        return_full_context,
+        filters,
+      });
 
     res.json({
       success: true,
@@ -309,26 +309,28 @@ router.post("/conversation/search", async (req, res) => {
 router.get("/conversations/recent", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    
+
     // Para buscar conversas recentes sem query específica, usamos "." como query
-    const results = await brainService.searchConversations({
-      query: "conversas", // Query genérica para buscar conversas recentes
-      limit,
-      return_full_context: false,
-      filters: {
-        recent_days: 30 // Últimos 30 dias
-      }
-    }, { req });
+    const results = await brainService
+      .withContext({ req })
+      .searchConversations({
+        query: "conversas", // Query genérica para buscar conversas recentes
+        limit,
+        return_full_context: false,
+        filters: {
+          recent_days: 30, // Últimos 30 dias
+        },
+      });
 
     res.json({
       success: true,
       conversations: results.results || [],
-      total: results.results?.length || 0
+      total: results.results?.length || 0,
     });
   } catch (error) {
     logger.error("Erro ao buscar conversas recentes", {
       error: error.message,
-      limit: req.query.limit
+      limit: req.query.limit,
     });
     res.status(500).json({
       success: false,
@@ -344,25 +346,27 @@ router.get("/conversations/recent", async (req, res) => {
 router.get("/conversation/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const results = await brainService.searchConversations({
-      query: "",
-      limit: 100,
-      return_full_context: true,
-      filters: {
-        conversation_id: id
-      }
-    }, { req });
+
+    const results = await brainService
+      .withContext({ req })
+      .searchConversations({
+        query: "",
+        limit: 100,
+        return_full_context: true,
+        filters: {
+          conversation_id: id,
+        },
+      });
 
     res.json({
       success: true,
       conversation: results.results || [],
-      total: results.results?.length || 0
+      total: results.results?.length || 0,
     });
   } catch (error) {
     logger.error("Erro ao buscar conversa específica", {
       error: error.message,
-      conversationId: req.params.id
+      conversationId: req.params.id,
     });
     res.status(500).json({
       success: false,

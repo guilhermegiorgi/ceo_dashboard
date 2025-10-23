@@ -246,7 +246,7 @@ PRÓXIMOS PASSOS:
 ```bash
 # .env
 VITE_BRAINCLOUD_BASE_URL=https://obsidian-mcp.ggailabs.com
-VITE_BRAINCLOUD_API_TOKEN=ggai_90e2c6b20c8315906f843798bbc1598df596978a2ec79457e6d00563c76d03dc
+VITE_BRAINCLOUD_API_TOKEN=ggai_*************************************************
 ```
 
 ### **Headers HTTP**

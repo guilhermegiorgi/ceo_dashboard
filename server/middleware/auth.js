@@ -8,24 +8,73 @@ import { query } from "../database/pg-pool.js";
  * Verifica o token JWT no cabeçalho de autorização
  */
 export const authenticateJWT = (req, res, next) => {
-  // Obtém o token do cabeçalho Authorization
-  const authHeader = req.headers.authorization;
+  // Debug logging for /api/settings specifically
+  if (req.path === '/' && req.baseUrl === '/api/settings') {
+    console.log('[auth] /api/settings root - session check:', {
+      path: req.path,
+      baseUrl: req.baseUrl,
+      isAuthenticatedExists: typeof req.isAuthenticated,
+      isAuthenticated: req.isAuthenticated?.(),
+      hasSession: !!req.session,
+      sessionID: req.sessionID,
+      hasPassportUser: !!req.session?.passport?.user,
+      passportUser: req.session?.passport?.user,
+      cookies: req.headers.cookie?.substring(0, 80),
+    });
+  }
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  // Check for Passport session first (OAuth login)
+  const hasPassportUser = req.session?.passport?.user;
+  const isAuthenticatedMethod = req.isAuthenticated && req.isAuthenticated();
+  
+  console.log('[auth] Authentication check:', {
+    path: req.path,
+    hasIsAuthenticatedMethod: !!req.isAuthenticated,
+    isAuthenticatedResult: isAuthenticatedMethod,
+    hasSession: !!req.session,
+    hasPassportUser: !!hasPassportUser,
+    passportUserId: hasPassportUser,
+    hasReqUser: !!req.user,
+    reqUserId: req.user?.id,
+  });
+  
+  if (isAuthenticatedMethod && req.user) {
+    console.log('[auth] ✅ User authenticated via Passport session:', req.user?.email);
+    return next();
+  }
+  
+  // Fallback: check if session has passport user but req.user not populated yet
+  if (hasPassportUser && !req.user) {
+    console.log('[auth] ⚠️  Session has passport user but req.user not populated');
+  }
+
+  // Obtém o token do cabeçalho Authorization ou query parameter (para EventSource)
+  const authHeader = req.headers.authorization;
+  let token;
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  } else if (req.query.token) {
+    // Fallback para query parameter (usado por EventSource)
+    token = req.query.token;
+  }
+
+  if (!token) {
     logger.warn("Tentativa de acesso sem token de autenticação", {
       ip: req.ip,
       path: req.path,
       method: req.method,
+      hasSession: !!req.session,
+      sessionID: req.sessionID,
+      hasPassportUser: !!req.session?.passport?.user,
     });
 
     return res.status(401).json({
       success: false,
       error: "Não autorizado",
-      message: "Token de autenticação não fornecido",
+      message: "Token de autenticação não fornecido ou sessão inválida",
     });
   }
-
-  const token = authHeader.split(" ")[1];
 
   try {
     // Verifica e decodifica o token
