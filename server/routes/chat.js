@@ -6,6 +6,7 @@
 import express from 'express';
 import { authenticateJWT } from '../middleware/auth.js';
 import enhancedChatService from '../services/enhancedChatService.js';
+import { aiProviderRouter } from '../services/aiProviderRouter.js';
 
 const router = express.Router();
 
@@ -77,6 +78,72 @@ router.get('/conversations/:conversationId/stream', authenticateJWT, (req, res) 
     success: false,
     error: 'Streaming de conversas ainda não está implementado nesta versão.'
   });
+});
+
+// Streaming via SSE
+router.post('/stream', authenticateJWT, async (req, res) => {
+  const {
+    message,
+    messages,
+    providerConfig = {},
+    systemPrompt,
+    context = 'chat'
+  } = req.body || {};
+
+  const chatMessages = Array.isArray(messages) && messages.length > 0
+    ? messages
+    : message
+      ? [{ role: 'user', content: message }]
+      : [];
+
+  if (!chatMessages.length) {
+    res.status(400).json({
+      success: false,
+      error: 'message ou messages são obrigatórios para streaming.'
+    });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const overrides = {
+    ...(providerConfig.overrides || {}),
+  };
+
+  if (providerConfig.provider) {
+    overrides.provider = providerConfig.provider;
+  }
+  if (providerConfig.model) {
+    overrides.model = providerConfig.model;
+  }
+  if (providerConfig.customProviderId) {
+    overrides.customProviderId = providerConfig.customProviderId;
+  }
+
+  try {
+    await aiProviderRouter.routeChat({
+      user: req.user,
+      messages: chatMessages,
+      systemPrompt: systemPrompt || providerConfig.systemPrompt,
+      context: providerConfig.context || context,
+      overrides,
+      stream: true,
+      tools: providerConfig.tools || null,
+      tool_choice: providerConfig.tool_choice || 'auto',
+      onChunk: (chunk) => {
+        res.write(`data: ${JSON.stringify({ type: 'content', chunk })}\n\n`);
+      }
+    });
+
+    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+    res.end();
+  } catch (error) {
+    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    res.end();
+  }
 });
 
 // Executar código no sandbox
