@@ -964,8 +964,21 @@ export async function syncProviderModels(userId, providerId) {
       throw new Error("Modelo de sincronia não suportado para este provedor");
     }
 
+    console.log(
+      `[syncProviderModels] 🔄 Starting sync for provider ${provider.provider_name} (ID: ${providerId})`
+    );
+
     const { apiKey, baseUrl } = await getProviderApiKey(userId, providerId);
+    console.log(`[syncProviderModels] Got API key, calling fetcher...`);
+
     const remoteModels = await fetcher({ apiKey, baseUrl });
+    console.log(
+      `[syncProviderModels] ✅ Fetcher returned ${remoteModels.length} models`
+    );
+    console.log(
+      `[syncProviderModels] Model IDs from API:`,
+      remoteModels.map((m) => m.modelId).join(", ")
+    );
 
     if (!remoteModels.length) {
       logger.warn(
@@ -986,6 +999,10 @@ export async function syncProviderModels(userId, providerId) {
     const activeIds = [];
 
     let defaultAssigned = Boolean(existingDefault);
+
+    console.log(
+      `[syncProviderModels] 💾 Starting to upsert ${remoteModels.length} models...`
+    );
 
     for (const remote of remoteModels) {
       const isDefault =
@@ -1013,16 +1030,24 @@ export async function syncProviderModels(userId, providerId) {
       activeIds.push(remote.modelId);
     }
 
+    console.log(`[syncProviderModels] ✅ Upserted ${activeIds.length} models`);
+
     if (activeIds.length) {
+      console.log(`[syncProviderModels] Disabling missing models...`);
       await disableMissingModels(providerId, activeIds);
     } else {
+      console.log(`[syncProviderModels] No active IDs, disabling all models`);
       await query(
         `UPDATE ai_models SET is_active = false WHERE provider_id = $1`,
         [providerId]
       );
     }
 
-    return getModels(providerId);
+    const finalModels = await getModels(providerId);
+    console.log(
+      `[syncProviderModels] 🎉 Final result: ${finalModels.length} active models in database`
+    );
+    return finalModels;
   } catch (error) {
     logger.error("Error syncing provider models:", error);
     throw error;
