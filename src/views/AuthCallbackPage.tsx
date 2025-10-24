@@ -34,13 +34,15 @@ const AuthCallbackPage: React.FC = () => {
       }
 
       try {
-        // Store tokens
-        localStorage.setItem("accessToken", accessToken);
+        // Store tokens with the correct key names that the rest of the app expects
+        localStorage.setItem("token", accessToken); // Changed from "accessToken" to "token"
         localStorage.setItem("refreshToken", refreshToken);
+
+        console.log("✅ [AuthCallback] Tokens stored successfully");
 
         // Fetch user info
         const response = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL}/api/user/me`,
+          `${import.meta.env.VITE_API_BASE_URL}/api/auth/me`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -53,12 +55,17 @@ const AuthCallbackPage: React.FC = () => {
         }
 
         const userData = await response.json();
-        localStorage.setItem("user", JSON.stringify(userData.user));
+        console.log("✅ [AuthCallback] User data fetched:", userData);
+        
+        if (userData.user) {
+          localStorage.setItem("user", JSON.stringify(userData.user));
+        }
 
         // Redirect to dashboard
+        console.log("✅ [AuthCallback] Redirecting to dashboard");
         navigate("/", { replace: true });
       } catch (error) {
-        console.error("OAuth callback error:", error);
+        console.error("❌ [AuthCallback] OAuth callback error:", error);
         setError("Erro ao processar autenticação. Tente novamente.");
         setTimeout(() => navigate("/login"), 3000);
       }

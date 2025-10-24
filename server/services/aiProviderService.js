@@ -324,20 +324,34 @@ export async function upsertProvider(userId, providerData) {
          WHERE user_id = $1 AND provider_name = $2 AND is_active = true`,
         [userId, providerName]
       );
-      
-      logger.info(`[upsertProvider] Looking for existing provider ${providerName} for user ${userId}`);
-      logger.info(`[upsertProvider] Found ${existing.rows.length} existing providers`);
-      
+
+      logger.info(
+        `[upsertProvider] Looking for existing provider ${providerName} for user ${userId}`
+      );
+      logger.info(
+        `[upsertProvider] Found ${existing.rows.length} existing providers`
+      );
+
       if (existing.rows.length > 0) {
         encryptedKey = existing.rows[0].api_key_encrypted;
-        logger.info(`[upsertProvider] Preserving existing API key, encrypted length: ${encryptedKey?.length || 0}`);
+        logger.info(
+          `[upsertProvider] Preserving existing API key, encrypted length: ${
+            encryptedKey?.length || 0
+          }`
+        );
       } else {
-        logger.error(`[upsertProvider] Cannot find existing provider ${providerName} to preserve API key`);
-        throw new Error(`Cannot find existing provider ${providerName} to preserve API key`);
+        logger.error(
+          `[upsertProvider] Cannot find existing provider ${providerName} to preserve API key`
+        );
+        throw new Error(
+          `Cannot find existing provider ${providerName} to preserve API key`
+        );
       }
     } else {
       encryptedKey = encryptApiKey(apiKey);
-      logger.info(`[upsertProvider] Creating new API key for provider ${providerName}`);
+      logger.info(
+        `[upsertProvider] Creating new API key for provider ${providerName}`
+      );
     }
 
     // If setting as default, unset other defaults
@@ -404,18 +418,18 @@ export async function deleteProvider(userId, providerId) {
 
     try {
       // First, delete associated conversation model configs
-      await query(`
+      await query(
+        `
         DELETE FROM conversation_model_config 
         WHERE model_id IN (
           SELECT id FROM ai_models WHERE provider_id = $1
         )
-      `, [providerId]);
-
-      // Then delete associated models
-      await query(
-        `DELETE FROM ai_models WHERE provider_id = $1`,
+      `,
         [providerId]
       );
+
+      // Then delete associated models
+      await query(`DELETE FROM ai_models WHERE provider_id = $1`, [providerId]);
 
       // Finally delete the provider
       const result = await query(
@@ -432,12 +446,10 @@ export async function deleteProvider(userId, providerId) {
       await query("COMMIT");
       logger.info(`Provider deleted: ${providerId}`);
       return true;
-
     } catch (deleteError) {
       await query("ROLLBACK");
       throw deleteError;
     }
-
   } catch (error) {
     logger.error("Error deleting provider:", error);
     throw error;
@@ -460,26 +472,46 @@ export async function getProviderApiKey(userId, providerId) {
       throw new Error("Provider not found or inactive");
     }
 
-    const { api_key_encrypted, base_url, provider_name, display_name } = result.rows[0];
-    
-    logger.info(`[getProviderApiKey] Provider: ${provider_name} (${providerId})`);
-    logger.info(`[getProviderApiKey] Encrypted key length: ${api_key_encrypted?.length || 0}`);
-    
+    const { api_key_encrypted, base_url, provider_name, display_name } =
+      result.rows[0];
+
+    logger.info(
+      `[getProviderApiKey] Provider: ${provider_name} (${providerId})`
+    );
+    logger.info(
+      `[getProviderApiKey] Encrypted key length: ${
+        api_key_encrypted?.length || 0
+      }`
+    );
+
     // Check if the encrypted data looks like "dummy" (unencrypted)
     if (api_key_encrypted === "dummy") {
-      logger.error(`[getProviderApiKey] ERROR: API key stored as unencrypted "dummy" for provider ${provider_name}`);
-      throw new Error(`API key for provider ${provider_name} was corrupted during default setting. Please reconfigure the provider.`);
+      logger.error(
+        `[getProviderApiKey] ERROR: API key stored as unencrypted "dummy" for provider ${provider_name}`
+      );
+      throw new Error(
+        `API key for provider ${provider_name} was corrupted during default setting. Please reconfigure the provider.`
+      );
     }
 
     let decryptedKey;
     try {
       decryptedKey = decryptApiKey(api_key_encrypted);
     } catch (decryptError) {
-      logger.error(`[getProviderApiKey] Failed to decrypt API key for ${provider_name}:`, decryptError);
-      throw new Error(`Failed to decrypt API key for provider ${provider_name}. Please reconfigure the provider.`);
+      logger.error(
+        `[getProviderApiKey] Failed to decrypt API key for ${provider_name}:`,
+        decryptError
+      );
+      throw new Error(
+        `Failed to decrypt API key for provider ${provider_name}. Please reconfigure the provider.`
+      );
     }
-    
-    logger.info(`[getProviderApiKey] Successfully decrypted API key for ${provider_name}, length: ${decryptedKey?.length || 0}`);
+
+    logger.info(
+      `[getProviderApiKey] Successfully decrypted API key for ${provider_name}, length: ${
+        decryptedKey?.length || 0
+      }`
+    );
 
     return {
       apiKey: decryptedKey,
@@ -762,14 +794,25 @@ async function fetchJson(url, options = {}) {
 
 async function fetchOpenAIModels({ apiKey, baseUrl }) {
   const url = buildUrl(baseUrl || OPENAI_BASE_URL, "/models");
+  console.log(`[fetchOpenAIModels] Fetching from: ${url}`);
+
   const data = await fetchJson(url, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
   });
 
+  console.log(`[fetchOpenAIModels] Raw response:`, {
+    hasData: !!data?.data,
+    dataLength: data?.data?.length,
+    dataType: typeof data?.data,
+    sampleModel: data?.data?.[0],
+  });
+
   const models = Array.isArray(data?.data) ? data.data : [];
-  return models
+  console.log(`[fetchOpenAIModels] Total models from API: ${models.length}`);
+
+  const filtered = models
     .filter((model) => typeof model?.id === "string")
     .map((model) => {
       const id = model.id;
@@ -786,10 +829,17 @@ async function fetchOpenAIModels({ apiKey, baseUrl }) {
         supportsVision,
       };
     });
+
+  console.log(
+    `[fetchOpenAIModels] ✅ Returning ${filtered.length} models after filtering`
+  );
+  return filtered;
 }
 
 async function fetchAnthropicModels({ apiKey, baseUrl }) {
   const url = buildUrl(baseUrl || ANTHROPIC_BASE_URL, "/v1/models");
+  console.log(`[fetchAnthropicModels] Fetching from: ${url}`);
+
   const data = await fetchJson(url, {
     headers: {
       "x-api-key": apiKey,
@@ -797,8 +847,18 @@ async function fetchAnthropicModels({ apiKey, baseUrl }) {
     },
   });
 
+  console.log(`[fetchAnthropicModels] Raw response:`, {
+    hasModels: !!data?.models,
+    modelsLength: data?.models?.length,
+    hasData: !!data?.data,
+    dataLength: data?.data?.length,
+    sampleModel: data?.models?.[0] || data?.data?.[0],
+  });
+
   const models = Array.isArray(data?.models) ? data.models : data?.data || [];
-  return models
+  console.log(`[fetchAnthropicModels] Total models from API: ${models.length}`);
+
+  const filtered = models
     .filter((model) => typeof model?.id === "string")
     .map((model) => {
       const id = model.id;
@@ -817,6 +877,11 @@ async function fetchAnthropicModels({ apiKey, baseUrl }) {
         maxTokens: model.max_output_tokens || null,
       };
     });
+
+  console.log(
+    `[fetchAnthropicModels] ✅ Returning ${filtered.length} models after filtering`
+  );
+  return filtered;
 }
 
 async function fetchDeepSeekModels({ apiKey, baseUrl }) {
@@ -859,7 +924,10 @@ async function fetchOpenRouterModels({ apiKey, baseUrl }) {
     return {
       modelId: id,
       displayName: model.name || id,
-      description: model.description || model.top_provider?.description || "Modelo OpenRouter",
+      description:
+        model.description ||
+        model.top_provider?.description ||
+        "Modelo OpenRouter",
       supportsStreaming: true,
       supportsFunctionCalling: true,
       supportsVision: Boolean(model.capabilities?.vision),
@@ -900,7 +968,9 @@ export async function syncProviderModels(userId, providerId) {
     const remoteModels = await fetcher({ apiKey, baseUrl });
 
     if (!remoteModels.length) {
-      logger.warn(`Nenhum modelo retornado pelo provedor ${provider.provider_name}`);
+      logger.warn(
+        `Nenhum modelo retornado pelo provedor ${provider.provider_name}`
+      );
     }
 
     const existing = await query(
@@ -910,13 +980,17 @@ export async function syncProviderModels(userId, providerId) {
       [providerId]
     );
 
-    const existingDefault = existing.rows.find((row) => row.is_default)?.model_id;
+    const existingDefault = existing.rows.find(
+      (row) => row.is_default
+    )?.model_id;
     const activeIds = [];
 
     let defaultAssigned = Boolean(existingDefault);
 
     for (const remote of remoteModels) {
-      const isDefault = remote.modelId === existingDefault || (!defaultAssigned && remoteModels[0] === remote);
+      const isDefault =
+        remote.modelId === existingDefault ||
+        (!defaultAssigned && remoteModels[0] === remote);
       if (!existingDefault && remoteModels[0] === remote) {
         defaultAssigned = true;
       }

@@ -117,11 +117,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     };
   }, [api]);
 
-  // Initial data loading
+  // Initial data loading - only run once on mount
   useEffect(() => {
     loadSnapshot();
     getDashboardCollections();
-  }, [loadSnapshot, getDashboardCollections]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps array - only run on mount
 
   const value: DashboardDataContextType = {
     // Data
