@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   Settings as SettingsIcon,
   Loader2,
@@ -16,14 +22,14 @@ import {
   Lightbulb,
   Globe,
   ShieldCheck,
-} from 'lucide-react';
-import { useSettingsPersistence } from './settings/hooks/useSettingsPersistence';
-import { useAPI } from '../hooks/useAPI';
-import { showSuccessToast, showErrorToast } from '../lib/toast';
-import { BrainCloudSettingsSection } from './settings/BrainCloudSettingsSection';
-import { InterfaceSettingsSection } from './settings/InterfaceSettingsSection';
-import { AIApiKeysSection } from './settings/AIApiKeysSection';
-import { SystemSettingsSection } from './settings/SystemSettingsSection';
+} from "lucide-react";
+import { useSettingsPersistence } from "./settings/hooks/useSettingsPersistence";
+import { useAPI } from "../hooks/useAPI";
+import { showSuccessToast, showErrorToast } from "../lib/toast";
+import { BrainCloudSettingsSection } from "./settings/BrainCloudSettingsSection";
+import { InterfaceSettingsSection } from "./settings/InterfaceSettingsSection";
+import { AIApiKeysSection } from "./settings/AIApiKeysSection";
+import { SystemSettingsSection } from "./settings/SystemSettingsSection";
 import {
   BrainCloudConnectionMode,
   TestStatus,
@@ -32,7 +38,7 @@ import {
   ModelSelectionMap,
   ModelSelectionConfig,
   ModelInfo,
-} from './settings/types';
+} from "./settings/types";
 
 type ProviderKey = AIProvider | (string & {});
 
@@ -59,41 +65,64 @@ type ProviderModelCacheEntry = {
 };
 
 type TestState = {
-  status: 'idle' | 'loading' | 'success' | 'error';
+  status: "idle" | "loading" | "success" | "error";
   message?: string;
 };
 
-type TestStateMap = Record<ModelContext | 'fallback', TestState>;
+type TestStateMap = Record<ModelContext | "fallback", TestState>;
 
 const MODEL_CACHE_TTL = 60 * 60 * 1000; // 60 minutos
-const MODEL_CONTEXTS: ModelContext[] = ['chat', 'insights', 'global'];
-const PROVIDER_METADATA: Record<string, { label: string; icon: string; accent: string }> = {
-  openai: { label: 'OpenAI', icon: '🟠', accent: '#f97316' },
-  anthropic: { label: 'Anthropic', icon: '🔵', accent: '#6366f1' },
-  google: { label: 'Google Gemini', icon: '🟢', accent: '#22c55e' },
-  perplexity: { label: 'Perplexity', icon: '🔷', accent: '#06b6d4' },
-  openrouter: { label: 'OpenRouter', icon: '🔺', accent: '#ef4444' },
+const MODEL_CONTEXTS: ModelContext[] = ["chat", "insights", "global"];
+const PROVIDER_METADATA: Record<
+  string,
+  { label: string; icon: string; accent: string }
+> = {
+  openai: { label: "OpenAI", icon: "🟠", accent: "#f97316" },
+  anthropic: { label: "Anthropic", icon: "🔵", accent: "#6366f1" },
+  google: { label: "Google Gemini", icon: "🟢", accent: "#22c55e" },
+  perplexity: { label: "Perplexity", icon: "🔷", accent: "#06b6d4" },
+  openrouter: { label: "OpenRouter", icon: "🔺", accent: "#ef4444" },
+  custom: { label: "Custom Provider", icon: "⚙️", accent: "#71717a" },
 };
 
-const CONTEXT_METADATA: Record<ModelContext, { label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = {
+// All available providers (not just ones with API keys)
+const ALL_PROVIDERS: AIProvider[] = [
+  "openai",
+  "anthropic",
+  "google",
+  "perplexity",
+  "openrouter",
+  "custom",
+];
+
+const CONTEXT_METADATA: Record<
+  ModelContext,
+  {
+    label: string;
+    description: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
   chat: {
-    label: 'Chat Conversations',
-    description: 'Respostas em tempo real para o assistente',
+    label: "Chat Conversations",
+    description: "Respostas em tempo real para o assistente",
     icon: (props) => <MessageSquare {...props} />,
   },
   insights: {
-    label: 'Insights & Analysis',
-    description: 'Geração de insights e análises estratégicas',
+    label: "Insights & Analysis",
+    description: "Geração de insights e análises estratégicas",
     icon: (props) => <Lightbulb {...props} />,
   },
   global: {
-    label: 'Global Operations',
-    description: 'Tarefas gerais e automações do dashboard',
+    label: "Global Operations",
+    description: "Tarefas gerais e automações do dashboard",
     icon: (props) => <Globe {...props} />,
   },
 };
 
-const cloneSelectionMap = (selection: ModelSelectionMap): ModelSelectionMap => ({
+const cloneSelectionMap = (
+  selection: ModelSelectionMap
+): ModelSelectionMap => ({
   chat: { ...selection.chat },
   insights: { ...selection.insights },
   global: { ...selection.global },
@@ -101,35 +130,39 @@ const cloneSelectionMap = (selection: ModelSelectionMap): ModelSelectionMap => (
 
 const getProviderMeta = (provider: ProviderKey) =>
   PROVIDER_METADATA[provider] || {
-    label: typeof provider === 'string' ? provider.toUpperCase() : 'Custom',
-    icon: '⚙️',
-    accent: '#71717a',
+    label: typeof provider === "string" ? provider.toUpperCase() : "Custom",
+    icon: "⚙️",
+    accent: "#71717a",
   };
 
 const getModelIdentifier = (model: ProviderModelInfo): string =>
-  (model as { name?: string }).name ?? model.modelId ?? model.id ?? '';
+  (model as { name?: string }).name ?? model.modelId ?? model.id ?? "";
 
 const getModelDisplayName = (model: ProviderModelInfo): string =>
-  model.displayName ?? (model as { name?: string }).name ?? model.modelId ?? model.id ?? 'Modelo';
+  model.displayName ??
+  (model as { name?: string }).name ??
+  model.modelId ??
+  model.id ??
+  "Modelo";
 
 const formatCurrency = (value?: number) => {
   if (value === undefined || Number.isNaN(value)) {
-    return '—';
+    return "—";
   }
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
     minimumFractionDigits: 4,
   }).format(value);
 };
 
 const formatLastUpdated = (timestamp?: number | null) => {
   if (!timestamp) {
-    return 'nunca atualizado';
+    return "nunca atualizado";
   }
   const diff = Date.now() - timestamp;
   if (diff < 60_000) {
-    return 'agora mesmo';
+    return "agora mesmo";
   }
   if (diff < 3_600_000) {
     const minutes = Math.round(diff / 60_000);
@@ -163,47 +196,52 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [testingMode, setTestingMode] = useState<BrainCloudConnectionMode | null>(null);
-  const [brainCloudTestStatus, setBrainCloudTestStatus] = useState<TestStatus>(null);
-  const [activeTab, setActiveTab] = useState<'braincloud' | 'interface' | 'ai' | 'system'>(
-    'braincloud'
-  );
+  const [testingMode, setTestingMode] =
+    useState<BrainCloudConnectionMode | null>(null);
+  const [brainCloudTestStatus, setBrainCloudTestStatus] =
+    useState<TestStatus>(null);
+  const [activeTab, setActiveTab] = useState<
+    "braincloud" | "interface" | "ai" | "system"
+  >("braincloud");
 
-  const [modelSelections, setModelSelections] = useState<ModelSelectionMap>(() =>
-    cloneSelectionMap(aiProviderConfig.modelSelection)
+  const [modelSelections, setModelSelections] = useState<ModelSelectionMap>(
+    () => cloneSelectionMap(aiProviderConfig.modelSelection)
   );
   const [fallbackProvider, setFallbackProvider] = useState<AIProvider>(
     aiProviderConfig.fallbackProvider
   );
   const modelCacheRef = useRef<Record<string, ProviderModelCacheEntry>>({});
-  const [modelCache, setModelCache] = useState<Record<string, ProviderModelCacheEntry>>({});
+  const [modelCache, setModelCache] = useState<
+    Record<string, ProviderModelCacheEntry>
+  >({});
   const [modelLoading, setModelLoading] = useState<Record<string, boolean>>({});
-  const [modelErrors, setModelErrors] = useState<Record<string, string | null>>({});
+  const [modelErrors, setModelErrors] = useState<Record<string, string | null>>(
+    {}
+  );
   const [modelsUpdatedAt, setModelsUpdatedAt] = useState<number | null>(null);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [initializingModels, setInitializingModels] = useState(false);
   const [isModelPristine, setIsModelPristine] = useState(true);
   const [contextTestStatus, setContextTestStatus] = useState<TestStateMap>({
-    chat: { status: 'idle' },
-    insights: { status: 'idle' },
-    global: { status: 'idle' },
-    fallback: { status: 'idle' },
+    chat: { status: "idle" },
+    insights: { status: "idle" },
+    global: { status: "idle" },
+    fallback: { status: "idle" },
   });
 
   const availableProviders = useMemo(() => {
     const entries = Object.entries(aiApiKeys || {}) as [string, string][];
     return entries
-      .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+      .filter(
+        ([, value]) => typeof value === "string" && value.trim().length > 0
+      )
       .map(([provider]) => provider as AIProvider);
   }, [aiApiKeys]);
 
   const providerOptions = useMemo(() => {
-    const unique = new Set<string>();
-    MODEL_CONTEXTS.forEach((ctx) => unique.add(modelSelections[ctx].provider));
-    availableProviders.forEach((provider) => unique.add(provider));
-    unique.add(fallbackProvider);
-    return Array.from(unique);
-  }, [availableProviders, modelSelections, fallbackProvider]);
+    // Show all providers, not just ones with API keys
+    return ALL_PROVIDERS;
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -220,7 +258,12 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     }
     setModelSelections(cloneSelectionMap(aiProviderConfig.modelSelection));
     setFallbackProvider(aiProviderConfig.fallbackProvider);
-  }, [open, isModelPristine, aiProviderConfig.modelSelection, aiProviderConfig.fallbackProvider]);
+  }, [
+    open,
+    isModelPristine,
+    aiProviderConfig.modelSelection,
+    aiProviderConfig.fallbackProvider,
+  ]);
 
   const ensureModels = useCallback(
     async (provider: AIProvider, force = false) => {
@@ -253,7 +296,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
             if (next[context].provider === provider) {
               const identifier = next[context].model;
               const exists = (models || []).some(
-                (model) => getModelIdentifier(model as ProviderModelInfo) === identifier
+                (model) =>
+                  getModelIdentifier(model as ProviderModelInfo) === identifier
               );
               if (!exists && models.length > 0) {
                 next[context] = {
@@ -269,7 +313,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
         return models as ProviderModelInfo[];
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Falha ao carregar modelos';
+        const message =
+          error instanceof Error ? error.message : "Falha ao carregar modelos";
         setModelErrors((prev) => ({ ...prev, [provider]: message }));
         throw error;
       } finally {
@@ -307,11 +352,23 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
         setModelsUpdatedAt(Date.now());
 
+        // Load models for each available provider
+        const providers = Object.entries(serverConfig.apiKeys || {})
+          .filter(
+            ([, value]) => typeof value === "string" && value.trim().length > 0
+          )
+          .map(([provider]) => provider as AIProvider);
+
         await Promise.all(
-          availableProviders.map((provider) => ensureModels(provider).catch(() => undefined))
+          providers.map((provider) =>
+            ensureModels(provider).catch(() => undefined)
+          )
         );
       } catch (error) {
-        console.error('[SettingsModal] Failed to load AI provider config:', error);
+        console.error(
+          "[SettingsModal] Failed to load AI provider config:",
+          error
+        );
       } finally {
         if (!cancelled) {
           setInitializingModels(false);
@@ -322,16 +379,11 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, api, ensureModels, availableProviders, setAIProviderConfig, isModelPristine]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]); // Only re-run when modal opens/closes
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    availableProviders.forEach((provider) => {
-      ensureModels(provider).catch(() => undefined);
-    });
-  }, [open, availableProviders, ensureModels]);
+  // Removed: This was causing infinite loop by re-running on every availableProviders change
+  // Models are now loaded in the main initialization effect above
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -341,85 +393,148 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
       const result = await saveSettings();
       if (result.success) {
-        showSuccessToast('Configurações salvas');
+        if (result.localOnly) {
+          showSuccessToast(
+            "Configurações salvas localmente (faça login para sincronizar)"
+          );
+        } else {
+          showSuccessToast("Configurações salvas");
+
+          // FORÇA RELOAD DE MODELOS após salvar API keys
+          console.log("[Settings] Reloading models after saving API keys...");
+          const providersWithKeys = Object.entries(aiApiKeys || {})
+            .filter(
+              ([, value]) =>
+                typeof value === "string" && value.trim().length > 0
+            )
+            .map(([provider]) => provider as AIProvider);
+
+          // Limpa cache e recarrega modelos
+          modelCacheRef.current = {};
+          setModelCache({});
+
+          // Recarrega modelos de todos os provedores com API keys
+          await Promise.all(
+            providersWithKeys.map(async (provider) => {
+              try {
+                console.log(
+                  `[Settings] Forcing model reload for ${provider} with forceRefresh=true...`
+                );
+                const models = await api.getProviderModels(provider, true); // forceRefresh=true
+                if (models && models.length > 0) {
+                  const now = Date.now();
+                  modelCacheRef.current[provider] = {
+                    models: models as ProviderModelInfo[],
+                    fetchedAt: now,
+                  };
+                  setModelCache({ ...modelCacheRef.current });
+                  console.log(
+                    `[Settings] ✅ Loaded ${models.length} models for ${provider} from API (force refreshed)`
+                  );
+                } else {
+                  console.warn(`[Settings] No models returned for ${provider}`);
+                }
+              } catch (error) {
+                console.error(
+                  `[Settings] Failed to reload models for ${provider}:`,
+                  error
+                );
+              }
+            })
+          );
+
+          setModelsUpdatedAt(Date.now());
+        }
 
         // If admin mode is enabled, activate it immediately
-        if (systemSettings.allowEditAllDirectories && systemSettings.adminApiToken) {
+        if (
+          systemSettings.allowEditAllDirectories &&
+          systemSettings.adminApiToken
+        ) {
           try {
-            const response = await fetch('/api/admin-mode/activate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+            const response = await fetch("/api/admin-mode/activate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
             });
-            
+
             if (response.ok) {
               const data = await response.json();
-              
+
               // Dispatch event to show indicator
               if (data.expiresAt) {
-                const event = new CustomEvent('admin-mode-activated', {
+                const event = new CustomEvent("admin-mode-activated", {
                   detail: { expiresAt: data.expiresAt },
                 });
                 window.dispatchEvent(event);
               }
             }
           } catch (adminError) {
-            console.error('[Settings] Error activating admin mode:', adminError);
+            console.error(
+              "[Settings] Error activating admin mode:",
+              adminError
+            );
           }
         }
       } else {
         throw result.error;
       }
     } catch (error) {
-      console.error('Failed to save settings:', error);
-      showErrorToast('Erro ao salvar configurações');
+      console.error("Failed to save settings:", error);
+      showErrorToast("Erro ao salvar configurações");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTestConnection = useCallback(async (mode: BrainCloudConnectionMode) => {
-    setTestingMode(mode);
-    setBrainCloudTestStatus(null);
-    try {
-      const response = await fetch('/api/settings/braincloud/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ braincloud: brainCloudSettings, mode }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setBrainCloudTestStatus({
-          mode,
-          status: 'success',
-          message:
-            mode === 'mcp'
-              ? 'Conexão MCP estabelecida com sucesso.'
-              : 'Conexão REST verificada com sucesso.',
+  const handleTestConnection = useCallback(
+    async (mode: BrainCloudConnectionMode) => {
+      setTestingMode(mode);
+      setBrainCloudTestStatus(null);
+      try {
+        const response = await fetch("/api/settings/braincloud/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ braincloud: brainCloudSettings, mode }),
         });
-        showSuccessToast(`Conexão ${mode.toUpperCase()} ativa`);
-      } else {
-        const message = data.error || 'Não foi possível validar a conexão.';
+
+        const data = await response.json();
+
+        if (data.success) {
+          setBrainCloudTestStatus({
+            mode,
+            status: "success",
+            message:
+              mode === "mcp"
+                ? "Conexão MCP estabelecida com sucesso."
+                : "Conexão REST verificada com sucesso.",
+          });
+          showSuccessToast(`Conexão ${mode.toUpperCase()} ativa`);
+        } else {
+          const message = data.error || "Não foi possível validar a conexão.";
+          setBrainCloudTestStatus({
+            mode,
+            status: "error",
+            message,
+          });
+          showErrorToast(message);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Erro inesperado ao testar conexão";
         setBrainCloudTestStatus({
           mode,
-          status: 'error',
+          status: "error",
           message,
         });
         showErrorToast(message);
+      } finally {
+        setTestingMode(null);
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro inesperado ao testar conexão';
-      setBrainCloudTestStatus({
-        mode,
-        status: 'error',
-        message,
-      });
-      showErrorToast(message);
-    } finally {
-      setTestingMode(null);
-    }
-  }, [brainCloudSettings]);
+    },
+    [brainCloudSettings]
+  );
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -428,10 +543,10 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
   };
 
   const tabs = [
-    { id: 'braincloud' as const, label: 'Brain Cloud', icon: Cloud },
-    { id: 'ai' as const, label: 'AI Providers', icon: Key },
-    { id: 'system' as const, label: 'System', icon: Sliders },
-    { id: 'interface' as const, label: 'Interface', icon: Palette },
+    { id: "braincloud" as const, label: "Brain Cloud", icon: Cloud },
+    { id: "ai" as const, label: "AI Providers", icon: Key },
+    { id: "system" as const, label: "System", icon: Sliders },
+    { id: "interface" as const, label: "Interface", icon: Palette },
   ];
 
   const hasModelChanges = useMemo(() => {
@@ -445,23 +560,25 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     });
 
     return (
-      selectionChanged ||
-      aiProviderConfig.fallbackProvider !== fallbackProvider
+      selectionChanged || aiProviderConfig.fallbackProvider !== fallbackProvider
     );
   }, [aiProviderConfig, fallbackProvider, modelSelections]);
 
-  const handleProviderChange = async (context: ModelContext, provider: ProviderKey) => {
+  const handleProviderChange = async (
+    context: ModelContext,
+    provider: ProviderKey
+  ) => {
     setModelSelections((prev) => ({
       ...prev,
       [context]: {
         ...prev[context],
         provider: provider as AIProvider,
-        model: '',
+        model: "",
       },
     }));
     setContextTestStatus((prev) => ({
       ...prev,
-      [context]: { status: 'idle' },
+      [context]: { status: "idle" },
     }));
     setIsModelPristine(false);
 
@@ -482,7 +599,11 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
         }));
       }
     } catch (error) {
-      console.error('[SettingsModal] Failed to load models for provider', provider, error);
+      console.error(
+        "[SettingsModal] Failed to load models for provider",
+        provider,
+        error
+      );
     }
   };
 
@@ -496,7 +617,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     }));
     setContextTestStatus((prev) => ({
       ...prev,
-      [context]: { status: 'idle' },
+      [context]: { status: "idle" },
     }));
     setIsModelPristine(false);
   };
@@ -505,7 +626,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     setFallbackProvider(provider as AIProvider);
     setContextTestStatus((prev) => ({
       ...prev,
-      fallback: { status: 'idle' },
+      fallback: { status: "idle" },
     }));
     setIsModelPristine(false);
   };
@@ -519,7 +640,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       const meta = getProviderMeta(provider);
       showSuccessToast(`Modelos ${meta.label} atualizados`);
     } catch (error) {
-      console.error('[SettingsModal] Failed to refresh provider models', error);
+      console.error("[SettingsModal] Failed to refresh provider models", error);
       const meta = getProviderMeta(provider);
       showErrorToast(`Não foi possível atualizar os modelos de ${meta.label}`);
     }
@@ -532,12 +653,14 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     setRefreshingModels(true);
     try {
       await Promise.all(
-        availableProviders.map((provider) => ensureModels(provider, true).catch(() => undefined))
+        availableProviders.map((provider) =>
+          ensureModels(provider, true).catch(() => undefined)
+        )
       );
-      showSuccessToast('Lista de modelos atualizada');
+      showSuccessToast("Lista de modelos atualizada");
     } catch (error) {
-      console.error('[SettingsModal] Failed to refresh models list', error);
-      showErrorToast('Não foi possível atualizar a lista de modelos');
+      console.error("[SettingsModal] Failed to refresh models list", error);
+      showErrorToast("Não foi possível atualizar a lista de modelos");
     } finally {
       setRefreshingModels(false);
     }
@@ -549,8 +672,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       setContextTestStatus((prev) => ({
         ...prev,
         [context]: {
-          status: 'error',
-          message: 'Selecione um provedor e modelo antes de testar',
+          status: "error",
+          message: "Selecione um provedor e modelo antes de testar",
         },
       }));
       return;
@@ -560,8 +683,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       setContextTestStatus((prev) => ({
         ...prev,
         [context]: {
-          status: 'error',
-          message: 'Adicione a API key do provedor antes de testar',
+          status: "error",
+          message: "Adicione a API key do provedor antes de testar",
         },
       }));
       return;
@@ -569,7 +692,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
     setContextTestStatus((prev) => ({
       ...prev,
-      [context]: { status: 'loading' },
+      [context]: { status: "loading" },
     }));
 
     try {
@@ -583,18 +706,18 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       setContextTestStatus((prev) => ({
         ...prev,
         [context]: result.connected
-          ? { status: 'success', message: 'Conexão estabelecida' }
+          ? { status: "success", message: "Conexão estabelecida" }
           : {
-              status: 'error',
-              message: result.error || 'Falha ao conectar ao provedor',
+              status: "error",
+              message: result.error || "Falha ao conectar ao provedor",
             },
       }));
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Erro ao testar provedor';
+        error instanceof Error ? error.message : "Erro ao testar provedor";
       setContextTestStatus((prev) => ({
         ...prev,
-        [context]: { status: 'error', message },
+        [context]: { status: "error", message },
       }));
     }
   };
@@ -608,8 +731,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       setContextTestStatus((prev) => ({
         ...prev,
         fallback: {
-          status: 'error',
-          message: 'Adicione a API key para testar o fallback',
+          status: "error",
+          message: "Adicione a API key para testar o fallback",
         },
       }));
       return;
@@ -617,20 +740,20 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
     setContextTestStatus((prev) => ({
       ...prev,
-      fallback: { status: 'loading' },
+      fallback: { status: "loading" },
     }));
 
     try {
-      let selection = MODEL_CONTEXTS.map((context) => modelSelections[context]).find(
-        (item) => item.provider === fallbackProvider && item.model
-      );
+      let selection = MODEL_CONTEXTS.map(
+        (context) => modelSelections[context]
+      ).find((item) => item.provider === fallbackProvider && item.model);
 
       if (!selection) {
         const models =
           modelCacheRef.current[fallbackProvider]?.models ||
           (await ensureModels(fallbackProvider, true));
         if (models.length === 0) {
-          throw new Error('Nenhum modelo disponível para o fallback');
+          throw new Error("Nenhum modelo disponível para o fallback");
         }
         selection = {
           provider: fallbackProvider,
@@ -638,7 +761,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
         } as ModelSelectionConfig;
       }
 
-      const result = await api.testAIProvider('chat', {
+      const result = await api.testAIProvider("chat", {
         selection: {
           provider: selection.provider,
           model: selection.model,
@@ -648,18 +771,18 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       setContextTestStatus((prev) => ({
         ...prev,
         fallback: result.connected
-          ? { status: 'success', message: 'Fallback conectado com sucesso' }
+          ? { status: "success", message: "Fallback conectado com sucesso" }
           : {
-              status: 'error',
-              message: result.error || 'Falha ao validar fallback',
+              status: "error",
+              message: result.error || "Falha ao validar fallback",
             },
       }));
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Erro ao testar fallback';
+        error instanceof Error ? error.message : "Erro ao testar fallback";
       setContextTestStatus((prev) => ({
         ...prev,
-        fallback: { status: 'error', message },
+        fallback: { status: "error", message },
       }));
     }
   };
@@ -742,17 +865,20 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     const contextWindow = model.contextWindow ?? model.maxTokens;
     const capabilities = model.capabilities || [];
     const inputCost = model.costPer1kTokens?.input ?? model.costPerInputToken;
-    const outputCost = model.costPer1kTokens?.output ?? model.costPerOutputToken;
+    const outputCost =
+      model.costPer1kTokens?.output ?? model.costPerOutputToken;
 
     return (
       <div className="space-y-2 text-sm text-zinc-300">
         <div className="flex items-center justify-between">
           <span className="text-zinc-400">Janela de contexto</span>
-          <span>{contextWindow ? `${contextWindow.toLocaleString()} tokens` : '—'}</span>
+          <span>
+            {contextWindow ? `${contextWindow.toLocaleString()} tokens` : "—"}
+          </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-zinc-400">Treinamento</span>
-          <span>{model.trainingDataCutoff ?? '—'}</span>
+          <span>{model.trainingDataCutoff ?? "—"}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-zinc-400">Custo / 1k tokens</span>
@@ -791,6 +917,19 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     );
     const Icon = CONTEXT_METADATA[context].icon;
 
+    // Debug logging
+    console.log(
+      `[renderContextCard] ${context}: provider=${provider}, models=${
+        providerModels.length
+      }, modelCache keys=${Object.keys(modelCache).join(
+        ","
+      )}, selection.model=${selection.model}`
+    );
+
+    // Check if models are from API or hardcoded fallback
+    const modelsFromCache = modelCache[provider]?.fetchedAt;
+    const usingFallbackModels = providerModels.length > 0 && !modelsFromCache;
+
     return (
       <section
         key={context}
@@ -807,6 +946,12 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
             <p className="mt-1 text-xs text-zinc-500">
               {CONTEXT_METADATA[context].description}
             </p>
+            {usingFallbackModels && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-amber-400">
+                <AlertTriangle className="h-3 w-3" />
+                Modelos padrão - conecte uma API key para modelos dinâmicos
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -830,12 +975,16 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
             </label>
             <select
               value={provider}
-              onChange={(event) => handleProviderChange(context, event.target.value)}
+              onChange={(event) =>
+                handleProviderChange(context, event.target.value)
+              }
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30"
             >
               {providerOptions.map((option) => {
                 const meta = getProviderMeta(option);
-                const hasKey = availableProviders.includes(option as AIProvider);
+                const hasKey = availableProviders.includes(
+                  option as AIProvider
+                );
                 return (
                   <option
                     key={option}
@@ -843,14 +992,15 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                     disabled={!hasKey && option !== provider}
                   >
                     {meta.icon} {meta.label}
-                    {!hasKey && ' — adicione a API key'}
+                    {!hasKey && " — adicione a API key"}
                   </option>
                 );
               })}
             </select>
             {!providerHasKey && (
               <p className="text-xs text-amber-400">
-                Adicione a API key deste provedor para habilitar a seleção de modelos.
+                Adicione a API key deste provedor para habilitar a seleção de
+                modelos.
               </p>
             )}
           </div>
@@ -859,9 +1009,15 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
               Modelo
             </label>
             <select
-              value={selection.model ?? ''}
-              onChange={(event) => handleModelChange(context, event.target.value)}
-              disabled={!providerHasKey || modelLoading[provider] || providerModels.length === 0}
+              value={selection.model ?? ""}
+              onChange={(event) =>
+                handleModelChange(context, event.target.value)
+              }
+              disabled={
+                !providerHasKey ||
+                modelLoading[provider] ||
+                providerModels.length === 0
+              }
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {modelLoading[provider] ? (
@@ -874,7 +1030,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                       {getModelDisplayName(model)}
                       {model.contextWindow
                         ? ` • ${model.contextWindow.toLocaleString()} tokens`
-                        : ''}
+                        : ""}
                     </option>
                   );
                 })
@@ -912,13 +1068,13 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
             type="button"
             onClick={() => handleTestContext(context)}
             disabled={
-              contextTestStatus[context].status === 'loading' ||
+              contextTestStatus[context].status === "loading" ||
               !providerHasKey ||
               !selection.model
             }
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {contextTestStatus[context].status === 'loading' ? (
+            {contextTestStatus[context].status === "loading" ? (
               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
             ) : (
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
@@ -926,17 +1082,18 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
             Testar conexão
           </button>
 
-          {contextTestStatus[context].status === 'success' && (
+          {contextTestStatus[context].status === "success" && (
             <span className="flex items-center gap-1 text-xs text-emerald-400">
               <CheckCircle2 className="h-4 w-4" />
-              {contextTestStatus[context].message ?? 'Conexão estabelecida'}
+              {contextTestStatus[context].message ?? "Conexão estabelecida"}
             </span>
           )}
 
-          {contextTestStatus[context].status === 'error' && (
+          {contextTestStatus[context].status === "error" && (
             <span className="flex items-center gap-1 text-xs text-rose-400">
               <XCircle className="h-4 w-4" />
-              {contextTestStatus[context].message ?? 'Falha ao testar o provedor'}
+              {contextTestStatus[context].message ??
+                "Falha ao testar o provedor"}
             </span>
           )}
         </div>
@@ -956,12 +1113,18 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       aria-labelledby="settings-modal-title"
       onClick={handleBackdropClick}
     >
-      <div className="relative flex h-full max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl">
+      <div
+        className="relative flex h-full max-h-[90vh] w-full max-w-6xl rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Sidebar */}
         <aside className="w-48 border-r border-zinc-800 bg-zinc-950 p-4">
           <div className="flex items-center gap-3 mb-8">
             <div className="rounded-lg bg-zinc-800 p-2">
-              <SettingsIcon className="h-5 w-5 text-zinc-400" strokeWidth={1.5} />
+              <SettingsIcon
+                className="h-5 w-5 text-zinc-400"
+                strokeWidth={1.5}
+              />
             </div>
             <div>
               <h2
@@ -995,8 +1158,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                   onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
                     activeTab === tab.id
-                      ? 'bg-zinc-800 text-zinc-100 shadow-sm border-l-2 border-zinc-400'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                      ? "bg-zinc-800 text-zinc-100 shadow-sm border-l-2 border-zinc-400"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
                   }`}
                 >
                   <Icon className="h-4 w-4" strokeWidth={1.5} />
@@ -1008,18 +1171,27 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 flex flex-col">
-          <form onSubmit={handleSave} className="flex-1 flex flex-col">
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <form
+            onSubmit={handleSave}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto bg-zinc-900 px-8 py-6">
+            <div
+              className="flex-1 overflow-y-auto bg-zinc-900 px-8 py-6"
+              style={{ minHeight: 0 }}
+            >
               {loading ? (
                 <div className="flex h-64 flex-col items-center justify-center gap-3">
-                  <Loader2 className="h-7 w-7 animate-spin text-zinc-500" strokeWidth={1.5} />
+                  <Loader2
+                    className="h-7 w-7 animate-spin text-zinc-500"
+                    strokeWidth={1.5}
+                  />
                   <p className="text-sm text-zinc-500">Loading settings...</p>
                 </div>
               ) : (
                 <div className="max-w-2xl">
-                  {activeTab === 'braincloud' && (
+                  {activeTab === "braincloud" && (
                     <BrainCloudSettingsSection
                       settings={brainCloudSettings}
                       onChange={setBrainCloudSettings}
@@ -1030,7 +1202,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                     />
                   )}
 
-                  {activeTab === 'ai' && (
+                  {activeTab === "ai" && (
                     <div className="space-y-8">
                       <AIApiKeysSection
                         apiKeys={aiApiKeys}
@@ -1045,17 +1217,24 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                               AI Model Selection
                             </h3>
                             <p className="text-sm text-zinc-500">
-                              Defina quais provedores e modelos serão utilizados em cada contexto do dashboard.
+                              Defina quais provedores e modelos serão utilizados
+                              em cada contexto do dashboard.
                             </p>
                           </div>
                           <button
                             type="button"
                             onClick={handleRefreshModels}
-                            disabled={refreshingModels || availableProviders.length === 0}
+                            disabled={
+                              refreshingModels ||
+                              availableProviders.length === 0
+                            }
                             className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 transition hover:border-zinc-500 hover:text-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {refreshingModels ? (
-                              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                              <Loader2
+                                className="h-4 w-4 animate-spin"
+                                strokeWidth={2}
+                              />
                             ) : (
                               <RefreshCw className="h-4 w-4" strokeWidth={2} />
                             )}
@@ -1070,14 +1249,18 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                                 Modelos ativos
                               </h4>
                               <p className="text-xs text-zinc-500">
-                                Visualize rapidamente o provedor e modelo em uso por contexto.
+                                Visualize rapidamente o provedor e modelo em uso
+                                por contexto.
                               </p>
                             </div>
                           </div>
 
                           {initializingModels && (
                             <div className="mt-3 flex items-center gap-2 text-sm text-zinc-500">
-                              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                              <Loader2
+                                className="h-4 w-4 animate-spin"
+                                strokeWidth={2}
+                              />
                               Carregando modelos disponíveis...
                             </div>
                           )}
@@ -1085,10 +1268,14 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                           <div className="mt-4 grid gap-3 sm:grid-cols-3">
                             {MODEL_CONTEXTS.map((context) => {
                               const selection = modelSelections[context];
-                              const providerMeta = getProviderMeta(selection.provider);
-                              const providerModels = modelCache[selection.provider]?.models ?? [];
+                              const providerMeta = getProviderMeta(
+                                selection.provider
+                              );
+                              const providerModels =
+                                modelCache[selection.provider]?.models ?? [];
                               const summaryModel = providerModels.find(
-                                (model) => getModelIdentifier(model) === selection.model
+                                (model) =>
+                                  getModelIdentifier(model) === selection.model
                               );
                               const Icon = CONTEXT_METADATA[context].icon;
 
@@ -1120,7 +1307,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                                     <p className="text-xs text-zinc-400">
                                       {summaryModel
                                         ? getModelDisplayName(summaryModel)
-                                        : selection.model || 'Modelo não definido'}
+                                        : selection.model ||
+                                          "Modelo não definido"}
                                     </p>
                                   </div>
                                 </div>
@@ -1129,13 +1317,15 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                           </div>
 
                           <p className="mt-3 text-xs text-zinc-500">
-                            Última atualização: {formatLastUpdated(modelsUpdatedAt)}
+                            Última atualização:{" "}
+                            {formatLastUpdated(modelsUpdatedAt)}
                           </p>
                         </div>
 
                         {availableProviders.length === 0 ? (
                           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-300">
-                            Adicione uma API key para pelo menos um provedor de IA para habilitar a seleção de modelos.
+                            Adicione uma API key para pelo menos um provedor de
+                            IA para habilitar a seleção de modelos.
                           </div>
                         ) : (
                           <div className="space-y-5">
@@ -1146,9 +1336,12 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                         <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 shadow-inner shadow-black/10">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <div>
-                              <h4 className="text-sm font-semibold text-zinc-100">Fallback Configuration</h4>
+                              <h4 className="text-sm font-semibold text-zinc-100">
+                                Fallback Configuration
+                              </h4>
                               <p className="text-xs text-zinc-500">
-                                Provedor utilizado automaticamente caso o primário apresente falha.
+                                Provedor utilizado automaticamente caso o
+                                primário apresente falha.
                               </p>
                             </div>
                           </div>
@@ -1160,20 +1353,26 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                               </label>
                               <select
                                 value={fallbackProvider}
-                                onChange={(event) => handleFallbackChange(event.target.value)}
+                                onChange={(event) =>
+                                  handleFallbackChange(event.target.value)
+                                }
                                 className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/30"
                               >
                                 {providerOptions.map((option) => {
                                   const meta = getProviderMeta(option);
-                                  const hasKey = availableProviders.includes(option as AIProvider);
+                                  const hasKey = availableProviders.includes(
+                                    option as AIProvider
+                                  );
                                   return (
                                     <option
                                       key={`fallback-${option}`}
                                       value={option}
-                                      disabled={!hasKey && option !== fallbackProvider}
+                                      disabled={
+                                        !hasKey && option !== fallbackProvider
+                                      }
                                     >
                                       {meta.icon} {meta.label}
-                                      {!hasKey && ' — adicione a API key'}
+                                      {!hasKey && " — adicione a API key"}
                                     </option>
                                   );
                                 })}
@@ -1189,30 +1388,42 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                                   type="button"
                                   onClick={handleTestFallback}
                                   disabled={
-                                    contextTestStatus.fallback.status === 'loading' ||
+                                    contextTestStatus.fallback.status ===
+                                      "loading" ||
                                     availableProviders.length === 0
                                   }
                                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  {contextTestStatus.fallback.status === 'loading' ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                                  {contextTestStatus.fallback.status ===
+                                  "loading" ? (
+                                    <Loader2
+                                      className="h-4 w-4 animate-spin"
+                                      strokeWidth={2}
+                                    />
                                   ) : (
-                                    <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+                                    <ShieldCheck
+                                      className="h-4 w-4"
+                                      strokeWidth={2}
+                                    />
                                   )}
                                   Testar fallback
                                 </button>
 
-                                {contextTestStatus.fallback.status === 'success' && (
+                                {contextTestStatus.fallback.status ===
+                                  "success" && (
                                   <span className="flex items-center gap-1 text-xs text-emerald-400">
                                     <CheckCircle2 className="h-4 w-4" />
-                                    {contextTestStatus.fallback.message ?? 'Fallback conectado'}
+                                    {contextTestStatus.fallback.message ??
+                                      "Fallback conectado"}
                                   </span>
                                 )}
 
-                                {contextTestStatus.fallback.status === 'error' && (
+                                {contextTestStatus.fallback.status ===
+                                  "error" && (
                                   <span className="flex items-center gap-1 text-xs text-rose-400">
                                     <XCircle className="h-4 w-4" />
-                                    {contextTestStatus.fallback.message ?? 'Falha ao testar o fallback'}
+                                    {contextTestStatus.fallback.message ??
+                                      "Falha ao testar o fallback"}
                                   </span>
                                 )}
                               </div>
@@ -1230,7 +1441,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                     </div>
                   )}
 
-                  {activeTab === 'system' && (
+                  {activeTab === "system" && (
                     <SystemSettingsSection
                       settings={systemSettings}
                       onChange={setSystemSettings}
@@ -1238,7 +1449,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                     />
                   )}
 
-                  {activeTab === 'interface' && (
+                  {activeTab === "interface" && (
                     <InterfaceSettingsSection
                       preferences={interfacePreferences}
                       onChange={setInterfacePreferences}
@@ -1263,7 +1474,10 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                 >
                   {saving ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                      <Loader2
+                        className="h-4 w-4 animate-spin"
+                        strokeWidth={2}
+                      />
                       Saving...
                     </>
                   ) : (
