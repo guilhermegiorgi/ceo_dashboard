@@ -68,6 +68,64 @@ router.post("/test", authenticateJWT, async (req, res, next) => {
   }
 });
 
+// Force sync all models for a provider (clears cache, refetches from API)
+router.post(
+  "/force-sync/:provider",
+  authenticateJWT,
+  async (req, res, next) => {
+    try {
+      const { provider: providerParam } = req.params;
+      const userId = req.user?.id;
+      const normalizedProvider = providerParam.toLowerCase();
+
+      console.log(
+        `[AIConfigRoute] 🔄 FORCE SYNC triggered for ${normalizedProvider} by user ${userId}`
+      );
+
+      let provider = await getProviderByName(userId, normalizedProvider);
+
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          error: `Provider ${normalizedProvider} not found`,
+        });
+      }
+
+      console.log(
+        `[AIConfigRoute] Starting force sync for provider ID: ${provider.id}`
+      );
+      const models = await syncProviderModels(userId, provider.id);
+
+      console.log(
+        `[AIConfigRoute] ✅ FORCE SYNC COMPLETE: ${models.length} models for ${normalizedProvider}`
+      );
+      console.log(
+        `[AIConfigRoute] Model IDs:`,
+        models.map((m) => m.model_id).join(", ")
+      );
+
+      return res.json({
+        success: true,
+        provider: normalizedProvider,
+        modelsCount: models.length,
+        models: models.map((m) => ({
+          id: m.id,
+          modelId: m.model_id,
+          displayName: m.display_name,
+          description: m.description,
+          contextWindow: m.context_window,
+        })),
+      });
+    } catch (error) {
+      console.error(`[AIConfigRoute] Error in force sync:`, error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to sync models",
+      });
+    }
+  }
+);
+
 router.get("/models", authenticateJWT, async (req, res, next) => {
   try {
     const providerParam = (req.query.provider || "").toString().trim();
@@ -75,12 +133,10 @@ router.get("/models", authenticateJWT, async (req, res, next) => {
       req.query.forceRefresh === "true" || req.query.forceRefresh === true;
 
     if (!providerParam) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "provider query parameter is required",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "provider query parameter is required",
+      });
     }
 
     const userId = req.user?.id;
@@ -410,21 +466,17 @@ router.patch("/", authenticateJWT, async (req, res, next) => {
     const { context, selection, fallbackProvider } = req.body || {};
 
     if (!selection && !fallbackProvider) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "selection or fallbackProvider required",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "selection or fallbackProvider required",
+      });
     }
 
     if (selection && !context) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "context is required when updating selection",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "context is required when updating selection",
+      });
     }
 
     const fullSettings = await loadUserSettings(req.user);
