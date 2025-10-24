@@ -36,25 +36,38 @@ const SUPPORTED_PROVIDERS = new Set([
   "google",
   "perplexity",
   "openrouter",
+  "custom",
 ]);
 
 export const MODEL_REGISTRY = {
   openai: [
-    "gpt-4o-mini",
     "gpt-4o",
-    "gpt-4o-mini-vision",
+    "gpt-4o-mini",
     "gpt-4-turbo",
+    "gpt-4-turbo-preview",
+    "gpt-4",
+    "gpt-4-vision-preview",
     "gpt-3.5-turbo",
+    "gpt-3.5-turbo-16k",
   ],
   anthropic: [
-    "claude-3-5-sonnet",
-    "claude-3-opus",
-    "claude-3-sonnet",
-    "claude-3-haiku",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-sonnet-20240620",
+    "claude-3-opus-20240229",
+    "claude-3-sonnet-20240229",
+    "claude-3-haiku-20240307",
   ],
-  google: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"],
+  google: [
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.0-pro",
+  ],
   perplexity: [
     "sonar-reasoning",
+    "sonar",
+    "sonar-pro",
     "sonar-medium-online",
     "sonar-small-chat",
   ],
@@ -63,7 +76,9 @@ export const MODEL_REGISTRY = {
     "anthropic/claude-3.5-sonnet:beta",
     "meta-llama/llama-3.1-70b-instruct",
     "google/gemini-flash-1.5",
+    "openai/gpt-4o",
   ],
+  custom: [],
 };
 
 const CONTEXTS = ["chat", "insights", "global"];

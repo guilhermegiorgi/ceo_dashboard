@@ -569,6 +569,7 @@ export interface RequestOptions {
   searchParams?: Record<string, string | number | boolean | undefined>;
   signal?: AbortSignal;
   retries?: number;
+  cache?: RequestCache; // 'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached'
 }
 
 export class APIClient {
@@ -666,7 +667,7 @@ export class APIClient {
     endpoint: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    const { searchParams, retries = 0, signal, ...restOptions } = options;
+    const { searchParams, retries = 0, signal, cache, ...restOptions } = options;
     const url = this.buildUrl(endpoint, searchParams);
     const method = restOptions.method ?? "GET";
 
@@ -707,6 +708,7 @@ export class APIClient {
         headers,
         body,
         signal,
+        ...(cache && { cache }), // Add cache option if provided
       };
 
       this.logDebug("Request start", { method, endpoint, attempt: attempt + 1 });
@@ -1327,7 +1329,8 @@ export class APIClient {
   }
 
   public async getProviderModels(
-    provider: ProviderKey
+    provider: ProviderKey,
+    forceRefresh = false
   ): Promise<SettingsModelInfo[]> {
     const response = await this.request<{
       success?: boolean;
@@ -1336,8 +1339,9 @@ export class APIClient {
       code?: string;
     }>("/api/ai/config/models", {
       method: "GET",
-      searchParams: { provider },
+      searchParams: { provider, forceRefresh: forceRefresh ? 'true' : undefined },
       retries: 1,
+      cache: "no-store", // Force fresh data, prevent HTTP 304 caching
     });
 
     if (response?.success === false) {

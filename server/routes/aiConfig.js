@@ -6,7 +6,10 @@ import {
   getModelConfigForUser,
   MODEL_REGISTRY,
 } from "../services/aiConfigService.js";
-import { loadUserSettings, saveUserSettings } from "../services/settingsServiceDB.js";
+import {
+  loadUserSettings,
+  saveUserSettings,
+} from "../services/settingsServiceDB.js";
 import { aiProviderRouter } from "../services/aiProviderRouter.js";
 import {
   getProviderByName,
@@ -68,49 +71,229 @@ router.post("/test", authenticateJWT, async (req, res, next) => {
 router.get("/models", authenticateJWT, async (req, res, next) => {
   try {
     const providerParam = (req.query.provider || "").toString().trim();
+    const forceRefresh =
+      req.query.forceRefresh === "true" || req.query.forceRefresh === true;
 
     if (!providerParam) {
       return res
         .status(400)
-        .json({ success: false, error: "provider query parameter is required" });
+        .json({
+          success: false,
+          error: "provider query parameter is required",
+        });
     }
 
     const userId = req.user?.id;
-    if (!userId) {
+    const tenantId = req.user?.tenantId;
+
+    if (!userId || !tenantId) {
+      console.error(
+        `[AIConfigRoute] Missing user context - userId: ${userId}, tenantId: ${tenantId}`
+      );
       return res
         .status(400)
         .json({ success: false, error: "User context missing" });
     }
 
-    const provider = await getProviderByName(userId, providerParam);
+    const normalizedProvider = providerParam.toLowerCase();
+    console.log(
+      `[AIConfigRoute] ============ GET /models - provider: ${normalizedProvider}, userId: ${userId}, tenantId: ${tenantId}, forceRefresh: ${forceRefresh} ============`
+    );
+    logger.info(
+      `[AIConfigRoute] GET /models - provider: ${normalizedProvider}, userId: ${userId}`
+    );
 
+    let provider = await getProviderByName(userId, normalizedProvider);
+
+    if (provider) {
+      console.log(
+        `[AIConfigRoute] Provider found in DB - ID: ${provider.id}, name: ${provider.provider_name}`
+      );
+      logger.info(
+        `[AIConfigRoute] Provider found in DB - ID: ${provider.id}, name: ${provider.provider_name}`
+      );
+    } else {
+      console.log(
+        `[AIConfigRoute] Provider NOT found in DB for ${normalizedProvider}`
+      );
+      logger.info(
+        `[AIConfigRoute] Provider NOT found in DB for ${normalizedProvider}`
+      );
+    }
+
+    // AUTO-CREATE PROVIDER if it doesn't exist and user has API key
     if (!provider) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Provider not found for user" });
+      console.log(
+        `[AIConfigRoute] Loading user settings from PostgreSQL for userId: ${userId}, tenantId: ${tenantId}`
+      );
+      const userSettings = await loadUserSettings(req.user); // Pass full user object with id AND tenantId
+      console.log(
+        `[AIConfigRoute] User settings aiKeys from DB:`,
+        JSON.stringify(userSettings.aiKeys, null, 2)
+      );
+      console.log(
+        `[AIConfigRoute] aiKeys structure check:`,
+        JSON.stringify(
+          {
+            hasAiKeys: !!userSettings.aiKeys,
+            aiKeysKeys: Object.keys(userSettings.aiKeys || {}),
+            openaiValue: userSettings.aiKeys?.[normalizedProvider],
+            openaiValueType: typeof userSettings.aiKeys?.[normalizedProvider],
+            openaiValueLength:
+              userSettings.aiKeys?.[normalizedProvider]?.length,
+          },
+          null,
+          2
+        )
+      );
+
+      const apiKey = userSettings.aiKeys?.[normalizedProvider];
+
+      if (apiKey && apiKey.trim()) {
+        console.log(
+          `[AIConfigRoute] ✅ API key found for ${normalizedProvider}, auto-creating provider...`
+        );
+        logger.info(
+          `[AIConfigRoute] Auto-creating provider ${normalizedProvider} for user ${userId}`
+        );
+
+        // Create provider in database
+        const { upsertProvider } = await import(
+          "../services/aiProviderService.js"
+        );
+        try {
+          provider = await upsertProvider(userId, {
+            providerName: normalizedProvider,
+            displayName:
+              providerParam ||
+              normalizedProvider.charAt(0).toUpperCase() +
+                normalizedProvider.slice(1),
+            apiKey: apiKey,
+            isActive: true,
+            isDefault: false,
+          });
+          console.log(
+            `[AIConfigRoute] ✅ Provider ${normalizedProvider} created with ID ${provider.id}`
+          );
+          logger.info(
+            `[AIConfigRoute] Provider ${normalizedProvider} created with ID ${provider.id}`
+          );
+        } catch (createError) {
+          console.error(
+            `[AIConfigRoute] ❌ Failed to auto-create provider:`,
+            createError
+          );
+          logger.warn(
+            `[AIConfigRoute] Failed to auto-create provider: ${createError?.message}`
+          );
+          provider = {
+            id: null,
+            provider_name: normalizedProvider,
+            display_name: providerParam || normalizedProvider,
+          };
+        }
+      } else {
+        console.log(
+          `[AIConfigRoute] ⚠️ No API key found for ${normalizedProvider}, using mock provider`
+        );
+        provider = {
+          id: null,
+          provider_name: normalizedProvider,
+          display_name: providerParam || normalizedProvider,
+        };
+      }
     }
 
     const ensureModelsSynced = async () => {
+      if (!provider.id) {
+        console.log(
+          `[AIConfigRoute] ⚠️ Provider ${normalizedProvider} has no ID, cannot sync models from API`
+        );
+        logger.warn(
+          `[AIConfigRoute] Provider ${normalizedProvider} has no ID, cannot sync models`
+        );
+        return [];
+      }
+
+      console.log(
+        `[AIConfigRoute] Checking cached models for provider ID: ${provider.id}, forceRefresh: ${forceRefresh}`
+      );
       let models = await getModels(provider.id);
-      if (!models.length) {
+
+      if (!models.length || forceRefresh) {
+        if (forceRefresh && models.length > 0) {
+          console.log(
+            `[AIConfigRoute] 🔄 Force refresh requested, re-syncing ${models.length} cached models from API...`
+          );
+        } else {
+          console.log(
+            `[AIConfigRoute] No cached models, syncing from API for provider ${provider.provider_name}...`
+          );
+        }
+
         try {
+          logger.info(
+            `[AIConfigRoute] Syncing models for provider ${provider.provider_name} (ID: ${provider.id})`
+          );
           models = await syncProviderModels(userId, provider.id);
+          console.log(
+            `[AIConfigRoute] ✅ Synced ${models.length} models from ${provider.provider_name} API`
+          );
+          logger.info(
+            `[AIConfigRoute] Synced ${models.length} models for ${provider.provider_name}`
+          );
         } catch (syncError) {
-          // swallow sync errors but log for diagnostics
+          console.error(
+            `[AIConfigRoute] ❌ Failed to sync models from API:`,
+            syncError
+          );
           logger.warn(
             `[AIConfigRoute] Failed to sync models for ${provider.provider_name}: ${syncError?.message}`
           );
         }
+      } else {
+        console.log(
+          `[AIConfigRoute] ✅ Using ${models.length} cached models for ${provider.provider_name}`
+        );
+        logger.info(
+          `[AIConfigRoute] Using ${models.length} cached models for ${provider.provider_name}`
+        );
       }
       return models;
     };
 
     let models = await ensureModelsSynced();
 
+    console.log(`[AIConfigRoute] ========== MODELS FROM SYNC ==========`);
+    console.log(`[AIConfigRoute] Total: ${models.length} models`);
+    console.log(
+      `[AIConfigRoute] Model IDs:`,
+      models.map((m) => m.model_id).join(", ")
+    );
+    console.log(
+      `[AIConfigRoute] Sample model structure:`,
+      JSON.stringify(models[0], null, 2)
+    );
+    console.log(`[AIConfigRoute] =====================================`);
+
     if (!models.length) {
-      const fallbackRegistry = MODEL_REGISTRY[provider.provider_name] || [];
+      console.log(
+        `[AIConfigRoute] ⚠️ No models from sync, using MODEL_REGISTRY fallback for ${normalizedProvider}`
+      );
+      logger.warn(
+        `[AIConfigRoute] No models from sync, using MODEL_REGISTRY fallback for ${normalizedProvider}`
+      );
+      const fallbackRegistry = MODEL_REGISTRY[normalizedProvider] || [];
+      console.log(
+        `[AIConfigRoute] MODEL_REGISTRY has ${fallbackRegistry.length} models for ${normalizedProvider}`
+      );
+      logger.info(
+        `[AIConfigRoute] MODEL_REGISTRY has ${fallbackRegistry.length} models for ${normalizedProvider}`
+      );
       models = fallbackRegistry.map((modelId, index) => ({
-        id: `${provider.id}:${modelId}`,
+        id: provider.id
+          ? `${provider.id}:${modelId}`
+          : `${normalizedProvider}:${modelId}`,
         model_id: modelId,
         display_name: modelId,
         description: `Modelo padrão para ${provider.display_name}`,
@@ -131,20 +314,37 @@ router.get("/models", authenticateJWT, async (req, res, next) => {
       }));
     }
 
+    console.log(
+      `[AIConfigRoute] Formatting ${models.length} models for ${normalizedProvider}`
+    );
+    console.log(
+      `[AIConfigRoute] Sample model:`,
+      JSON.stringify(models[0], null, 2)
+    );
+    logger.info(
+      `[AIConfigRoute] Formatting ${models.length} models for ${normalizedProvider}`
+    );
+    logger.info(`[AIConfigRoute] Sample model:`, models[0]);
+
     const formatted = models.map((model) => {
-      const contextWindow = Number(model.context_window || model.max_tokens || 0);
+      const contextWindow = Number(
+        model.context_window || model.max_tokens || 0
+      );
       const costInput =
-        model.cost_per_input_token !== null && model.cost_per_input_token !== undefined
+        model.cost_per_input_token !== null &&
+        model.cost_per_input_token !== undefined
           ? Number(model.cost_per_input_token)
           : null;
       const costOutput =
-        model.cost_per_output_token !== null && model.cost_per_output_token !== undefined
+        model.cost_per_output_token !== null &&
+        model.cost_per_output_token !== undefined
           ? Number(model.cost_per_output_token)
           : null;
 
       const capabilities = [];
       if (model.supports_streaming) capabilities.push("Streaming");
-      if (model.supports_function_calling) capabilities.push("Function Calling");
+      if (model.supports_function_calling)
+        capabilities.push("Function Calling");
       if (model.supports_vision) capabilities.push("Vision");
 
       return {
@@ -177,8 +377,30 @@ router.get("/models", authenticateJWT, async (req, res, next) => {
       };
     });
 
+    console.log(
+      `[AIConfigRoute] Returning ${formatted.length} formatted models for ${normalizedProvider}`
+    );
+    console.log(
+      `[AIConfigRoute] Sample formatted model:`,
+      JSON.stringify(formatted[0], null, 2)
+    );
+    logger.info(
+      `[AIConfigRoute] Returning ${formatted.length} formatted models for ${normalizedProvider}`
+    );
+    logger.info(`[AIConfigRoute] Sample formatted model:`, formatted[0]);
+
+    // Prevent caching to ensure fresh model data
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, private"
+    );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     return res.json({ success: true, models: formatted });
   } catch (error) {
+    console.error(`[AIConfigRoute] ❌ Error in GET /models:`, error);
+    logger.error(`[AIConfigRoute] Error in GET /models:`, error);
     next(error);
   }
 });
@@ -190,13 +412,19 @@ router.patch("/", authenticateJWT, async (req, res, next) => {
     if (!selection && !fallbackProvider) {
       return res
         .status(400)
-        .json({ success: false, error: "selection or fallbackProvider required" });
+        .json({
+          success: false,
+          error: "selection or fallbackProvider required",
+        });
     }
 
     if (selection && !context) {
       return res
         .status(400)
-        .json({ success: false, error: "context is required when updating selection" });
+        .json({
+          success: false,
+          error: "context is required when updating selection",
+        });
     }
 
     const fullSettings = await loadUserSettings(req.user);

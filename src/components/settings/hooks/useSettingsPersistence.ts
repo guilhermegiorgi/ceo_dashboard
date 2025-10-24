@@ -196,32 +196,50 @@ export function useSettingsPersistence() {
 
   const saveSettings = async () => {
     try {
+      // Save to localStorage first (always works)
       localStorage.setItem(BRAINCLOUD_KEY, JSON.stringify(brainCloudSettings));
       localStorage.setItem(INTERFACE_KEY, JSON.stringify(interfacePreferences));
       localStorage.setItem(AI_KEYS_KEY, JSON.stringify(aiProviderConfig.apiKeys));
       localStorage.setItem(SYSTEM_KEY, JSON.stringify(systemSettings));
       localStorage.setItem(AI_PROVIDER_KEY, JSON.stringify(aiProviderConfig));
 
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          brainCloud: brainCloudSettings,
-          interface: interfacePreferences,
-          aiKeys: aiProviderConfig.apiKeys,
-          system: systemSettings,
-          aiProvider: aiProviderConfig,
-        }),
-      });
+      console.log('[useSettingsPersistence] Settings saved to localStorage');
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[useSettingsPersistence] Server error:', response.status, errorText);
-        throw new Error(`Failed to save settings: ${response.status} - ${errorText}`);
+      // Try to sync with server if authenticated
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            brainCloud: brainCloudSettings,
+            interface: interfacePreferences,
+            aiKeys: aiProviderConfig.apiKeys,
+            system: systemSettings,
+            aiProvider: aiProviderConfig,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.warn('[useSettingsPersistence] Server sync failed:', response.status, errorText);
+          
+          // For 401, just warn but don't fail the entire save operation
+          if (response.status === 401) {
+            console.warn('[useSettingsPersistence] Not authenticated - settings saved locally only');
+            return { success: true, localOnly: true };
+          }
+          
+          throw new Error(`Failed to save settings to server: ${response.status} - ${errorText}`);
+        }
+
+        console.log('[useSettingsPersistence] Settings synced to server');
+        return { success: true };
+      } catch (serverError) {
+        console.warn('[useSettingsPersistence] Server sync error:', serverError);
+        // Settings were saved to localStorage, so consider it a partial success
+        return { success: true, localOnly: true, error: serverError };
       }
-
-      return { success: true };
     } catch (error) {
       console.error('[useSettingsPersistence] Error saving settings:', error);
       return { success: false, error };

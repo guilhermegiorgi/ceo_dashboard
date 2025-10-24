@@ -180,6 +180,14 @@ export function useBrainCloudEvents(
     // Get token from localStorage for authentication
     const token =
       typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    
+    // Don't try to connect if no authentication is available
+    if (!token) {
+      console.warn("[useBrainCloudEvents] No authentication token available, skipping connection");
+      setError(new Error("Authentication required"));
+      return;
+    }
+    
     const separator = queryString ? "&" : "?";
     const authParam = token
       ? `${separator}token=${encodeURIComponent(token)}`
@@ -219,7 +227,7 @@ export function useBrainCloudEvents(
       handleEventMessage(event as MessageEvent<string>);
     };
 
-    eventSource.onerror = () => {
+    eventSource.onerror = (errorEvent) => {
       if (!mountedRef.current) {
         return;
       }
@@ -231,13 +239,18 @@ export function useBrainCloudEvents(
       cleanupEventSource();
       onDisconnect?.();
 
-      if (reconnect && !isManuallyDisconnectedRef.current) {
+      // Check if we have a token before attempting to reconnect
+      const hasToken = typeof window !== "undefined" && localStorage.getItem("token");
+      
+      if (reconnect && !isManuallyDisconnectedRef.current && hasToken) {
         clearReconnectTimer();
         reconnectTimerRef.current = window.setTimeout(() => {
           if (mountedRef.current) {
             connectRef.current?.();
           }
         }, reconnectInterval);
+      } else if (!hasToken) {
+        console.warn("[useBrainCloudEvents] No token available, will not attempt to reconnect");
       }
     };
   }, [

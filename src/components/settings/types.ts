@@ -39,7 +39,8 @@ export type AIProvider =
   | "anthropic"
   | "google"
   | "perplexity"
-  | "openrouter";
+  | "openrouter"
+  | "custom";
 
 export type ModelContext = "chat" | "insights" | "global";
 

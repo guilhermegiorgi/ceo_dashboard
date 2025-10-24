@@ -12,7 +12,8 @@ const providers = [
   { key: 'anthropic' as keyof AIApiKeys, label: 'Anthropic', placeholder: 'sk-ant-', hint: 'Claude 3, Sonnet' },
   { key: 'google' as keyof AIApiKeys, label: 'Google', placeholder: 'AIza', hint: 'Gemini Pro, Ultra' },
   { key: 'perplexity' as keyof AIApiKeys, label: 'Perplexity', placeholder: 'pplx-', hint: 'pplx-70b-online' },
-  { key: 'openrouter' as keyof AIApiKeys, label: 'Open Router', placeholder: 'sk-or-', hint: 'Multiple models' }
+  { key: 'openrouter' as keyof AIApiKeys, label: 'OpenRouter', placeholder: 'sk-or-', hint: 'Multiple models' },
+  { key: 'custom' as keyof AIApiKeys, label: 'Custom', placeholder: 'your-api-key', hint: 'Custom provider' }
 ];
 
 export function AIApiKeysSection({ apiKeys, onChange, disabled }: Props) {

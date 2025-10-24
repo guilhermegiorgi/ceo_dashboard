@@ -8,47 +8,7 @@ import { query } from "../database/pg-pool.js";
  * Verifica o token JWT no cabeçalho de autorização
  */
 export const authenticateJWT = (req, res, next) => {
-  // Debug logging for /api/settings specifically
-  if (req.path === '/' && req.baseUrl === '/api/settings') {
-    console.log('[auth] /api/settings root - session check:', {
-      path: req.path,
-      baseUrl: req.baseUrl,
-      isAuthenticatedExists: typeof req.isAuthenticated,
-      isAuthenticated: req.isAuthenticated?.(),
-      hasSession: !!req.session,
-      sessionID: req.sessionID,
-      hasPassportUser: !!req.session?.passport?.user,
-      passportUser: req.session?.passport?.user,
-      cookies: req.headers.cookie?.substring(0, 80),
-    });
-  }
-
-  // Check for Passport session first (OAuth login)
-  const hasPassportUser = req.session?.passport?.user;
-  const isAuthenticatedMethod = req.isAuthenticated && req.isAuthenticated();
-  
-  console.log('[auth] Authentication check:', {
-    path: req.path,
-    hasIsAuthenticatedMethod: !!req.isAuthenticated,
-    isAuthenticatedResult: isAuthenticatedMethod,
-    hasSession: !!req.session,
-    hasPassportUser: !!hasPassportUser,
-    passportUserId: hasPassportUser,
-    hasReqUser: !!req.user,
-    reqUserId: req.user?.id,
-  });
-  
-  if (isAuthenticatedMethod && req.user) {
-    console.log('[auth] ✅ User authenticated via Passport session:', req.user?.email);
-    return next();
-  }
-  
-  // Fallback: check if session has passport user but req.user not populated yet
-  if (hasPassportUser && !req.user) {
-    console.log('[auth] ⚠️  Session has passport user but req.user not populated');
-  }
-
-  // Obtém o token do cabeçalho Authorization ou query parameter (para EventSource)
+  // Try JWT token first (most common case for API calls)
   const authHeader = req.headers.authorization;
   let token;
 
@@ -59,62 +19,62 @@ export const authenticateJWT = (req, res, next) => {
     token = req.query.token;
   }
 
-  if (!token) {
-    logger.warn("Tentativa de acesso sem token de autenticação", {
-      ip: req.ip,
-      path: req.path,
-      method: req.method,
-      hasSession: !!req.session,
-      sessionID: req.sessionID,
-      hasPassportUser: !!req.session?.passport?.user,
-    });
+  // If JWT token exists, validate it
+  if (token) {
 
-    return res.status(401).json({
-      success: false,
-      error: "Não autorizado",
-      message: "Token de autenticação não fornecido ou sessão inválida",
-    });
-  }
+    try {
+      // Verifica e decodifica o token
+      const decoded = jwt.verify(token, config.jwtSecret);
 
-  try {
-    // Verifica e decodifica o token
-    const decoded = jwt.verify(token, config.jwtSecret);
+      // Adiciona o usuário decodificado ao objeto de requisição
+      req.user = {
+        id: decoded.userId,
+        email: decoded.email,
+        role: decoded.role || "user",
+        ...decoded,
+      };
 
-    // Adiciona o usuário decodificado ao objeto de requisição
-    req.user = {
-      id: decoded.userId,
-      email: decoded.email,
-      role: decoded.role || "user",
-      ...decoded,
-    };
+      logger.debug(`✅ JWT autenticado: ${req.user.email}`, {
+        userId: req.user.id,
+        path: req.path,
+      });
 
-    logger.debug(`Usuário autenticado: ${req.user.id} (${req.user.email})`, {
-      role: req.user.role,
-      path: req.path,
-    });
-
-    next();
-  } catch (error) {
-    logger.warn("Falha na autenticação do token", {
-      error: error.message,
-      ip: req.ip,
-      path: req.path,
-    });
-
-    let errorMessage = "Token inválido";
-
-    if (error.name === "TokenExpiredError") {
-      errorMessage = "Token expirado";
-    } else if (error.name === "JsonWebTokenError") {
-      errorMessage = "Token malformado";
+      return next();
+    } catch (error) {
+      logger.warn("JWT inválido, tentando sessão Passport", {
+        error: error.message,
+        path: req.path,
+      });
+      // Continue to Passport session check below
     }
-
-    return res.status(401).json({
-      success: false,
-      error: "Não autorizado",
-      message: errorMessage,
-    });
   }
+
+  // Fallback to Passport session (for OAuth login without JWT)
+  const isAuthenticatedMethod = req.isAuthenticated && req.isAuthenticated();
+  
+  if (isAuthenticatedMethod && req.user) {
+    logger.debug(`✅ Passport session autenticada: ${req.user.email}`, {
+      userId: req.user.id,
+      path: req.path,
+    });
+    return next();
+  }
+
+  // No valid authentication found
+  logger.warn("Tentativa de acesso não autorizado", {
+    ip: req.ip,
+    path: req.path,
+    method: req.method,
+    hasJWT: !!token,
+    hasSession: !!req.session,
+    hasPassportUser: !!req.session?.passport?.user,
+  });
+
+  return res.status(401).json({
+    success: false,
+    error: "Não autorizado",
+    message: "Token de autenticação não fornecido ou sessão inválida",
+  });
 };
 
 /**
