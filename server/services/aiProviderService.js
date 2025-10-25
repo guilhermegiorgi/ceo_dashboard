@@ -1052,20 +1052,49 @@ async function disableMissingModels(providerId, activeModelIds) {
 export async function syncProviderModels(userId, providerId) {
   try {
     const provider = await getProviderById(providerId, userId);
-    const fetcher = MODEL_FETCHERS[provider.provider_name];
-
-    if (!fetcher) {
-      throw new Error("Modelo de sincronia não suportado para este provedor");
-    }
+    const normalizedProviderName = provider.provider_name?.toLowerCase();
+    const fetcher = MODEL_FETCHERS[normalizedProviderName];
 
     console.log(
       `[syncProviderModels] 🔄 Starting sync for provider ${provider.provider_name} (ID: ${providerId})`
     );
 
-    const { apiKey, baseUrl } = await getProviderApiKey(userId, providerId);
-    console.log(`[syncProviderModels] Got API key, calling fetcher...`);
+    let remoteModels = [];
 
-    const remoteModels = await fetcher({ apiKey, baseUrl });
+    if (!fetcher) {
+      console.warn(
+        `[syncProviderModels] ⚠️ No API fetcher for provider: ${provider.provider_name} (normalized: ${normalizedProviderName})`
+      );
+      console.warn(
+        `[syncProviderModels] Available fetchers:`,
+        Object.keys(MODEL_FETCHERS).join(", ")
+      );
+      console.log(
+        `[syncProviderModels] Using MODEL_REGISTRY fallback for ${normalizedProviderName}`
+      );
+
+      // Use MODEL_REGISTRY fallback for providers without API fetchers
+      const registryModels = MODEL_REGISTRY[normalizedProviderName] || [];
+      remoteModels = registryModels.map((modelId) => ({
+        modelId,
+        displayName: modelId,
+        description: `Modelo padrão para ${provider.display_name}`,
+        supportsStreaming: true,
+        supportsFunctionCalling: true,
+        supportsVision: false,
+      }));
+
+      console.log(
+        `[syncProviderModels] ℹ️ Using ${remoteModels.length} models from registry for ${provider.provider_name}`
+      );
+    } else {
+      const { apiKey, baseUrl } = await getProviderApiKey(userId, providerId);
+      console.log(
+        `[syncProviderModels] Got API key, calling fetcher for ${provider.provider_name}...`
+      );
+
+      remoteModels = await fetcher({ apiKey, baseUrl });
+    }
     console.log(
       `[syncProviderModels] ✅ Fetcher returned ${remoteModels.length} models`
     );
