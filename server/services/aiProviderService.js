@@ -826,12 +826,26 @@ function buildUrl(baseUrl, path) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Request failed ${response.status}: ${text}`);
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error(
+        `[fetchJson] ❌ HTTP ${response.status} from ${url}`,
+        text ? `Response: ${text.substring(0, 200)}` : ""
+      );
+      throw new Error(`Request failed ${response.status}: ${text}`);
+    }
+    const data = await response.json();
+    console.log(`[fetchJson] ✅ Success from ${url.substring(0, 60)}...`);
+    return data;
+  } catch (error) {
+    console.error(`[fetchJson] ❌ Error fetching ${url}:`, {
+      message: error.message,
+      name: error.name,
+    });
+    throw error;
   }
-  return response.json();
 }
 
 async function fetchOpenAIModels({ apiKey, baseUrl }) {
@@ -880,7 +894,10 @@ async function fetchOpenAIModels({ apiKey, baseUrl }) {
 
 async function fetchAnthropicModels({ apiKey, baseUrl }) {
   const url = buildUrl(baseUrl || ANTHROPIC_BASE_URL, "/v1/models");
-  console.log(`[fetchAnthropicModels] Fetching from: ${url}`);
+  console.log(
+    `[fetchAnthropicModels] 🔄 Fetching from: ${url}`,
+    `API Key length: ${apiKey?.length || 0}`
+  );
 
   const data = await fetchJson(url, {
     headers: {
@@ -889,16 +906,18 @@ async function fetchAnthropicModels({ apiKey, baseUrl }) {
     },
   });
 
-  console.log(`[fetchAnthropicModels] Raw response:`, {
+  console.log(`[fetchAnthropicModels] 📦 Raw response:`, {
     hasModels: !!data?.models,
     modelsLength: data?.models?.length,
     hasData: !!data?.data,
     dataLength: data?.data?.length,
-    sampleModel: data?.models?.[0] || data?.data?.[0],
+    sampleModel: data?.models?.[0]?.id || data?.data?.[0]?.id,
   });
 
   const models = Array.isArray(data?.models) ? data.models : data?.data || [];
-  console.log(`[fetchAnthropicModels] Total models from API: ${models.length}`);
+  console.log(
+    `[fetchAnthropicModels] ✅ Total models from API: ${models.length}`
+  );
 
   const filtered = models
     .filter((model) => typeof model?.id === "string")
@@ -928,13 +947,27 @@ async function fetchAnthropicModels({ apiKey, baseUrl }) {
 
 async function fetchDeepSeekModels({ apiKey, baseUrl }) {
   const url = buildUrl(baseUrl || DEEPSEEK_BASE_URL, "/models");
+  console.log(
+    `[fetchDeepSeekModels] 🔄 Fetching from: ${url}`,
+    `API Key length: ${apiKey?.length || 0}`
+  );
+
   const data = await fetchJson(url, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
   });
 
+  console.log(`[fetchDeepSeekModels] 📦 Raw response:`, {
+    hasData: !!data?.data,
+    dataLength: data?.data?.length,
+    sampleModel: data?.data?.[0]?.id,
+  });
+
   const models = Array.isArray(data?.data) ? data.data : [];
+  console.log(
+    `[fetchDeepSeekModels] ✅ Total models from API: ${models.length}`
+  );
   return models.map((model) => {
     const id = model.id || model.name;
     return {
@@ -952,13 +985,27 @@ async function fetchDeepSeekModels({ apiKey, baseUrl }) {
 
 async function fetchOpenRouterModels({ apiKey, baseUrl }) {
   const url = buildUrl(baseUrl || OPENROUTER_BASE_URL, "/models");
+  console.log(
+    `[fetchOpenRouterModels] 🔄 Fetching from: ${url}`,
+    `API Key length: ${apiKey?.length || 0}`
+  );
+
   const data = await fetchJson(url, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
   });
 
+  console.log(`[fetchOpenRouterModels] 📦 Raw response:`, {
+    hasData: !!data?.data,
+    dataLength: data?.data?.length,
+    sampleModel: data?.data?.[0]?.id,
+  });
+
   const models = Array.isArray(data?.data) ? data.data : [];
+  console.log(
+    `[fetchOpenRouterModels] ✅ Total models from API: ${models.length}`
+  );
   return models.map((model) => {
     const pricing = model.pricing || {};
     const id = model.id || model.slug;
@@ -982,20 +1029,23 @@ async function fetchOpenRouterModels({ apiKey, baseUrl }) {
 async function fetchGeminiModels({ apiKey, baseUrl }) {
   // Gemini API uses API key as query parameter, not in headers
   const baseUrlValue = baseUrl || GEMINI_BASE_URL;
-  const url = `${baseUrlValue}/models?key=${apiKey}`;
+  const url = `${baseUrlValue}/models?key=${apiKey?.substring(0, 10)}...`;
 
-  console.log(`[fetchGeminiModels] Fetching from: ${baseUrlValue}/models`);
+  console.log(
+    `[fetchGeminiModels] 🔄 Fetching from: ${baseUrlValue}/models`,
+    `API Key length: ${apiKey?.length || 0}`
+  );
 
-  const data = await fetchJson(url);
+  const data = await fetchJson(`${baseUrlValue}/models?key=${apiKey}`);
 
-  console.log(`[fetchGeminiModels] Raw response:`, {
+  console.log(`[fetchGeminiModels] 📦 Raw response:`, {
     hasModels: !!data?.models,
     modelsLength: data?.models?.length,
     sampleModel: data?.models?.[0]?.displayName,
   });
 
   const models = Array.isArray(data?.models) ? data.models : [];
-  console.log(`[fetchGeminiModels] Total models from API: ${models.length}`);
+  console.log(`[fetchGeminiModels] ✅ Total models from API: ${models.length}`);
 
   const filtered = models
     .filter((model) => {
