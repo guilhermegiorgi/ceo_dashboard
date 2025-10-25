@@ -5,6 +5,7 @@
 
 import { query } from "../database/pg-pool.js";
 import { logger } from "../src/utils/logger.js";
+import { MODEL_REGISTRY } from "./aiConfigService.js";
 import crypto from "crypto";
 import fetch from "node-fetch";
 
