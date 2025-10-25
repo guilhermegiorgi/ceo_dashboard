@@ -157,7 +157,9 @@ export class AIProviderRouter {
 
     try {
       logger.info(
-        `[AIProviderRouter] Routing request provider=${provider}, model=${validatedModel}, stream=${payload.stream === true}`
+        `[AIProviderRouter] Routing request provider=${provider}, model=${validatedModel}, stream=${
+          payload.stream === true
+        }`
       );
 
       return await this.callProvider(provider, validatedModel, payload, {
@@ -204,10 +206,15 @@ export class AIProviderRouter {
     }
 
     try {
-      const result = await this.callProvider(provider, validatedModel, streamingPayload, {
-        ...routingConfig,
-        apiKey,
-      });
+      const result = await this.callProvider(
+        provider,
+        validatedModel,
+        streamingPayload,
+        {
+          ...routingConfig,
+          apiKey,
+        }
+      );
       await this.processStream(result, onChunk);
     } catch (error) {
       this.attachStatusCode(error);
@@ -328,16 +335,12 @@ export class AIProviderRouter {
       };
     }
 
-    const registry = MODEL_REGISTRY?.[provider];
-
-    if (Array.isArray(registry) && registry.length > 0) {
-      if (!registry.includes(model)) {
-        return {
-          valid: false,
-          error: `Model ${model} not available for ${provider}`,
-        };
-      }
-    }
+    // Note: We don't validate against MODEL_REGISTRY here because:
+    // 1. Users load models dynamically from provider APIs
+    // 2. MODEL_REGISTRY is just a hardcoded fallback for when API calls fail
+    // 3. New models are added to providers frequently, so static validation is unreliable
+    // 4. The provider API itself will validate the model during the actual call
+    // 5. Trust the user's selection if they have a valid API key
 
     return { valid: true };
   }
