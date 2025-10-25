@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { SetStateAction } from 'react';
+import { useState, useEffect, useCallback } from "react";
+import type { SetStateAction } from "react";
 import {
   BrainCloudSettings,
   InterfacePreferences,
@@ -7,26 +7,26 @@ import {
   SystemSettings,
   AIProviderConfig,
   ModelSelectionMap,
-} from '../types';
+} from "../types";
 
-const BRAINCLOUD_KEY = 'ggai.settings.braincloud';
-const INTERFACE_KEY = 'ggai.settings.interface';
-const AI_KEYS_KEY = 'ggai.settings.aikeys';
-const SYSTEM_KEY = 'ggai.settings.system';
-const AI_PROVIDER_KEY = 'ggai.settings.aiProvider';
+const BRAINCLOUD_KEY = "ggai.settings.braincloud";
+const INTERFACE_KEY = "ggai.settings.interface";
+const AI_KEYS_KEY = "ggai.settings.aikeys";
+const SYSTEM_KEY = "ggai.settings.system";
+const AI_PROVIDER_KEY = "ggai.settings.aiProvider";
 
 export const defaultBrainCloudSettings: BrainCloudSettings = {
-  connectionMode: 'auto',
+  connectionMode: "auto",
   mcpEnabled: true,
   restEnabled: true,
-  mcpServerUrl: 'http://localhost:3100',
-  restApiUrl: 'https://obsidian-brain.cloud/api/v1',
-  restApiKey: '',
+  mcpServerUrl: "http://localhost:3100",
+  restApiUrl: "https://obsidian-brain.cloud/api/v1",
+  restApiKey: "",
 };
 
 export const defaultInterfacePreferences: InterfacePreferences = {
-  theme: 'auto',
-  language: 'pt-BR',
+  theme: "auto",
+  language: "pt-BR",
   enableSounds: true,
   enableAnimations: true,
   compactMode: false,
@@ -34,16 +34,17 @@ export const defaultInterfacePreferences: InterfacePreferences = {
 };
 
 export const defaultAIApiKeys: AIApiKeys = {
-  openai: '',
-  anthropic: '',
-  google: '',
-  perplexity: '',
-  openrouter: '',
+  openai: "",
+  anthropic: "",
+  google: "",
+  deepseek: "",
+  perplexity: "",
+  openrouter: "",
 };
 
 export const defaultSystemSettings: SystemSettings = {
   allowEditAllDirectories: false,
-  adminApiToken: '',
+  adminApiToken: "",
   pathOverrideTTL: 600,
   autoSaveInterval: 30,
   enableDebugMode: false,
@@ -51,66 +52,65 @@ export const defaultSystemSettings: SystemSettings = {
 
 const defaultModelSelection: ModelSelectionMap = {
   chat: {
-    provider: 'openai',
-    model: 'gpt-4o-mini',
+    provider: "openai",
+    model: "gpt-4o-mini",
     temperature: 0.7,
     maxTokens: 2048,
   },
   insights: {
-    provider: 'anthropic',
-    model: 'claude-3-haiku',
+    provider: "anthropic",
+    model: "claude-3-haiku",
     temperature: 0.4,
     maxTokens: 1536,
   },
   global: {
-    provider: 'google',
-    model: 'gemini-1.5-flash',
+    provider: "google",
+    model: "gemini-1.5-flash",
     temperature: 0.5,
     maxTokens: 2048,
   },
 };
 
-const cloneModelSelection = (selection: ModelSelectionMap): ModelSelectionMap => ({
+const cloneModelSelection = (
+  selection: ModelSelectionMap
+): ModelSelectionMap => ({
   chat: { ...selection.chat },
   insights: { ...selection.insights },
   global: { ...selection.global },
 });
 
 const defaultAIProviderConfig: AIProviderConfig = {
-    apiKeys: { ...defaultAIApiKeys },
-    modelSelection: cloneModelSelection(defaultModelSelection),
-    customProviders: {},
-    fallbackProvider: 'openai',
+  apiKeys: { ...defaultAIApiKeys },
+  modelSelection: cloneModelSelection(defaultModelSelection),
+  customProviders: {},
+  fallbackProvider: "openai",
 };
 
 export function useSettingsPersistence() {
-  const [brainCloudSettings, setBrainCloudSettings] = useState<BrainCloudSettings>(
-    defaultBrainCloudSettings
-  );
-  const [interfacePreferences, setInterfacePreferences] = useState<InterfacePreferences>(
-    defaultInterfacePreferences
-  );
+  const [brainCloudSettings, setBrainCloudSettings] =
+    useState<BrainCloudSettings>(defaultBrainCloudSettings);
+  const [interfacePreferences, setInterfacePreferences] =
+    useState<InterfacePreferences>(defaultInterfacePreferences);
   const [aiProviderConfig, setAIProviderConfig] = useState<AIProviderConfig>(
     defaultAIProviderConfig
   );
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
-
-  const setAIApiKeys = useCallback(
-    (value: SetStateAction<AIApiKeys>) => {
-      setAIProviderConfig((prev) => {
-        const current = prev.apiKeys;
-        const next =
-          typeof value === 'function'
-            ? (value as (prevState: AIApiKeys) => AIApiKeys)(current)
-            : value;
-        return {
-          ...prev,
-          apiKeys: { ...next },
-        };
-      });
-    },
-    []
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(
+    defaultSystemSettings
   );
+
+  const setAIApiKeys = useCallback((value: SetStateAction<AIApiKeys>) => {
+    setAIProviderConfig((prev) => {
+      const current = prev.apiKeys;
+      const next =
+        typeof value === "function"
+          ? (value as (prevState: AIApiKeys) => AIApiKeys)(current)
+          : value;
+      return {
+        ...prev,
+        apiKeys: { ...next },
+      };
+    });
+  }, []);
 
   useEffect(() => {
     loadSettings();
@@ -119,8 +119,10 @@ export function useSettingsPersistence() {
 
   const loadSettings = async () => {
     try {
-      console.log('[useSettingsPersistence] Loading settings from localStorage and server');
-      
+      console.log(
+        "[useSettingsPersistence] Loading settings from localStorage and server"
+      );
+
       // Load from localStorage first (immediate)
       const brainCloud = localStorage.getItem(BRAINCLOUD_KEY);
       const interface_ = localStorage.getItem(INTERFACE_KEY);
@@ -138,7 +140,10 @@ export function useSettingsPersistence() {
             ...JSON.parse(aiProvider),
           }));
         } catch (error) {
-          console.error('[useSettingsPersistence] Failed to parse AI provider config from localStorage:', error);
+          console.error(
+            "[useSettingsPersistence] Failed to parse AI provider config from localStorage:",
+            error
+          );
         }
       }
       if (aiKeys) {
@@ -148,22 +153,34 @@ export function useSettingsPersistence() {
       // Try to load from server with retry logic
       let retries = 3;
       let delay = 500; // Start with 500ms delay
-      
-      console.log('[useSettingsPersistence] Starting server fetch...');
+
+      console.log("[useSettingsPersistence] Starting server fetch...");
       while (retries > 0) {
         try {
-          console.log(`[useSettingsPersistence] Fetching from /api/settings (attempt ${4 - retries}/3)`);
-          const serverResponse = await fetch('/api/settings', {
-            credentials: 'include',
+          console.log(
+            `[useSettingsPersistence] Fetching from /api/settings (attempt ${
+              4 - retries
+            }/3)`
+          );
+          const serverResponse = await fetch("/api/settings", {
+            credentials: "include",
           });
-          
-          console.log('[useSettingsPersistence] Server response status:', serverResponse.status);
-          
+
+          console.log(
+            "[useSettingsPersistence] Server response status:",
+            serverResponse.status
+          );
+
           if (serverResponse.ok) {
             const serverSettings = await serverResponse.json();
-            console.log('✅ [useSettingsPersistence] Settings loaded from server:', serverSettings);
-            if (serverSettings.brainCloud) setBrainCloudSettings(serverSettings.brainCloud);
-            if (serverSettings.interface) setInterfacePreferences(serverSettings.interface);
+            console.log(
+              "✅ [useSettingsPersistence] Settings loaded from server:",
+              serverSettings
+            );
+            if (serverSettings.brainCloud)
+              setBrainCloudSettings(serverSettings.brainCloud);
+            if (serverSettings.interface)
+              setInterfacePreferences(serverSettings.interface);
             if (serverSettings.aiProvider) {
               setAIProviderConfig((prev) => ({
                 ...defaultAIProviderConfig,
@@ -176,21 +193,28 @@ export function useSettingsPersistence() {
             break; // Success, exit retry loop
           } else if (serverResponse.status === 401 && retries > 1) {
             // Auth not ready yet, wait and retry
-            console.log(`[useSettingsPersistence] Auth not ready, retrying in ${delay}ms... (${retries - 1} retries left)`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            console.log(
+              `[useSettingsPersistence] Auth not ready, retrying in ${delay}ms... (${
+                retries - 1
+              } retries left)`
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
             delay *= 2; // Exponential backoff
             retries--;
           } else {
-            console.warn('[useSettingsPersistence] Failed to load from server:', serverResponse.status);
+            console.warn(
+              "[useSettingsPersistence] Failed to load from server:",
+              serverResponse.status
+            );
             break; // Don't retry for other errors
           }
         } catch (fetchError) {
-          console.error('[useSettingsPersistence] Fetch error:', fetchError);
+          console.error("[useSettingsPersistence] Fetch error:", fetchError);
           break; // Don't retry on network errors
         }
       }
     } catch (error) {
-      console.error('[useSettingsPersistence] Error loading settings:', error);
+      console.error("[useSettingsPersistence] Error loading settings:", error);
     }
   };
 
@@ -199,18 +223,21 @@ export function useSettingsPersistence() {
       // Save to localStorage first (always works)
       localStorage.setItem(BRAINCLOUD_KEY, JSON.stringify(brainCloudSettings));
       localStorage.setItem(INTERFACE_KEY, JSON.stringify(interfacePreferences));
-      localStorage.setItem(AI_KEYS_KEY, JSON.stringify(aiProviderConfig.apiKeys));
+      localStorage.setItem(
+        AI_KEYS_KEY,
+        JSON.stringify(aiProviderConfig.apiKeys)
+      );
       localStorage.setItem(SYSTEM_KEY, JSON.stringify(systemSettings));
       localStorage.setItem(AI_PROVIDER_KEY, JSON.stringify(aiProviderConfig));
 
-      console.log('[useSettingsPersistence] Settings saved to localStorage');
+      console.log("[useSettingsPersistence] Settings saved to localStorage");
 
       // Try to sync with server if authenticated
       try {
-        const response = await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+        const response = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             brainCloud: brainCloudSettings,
             interface: interfacePreferences,
@@ -222,26 +249,37 @@ export function useSettingsPersistence() {
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.warn('[useSettingsPersistence] Server sync failed:', response.status, errorText);
-          
+          console.warn(
+            "[useSettingsPersistence] Server sync failed:",
+            response.status,
+            errorText
+          );
+
           // For 401, just warn but don't fail the entire save operation
           if (response.status === 401) {
-            console.warn('[useSettingsPersistence] Not authenticated - settings saved locally only');
+            console.warn(
+              "[useSettingsPersistence] Not authenticated - settings saved locally only"
+            );
             return { success: true, localOnly: true };
           }
-          
-          throw new Error(`Failed to save settings to server: ${response.status} - ${errorText}`);
+
+          throw new Error(
+            `Failed to save settings to server: ${response.status} - ${errorText}`
+          );
         }
 
-        console.log('[useSettingsPersistence] Settings synced to server');
+        console.log("[useSettingsPersistence] Settings synced to server");
         return { success: true };
       } catch (serverError) {
-        console.warn('[useSettingsPersistence] Server sync error:', serverError);
+        console.warn(
+          "[useSettingsPersistence] Server sync error:",
+          serverError
+        );
         // Settings were saved to localStorage, so consider it a partial success
         return { success: true, localOnly: true, error: serverError };
       }
     } catch (error) {
-      console.error('[useSettingsPersistence] Error saving settings:', error);
+      console.error("[useSettingsPersistence] Error saving settings:", error);
       return { success: false, error };
     }
   };
