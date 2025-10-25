@@ -166,6 +166,47 @@ const DEFAULT_MODELS = {
       isDefault: false,
     },
   ],
+  gemini: [
+    {
+      modelId: "gemini-2.0-flash",
+      displayName: "Gemini 2.0 Flash",
+      description: "Latest Gemini model with improved performance",
+      supportsStreaming: true,
+      supportsFunctionCalling: true,
+      supportsVision: true,
+      maxTokens: 8192,
+      contextWindow: 1000000,
+      costPerInputToken: 0.075,
+      costPerOutputToken: 0.3,
+      isDefault: true,
+    },
+    {
+      modelId: "gemini-1.5-pro",
+      displayName: "Gemini 1.5 Pro",
+      description: "Advanced reasoning and complex task handling",
+      supportsStreaming: true,
+      supportsFunctionCalling: true,
+      supportsVision: true,
+      maxTokens: 8192,
+      contextWindow: 1000000,
+      costPerInputToken: 1.25,
+      costPerOutputToken: 5.0,
+      isDefault: false,
+    },
+    {
+      modelId: "gemini-1.5-flash",
+      displayName: "Gemini 1.5 Flash",
+      description: "Fast and efficient model for everyday tasks",
+      supportsStreaming: true,
+      supportsFunctionCalling: true,
+      supportsVision: true,
+      maxTokens: 8192,
+      contextWindow: 1000000,
+      costPerInputToken: 0.075,
+      costPerOutputToken: 0.3,
+      isDefault: false,
+    },
+  ],
 };
 
 /**
@@ -776,6 +817,7 @@ const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 function buildUrl(baseUrl, path) {
   const sanitizedBase = (baseUrl || "").replace(/\/$/, "");
@@ -937,11 +979,63 @@ async function fetchOpenRouterModels({ apiKey, baseUrl }) {
   });
 }
 
+async function fetchGeminiModels({ apiKey, baseUrl }) {
+  // Gemini API uses API key as query parameter, not in headers
+  const baseUrlValue = baseUrl || GEMINI_BASE_URL;
+  const url = `${baseUrlValue}/models?key=${apiKey}`;
+
+  console.log(`[fetchGeminiModels] Fetching from: ${baseUrlValue}/models`);
+
+  const data = await fetchJson(url);
+
+  console.log(`[fetchGeminiModels] Raw response:`, {
+    hasModels: !!data?.models,
+    modelsLength: data?.models?.length,
+    sampleModel: data?.models?.[0]?.displayName,
+  });
+
+  const models = Array.isArray(data?.models) ? data.models : [];
+  console.log(`[fetchGeminiModels] Total models from API: ${models.length}`);
+
+  const filtered = models
+    .filter((model) => {
+      // Only include models that support generateContent
+      const methods = model.supportedGenerationMethods || [];
+      return methods.includes("generateContent") && model.displayName;
+    })
+    .map((model) => {
+      // Extract meaningful model ID from the full name (e.g., "models/gemini-2.0-flash" -> "gemini-2.0-flash")
+      const modelIdFull = model.name || "";
+      const modelId = modelIdFull.replace("models/", "");
+
+      // Check capabilities from model name
+      const supportsVision = /vision|gemini-[12]/.test(modelId);
+      const supportsFunctionCalling = true; // Gemini models support function calling
+
+      return {
+        modelId: modelId,
+        displayName: model.displayName || modelId,
+        description: model.description || "Modelo Google Gemini",
+        supportsStreaming: true,
+        supportsFunctionCalling,
+        supportsVision,
+        maxTokens: model.maxOutputTokens || 8192,
+        contextWindow: model.maxInputTokens || 1000000,
+      };
+    });
+
+  console.log(
+    `[fetchGeminiModels] ✅ Returning ${filtered.length} models after filtering`
+  );
+  return filtered;
+}
+
 const MODEL_FETCHERS = {
   openai: fetchOpenAIModels,
   anthropic: fetchAnthropicModels,
   deepseek: fetchDeepSeekModels,
   openrouter: fetchOpenRouterModels,
+  gemini: fetchGeminiModels,
 };
 
 async function disableMissingModels(providerId, activeModelIds) {
