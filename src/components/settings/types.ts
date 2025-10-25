@@ -26,18 +26,17 @@ export type SystemSettings = {
   enableDebugMode: boolean;
 };
 
-export type TestStatus =
-  | {
-      mode: BrainCloudConnectionMode;
-      status: "idle" | "testing" | "success" | "error";
-      message?: string;
-    }
-  | null;
+export type TestStatus = {
+  mode: BrainCloudConnectionMode;
+  status: "idle" | "testing" | "success" | "error";
+  message?: string;
+} | null;
 
 export type AIProvider =
   | "openai"
   | "anthropic"
   | "google"
+  | "deepseek"
   | "perplexity"
   | "openrouter"
   | "custom";
