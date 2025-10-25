@@ -5,7 +5,6 @@
 
 import { query } from "../database/pg-pool.js";
 import { logger } from "../src/utils/logger.js";
-import { MODEL_REGISTRY } from "./aiConfigService.js";
 import crypto from "crypto";
 import fetch from "node-fetch";
 
@@ -1124,19 +1123,24 @@ export async function syncProviderModels(userId, providerId) {
         `[syncProviderModels] Using MODEL_REGISTRY fallback for ${normalizedProviderName}`
       );
 
-      // Use MODEL_REGISTRY fallback for providers without API fetchers
-      const registryModels = MODEL_REGISTRY[normalizedProviderName] || [];
-      remoteModels = registryModels.map((modelId) => ({
-        modelId,
-        displayName: modelId,
-        description: `Modelo padrão para ${provider.display_name}`,
-        supportsStreaming: true,
-        supportsFunctionCalling: true,
-        supportsVision: false,
+      // Use DEFAULT_MODELS fallback for providers without API fetchers
+      const defaultModels = DEFAULT_MODELS[normalizedProviderName] || [];
+      remoteModels = defaultModels.map((model) => ({
+        modelId: model.modelId,
+        displayName: model.displayName || model.modelId,
+        description:
+          model.description || `Modelo padrão para ${provider.display_name}`,
+        supportsStreaming: model.supportsStreaming ?? true,
+        supportsFunctionCalling: model.supportsFunctionCalling ?? true,
+        supportsVision: model.supportsVision ?? false,
+        maxTokens: model.maxTokens,
+        contextWindow: model.contextWindow,
+        costPerInputToken: model.costPerInputToken,
+        costPerOutputToken: model.costPerOutputToken,
       }));
 
       console.log(
-        `[syncProviderModels] ℹ️ Using ${remoteModels.length} models from registry for ${provider.provider_name}`
+        `[syncProviderModels] ℹ️ Using ${remoteModels.length} models from DEFAULT_MODELS for ${provider.provider_name}`
       );
     } else {
       const { apiKey, baseUrl } = await getProviderApiKey(userId, providerId);
