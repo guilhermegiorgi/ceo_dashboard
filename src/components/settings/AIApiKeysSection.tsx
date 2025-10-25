@@ -87,7 +87,7 @@ export function AIApiKeysSection({ apiKeys, onChange, disabled }: Props) {
             <div className="flex-1 relative">
               <input
                 type={showPasswords[provider.key] ? "text" : "password"}
-                value={apiKeys[provider.key]}
+                value={apiKeys[provider.key] ?? ""}
                 onChange={(e) => handleChange(provider.key, e.target.value)}
                 placeholder={provider.placeholder}
                 disabled={disabled}
