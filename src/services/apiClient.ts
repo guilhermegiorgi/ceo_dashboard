@@ -591,7 +591,10 @@ export class APIClient {
   }[] = [];
 
   private logDebug(...args: unknown[]) {
-    if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+    if (
+      typeof process !== "undefined" &&
+      process.env.NODE_ENV === "development"
+    ) {
       console.debug("[APIClient]", ...args);
     }
   }
@@ -667,7 +670,13 @@ export class APIClient {
     endpoint: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    const { searchParams, retries = 0, signal, cache, ...restOptions } = options;
+    const {
+      searchParams,
+      retries = 0,
+      signal,
+      cache,
+      ...restOptions
+    } = options;
     const url = this.buildUrl(endpoint, searchParams);
     const method = restOptions.method ?? "GET";
 
@@ -675,6 +684,16 @@ export class APIClient {
       const storage =
         typeof window !== "undefined" ? window.localStorage : null;
       const token = storage?.getItem("token") ?? null;
+
+      // Debug logging for model requests
+      if (endpoint.includes("/models")) {
+        console.log(`[apiClient] ${endpoint}:`, {
+          hasStorage: !!storage,
+          tokenExists: !!token,
+          tokenLength: token?.length,
+          tokenPreview: token ? `${token.substring(0, 20)}...` : "null",
+        });
+      }
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -696,9 +715,7 @@ export class APIClient {
       }
 
       const body =
-        restOptions.body &&
-        typeof restOptions.body === "object" &&
-        !isFormData
+        restOptions.body && typeof restOptions.body === "object" && !isFormData
           ? JSON.stringify(restOptions.body)
           : restOptions.body;
 
@@ -711,7 +728,11 @@ export class APIClient {
         ...(cache && { cache }), // Add cache option if provided
       };
 
-      this.logDebug("Request start", { method, endpoint, attempt: attempt + 1 });
+      this.logDebug("Request start", {
+        method,
+        endpoint,
+        attempt: attempt + 1,
+      });
 
       try {
         let response = await fetch(url, config);
@@ -735,7 +756,9 @@ export class APIClient {
                   storage.setItem("token", refreshData.token);
                   storage.setItem("refreshToken", refreshData.refreshToken);
                   this.processQueue(null, refreshData.token);
-                  (config.headers as Record<string, string>).Authorization = `Bearer ${refreshData.token}`;
+                  (
+                    config.headers as Record<string, string>
+                  ).Authorization = `Bearer ${refreshData.token}`;
                   response = await fetch(url, config);
                 } else {
                   throw new Error("Falha ao renovar o token");
@@ -752,14 +775,18 @@ export class APIClient {
               }
             }
           } else {
-            const newToken = await new Promise<string | null>((resolve, reject) => {
-              this.failedQueue.push({
-                resolve: (value) => resolve((value as string) ?? null),
-                reject,
-              });
-            });
+            const newToken = await new Promise<string | null>(
+              (resolve, reject) => {
+                this.failedQueue.push({
+                  resolve: (value) => resolve((value as string) ?? null),
+                  reject,
+                });
+              }
+            );
             if (newToken) {
-              (config.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+              (
+                config.headers as Record<string, string>
+              ).Authorization = `Bearer ${newToken}`;
             }
             response = await fetch(url, config);
           }
@@ -780,15 +807,28 @@ export class APIClient {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const json = (await response.json()) as T;
-          this.logDebug("Request success", { method, endpoint, attempt: attempt + 1 });
+          this.logDebug("Request success", {
+            method,
+            endpoint,
+            attempt: attempt + 1,
+          });
           return json;
         }
 
         const textResponse = (await response.text()) as unknown as T;
-        this.logDebug("Request success", { method, endpoint, attempt: attempt + 1 });
+        this.logDebug("Request success", {
+          method,
+          endpoint,
+          attempt: attempt + 1,
+        });
         return textResponse;
       } catch (error) {
-        this.logDebug("Request failure", { method, endpoint, attempt: attempt + 1, error });
+        this.logDebug("Request failure", {
+          method,
+          endpoint,
+          attempt: attempt + 1,
+          error,
+        });
         throw error;
       }
     };
@@ -1101,8 +1141,7 @@ export class APIClient {
     message: string,
     providerOverride?: { provider: ProviderKey; model: string }
   ): Promise<Response> {
-    const storage =
-      typeof window !== "undefined" ? window.localStorage : null;
+    const storage = typeof window !== "undefined" ? window.localStorage : null;
     const token = storage?.getItem("token") ?? null;
 
     const headers: Record<string, string> = {
@@ -1182,7 +1221,9 @@ export class APIClient {
     }>("/api/ai/config", { retries: 1 });
 
     if (!response?.success || !response.config) {
-      throw new Error(response?.error || "Falha ao carregar configuração de IA.");
+      throw new Error(
+        response?.error || "Falha ao carregar configuração de IA."
+      );
     }
 
     this.setAIConfigCache(response.config);
@@ -1225,7 +1266,9 @@ export class APIClient {
     });
 
     if (!response.success) {
-      throw new Error(response.error || "Falha ao atualizar configuração de IA.");
+      throw new Error(
+        response.error || "Falha ao atualizar configuração de IA."
+      );
     }
 
     if (response.config) {
@@ -1243,7 +1286,13 @@ export class APIClient {
       apiKey?: string;
       selection?: { provider: ProviderKey; model: string };
     } = {}
-  ): Promise<{ connected: boolean; error?: string; code?: string; provider?: ProviderKey; model?: string }> {
+  ): Promise<{
+    connected: boolean;
+    error?: string;
+    code?: string;
+    provider?: ProviderKey;
+    model?: string;
+  }> {
     const payload: Record<string, unknown> = {};
 
     if (
@@ -1309,11 +1358,14 @@ export class APIClient {
 
     const baseConfig = await this.getAIConfig();
     type Selection = SettingsAIProviderConfig["modelSelection"][ModelContext];
-    const fallbackSelection = baseConfig.modelSelection[normalizedContext] as Selection;
+    const fallbackSelection = baseConfig.modelSelection[
+      normalizedContext
+    ] as Selection;
 
     const nextSelection: Selection = {
       ...fallbackSelection,
-      provider: (selection.provider ?? fallbackSelection.provider) as ProviderKey,
+      provider: (selection.provider ??
+        fallbackSelection.provider) as ProviderKey,
       model: selection.model ?? fallbackSelection.model,
       temperature: selection.temperature ?? fallbackSelection.temperature,
       maxTokens: selection.maxTokens ?? fallbackSelection.maxTokens,
@@ -1339,7 +1391,10 @@ export class APIClient {
       code?: string;
     }>("/api/ai/config/models", {
       method: "GET",
-      searchParams: { provider, forceRefresh: forceRefresh ? 'true' : undefined },
+      searchParams: {
+        provider,
+        forceRefresh: forceRefresh ? "true" : undefined,
+      },
       retries: 1,
       cache: "no-store", // Force fresh data, prevent HTTP 304 caching
     });
