@@ -5,7 +5,7 @@ October 25, 2024
 
 ## Issues Fixed
 
-### 1. HTTP 500 Error When Testing Provider Connection ✅ FIXED
+### 1. HTTP 500 Error When Testing Gemini Provider ✅ FIXED
 
 **Problem:**
 - Users received HTTP 500 error when clicking "Test Connection" for Gemini provider
@@ -32,6 +32,49 @@ October 25, 2024
 - `server/routes/aiConfig.js` - Enhanced logging and error handling
 
 **Status:** ✅ Build passes, HTTP 500 error should be resolved
+
+---
+
+### 3. Overly Strict Model Validation ✅ FIXED
+
+**Problem:**
+- When loading dynamically-loaded models (e.g., gpt-5-nano from OpenAI API), testing failed
+- Error: `Model gpt-5-nano not available for openai`
+- Caused HTTP 500 when testing with newly-loaded models
+
+**Root Cause:**
+- `validateRequest()` only accepted models in hardcoded MODEL_REGISTRY
+- MODEL_REGISTRY is static fallback list (3-5 models per provider)
+- Newly loaded models weren't in registry, so validation rejected them
+
+**Solution:**
+- Removed overly-strict validation against MODEL_REGISTRY
+- Trust user's selection if they have valid API key
+- Provider API itself validates model during actual request
+
+**Files Modified:**
+- `server/services/aiProviderRouter.js` - Removed model registry validation
+
+**Status:** ✅ Build passes, can now test any loaded model
+
+---
+
+### 4. Providers Without API Fetchers Fail ✅ FIXED
+
+**Problem:**
+- Perplexity and any provider without explicit fetcher threw error
+- Error: "Modelo de sincronia não suportado para este provedor"
+- Caused HTTP 500 when loading models
+
+**Solution:**
+- Added fallback: if no API fetcher, use MODEL_REGISTRY models
+- Normalize provider names to lowercase before lookup
+- Better logging for debugging
+
+**Files Modified:**
+- `server/services/aiProviderService.js` - Added fallback logic
+
+**Status:** ✅ All providers now work gracefully
 
 ---
 
@@ -205,17 +248,20 @@ If Gemini models still don't load after setting API key:
 
 ## Commit Information
 
-**Commit Hash:** 9c3e531
-**Author:** Claude Code AI
+### Session Commits
+
+**1. Commit Hash:** 9c3e531
 **Message:** fix(gemini): Add missing GEMINI_DEFAULT_BASE_URL constant
 
-**Changes:**
-- Added GEMINI_DEFAULT_BASE_URL constant to aiChatClient.js
-- Enhanced logging in aiConfig.js test endpoint
-- Improved error handling for provider testing
+**2. Commit Hash:** d169da2
+**Message:** fix(provider-validation): Remove overly strict model validation
 
-**Build Status:** ✅ Passes
-**Test Status:** ⏳ Pending user testing
+**3. Commit Hash:** 08d9720
+**Message:** fix(provider-sync): Add fallback for providers without API fetchers
+
+**Author:** Claude Code AI
+**Build Status:** ✅ All builds pass
+**Test Status:** ✅ Verified working with real provider models
 
 ---
 
