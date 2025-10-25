@@ -40,7 +40,14 @@ router.post("/test", authenticateJWT, async (req, res, next) => {
     const { context = "chat", prompt = "Teste de conexão do provedor." } =
       req.body || {};
 
+    logger.info(`[AIConfigRoute] Testing provider for context: ${context}`);
+
     const modelConfig = await getModelConfigForUser(req.user, context);
+    logger.info(`[AIConfigRoute] Model config resolved:`, {
+      provider: modelConfig.provider,
+      model: modelConfig.model,
+      fallbackUsed: modelConfig.fallbackUsed,
+    });
 
     await aiProviderRouter.routeChat({
       user: req.user,
@@ -57,6 +64,8 @@ router.post("/test", authenticateJWT, async (req, res, next) => {
       stream: false,
     });
 
+    logger.info(`[AIConfigRoute] Chat route completed successfully`);
+
     res.json({
       success: true,
       provider: modelConfig.provider,
@@ -64,6 +73,12 @@ router.post("/test", authenticateJWT, async (req, res, next) => {
       fallbackUsed: modelConfig.fallbackUsed || false,
     });
   } catch (error) {
+    logger.error(`[AIConfigRoute] Test endpoint error:`, {
+      message: error.message,
+      provider: error.provider,
+      code: error.code,
+      stack: error.stack,
+    });
     next(error);
   }
 });
