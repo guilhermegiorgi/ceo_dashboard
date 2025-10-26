@@ -1102,11 +1102,21 @@ async function disableMissingModels(providerId, activeModelIds) {
 export async function syncProviderModels(userId, providerId) {
   try {
     const provider = await getProviderById(providerId, userId);
-    const normalizedProviderName = provider.provider_name?.toLowerCase();
-    const fetcher = MODEL_FETCHERS[normalizedProviderName];
+    let normalizedProviderName = provider.provider_name?.toLowerCase();
+
+    // Map provider names to fetcher keys
+    const providerNameMap = {
+      google: "gemini",
+    };
+    const fetcherKey =
+      providerNameMap[normalizedProviderName] || normalizedProviderName;
+    const fetcher = MODEL_FETCHERS[fetcherKey];
 
     console.log(
       `[syncProviderModels] 🔄 Starting sync for provider ${provider.provider_name} (ID: ${providerId})`
+    );
+    console.log(
+      `[syncProviderModels] Provider name: ${normalizedProviderName}, Fetcher key: ${fetcherKey}, Has fetcher: ${!!fetcher}`
     );
 
     let remoteModels = [];

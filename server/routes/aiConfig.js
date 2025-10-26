@@ -207,14 +207,14 @@ router.get("/models", async (req, res, next) => {
 
     if (provider) {
       console.log(
-        `[AIConfigRoute] Provider found in DB - ID: ${provider.id}, name: ${provider.provider_name}`
+        `[AIConfigRoute] ✅ Provider found in DB - ID: ${provider.id}, name: ${provider.provider_name}, active: ${provider.is_active}`
       );
       logger.info(
         `[AIConfigRoute] Provider found in DB - ID: ${provider.id}, name: ${provider.provider_name}`
       );
     } else {
       console.log(
-        `[AIConfigRoute] Provider NOT found in DB for ${normalizedProvider}`
+        `[AIConfigRoute] ⚠️ Provider NOT found in DB for ${normalizedProvider} - will try to auto-create`
       );
       logger.info(
         `[AIConfigRoute] Provider NOT found in DB for ${normalizedProvider}`
@@ -309,6 +309,10 @@ router.get("/models", async (req, res, next) => {
         console.log(
           `[AIConfigRoute] ⚠️ Provider ${normalizedProvider} has no ID, cannot sync models from API`
         );
+        console.log(
+          `[AIConfigRoute] Provider object:`,
+          JSON.stringify(provider, null, 2)
+        );
         logger.warn(
           `[AIConfigRoute] Provider ${normalizedProvider} has no ID, cannot sync models`
         );
@@ -316,9 +320,15 @@ router.get("/models", async (req, res, next) => {
       }
 
       console.log(
+        `[AIConfigRoute] ✅ Provider HAS ID ${provider.id}, checking for cached models...`
+      );
+      console.log(
         `[AIConfigRoute] Checking cached models for provider ID: ${provider.id}, forceRefresh: ${forceRefresh}`
       );
       let models = await getModels(provider.id);
+      console.log(
+        `[AIConfigRoute] Found ${models.length} cached models in database for provider ${provider.provider_name}`
+      );
 
       if (!models.length || forceRefresh) {
         if (forceRefresh && models.length > 0) {
@@ -335,6 +345,9 @@ router.get("/models", async (req, res, next) => {
           logger.info(
             `[AIConfigRoute] Syncing models for provider ${provider.provider_name} (ID: ${provider.id})`
           );
+          console.log(
+            `[AIConfigRoute] Calling syncProviderModels for userId: ${userId}, providerId: ${provider.id}`
+          );
           models = await syncProviderModels(userId, provider.id);
           console.log(
             `[AIConfigRoute] ✅ Synced ${models.length} models from ${provider.provider_name} API`
@@ -345,7 +358,7 @@ router.get("/models", async (req, res, next) => {
         } catch (syncError) {
           console.error(
             `[AIConfigRoute] ❌ Failed to sync models from API:`,
-            syncError
+            syncError.message
           );
           logger.warn(
             `[AIConfigRoute] Failed to sync models for ${provider.provider_name}: ${syncError?.message}`
