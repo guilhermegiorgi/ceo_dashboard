@@ -19,9 +19,17 @@ export const authenticateJWT = (req, res, next) => {
     token = req.query.token;
   }
 
+  // DEBUG: Log authorization attempt
+  if (req.path === "/models" || req.path === "/settings") {
+    console.log(
+      `[AUTH] ${req.method} ${req.path} - Auth Header: ${
+        authHeader ? "Present" : "MISSING"
+      }, Token from query: ${req.query.token ? "YES" : "NO"}`
+    );
+  }
+
   // If JWT token exists, validate it
   if (token) {
-
     try {
       // Verifica e decodifica o token
       const decoded = jwt.verify(token, config.jwtSecret);
@@ -51,7 +59,7 @@ export const authenticateJWT = (req, res, next) => {
 
   // Fallback to Passport session (for OAuth login without JWT)
   const isAuthenticatedMethod = req.isAuthenticated && req.isAuthenticated();
-  
+
   if (isAuthenticatedMethod && req.user) {
     logger.debug(`✅ Passport session autenticada: ${req.user.email}`, {
       userId: req.user.id,

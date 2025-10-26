@@ -685,6 +685,16 @@ export class APIClient {
         typeof window !== "undefined" ? window.localStorage : null;
       const token = storage?.getItem("token") ?? null;
 
+      // DEBUG: Log auth info for specific endpoints
+      if (endpoint.includes("/models") || endpoint.includes("/settings")) {
+        console.log(
+          `[apiClient] ${endpoint} - Token status: ${
+            token ? `FOUND (${token.substring(0, 20)}...)` : "NOT FOUND"
+          }`,
+          { hasStorage: !!storage, tokenLength: token?.length || 0 }
+        );
+      }
+
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(restOptions.headers || {}),
