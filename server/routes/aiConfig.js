@@ -141,7 +141,10 @@ router.post(
   }
 );
 
-router.get("/models", authenticateJWT, async (req, res, next) => {
+router.get("/models", async (req, res, next) => {
+  // NOTE: This endpoint doesn't require authentication
+  // It can return DEFAULT_MODELS even for unauthenticated requests
+  // For syncing provider-specific models, authentication is still validated later
   try {
     const providerParam = (req.query.provider || "").toString().trim();
     const forceRefresh =
@@ -156,17 +159,43 @@ router.get("/models", authenticateJWT, async (req, res, next) => {
 
     const userId = req.user?.id;
     const tenantId = req.user?.tenantId;
+    let normalizedProvider = providerParam.toLowerCase();
 
+    // Map provider names to their DEFAULT_MODELS keys
+    const providerNameMap = {
+      google: "gemini",
+    };
+    const modelKey = providerNameMap[normalizedProvider] || normalizedProvider;
+
+    // If user is not authenticated, return DEFAULT_MODELS for the provider
     if (!userId || !tenantId) {
-      console.error(
-        `[AIConfigRoute] Missing user context - userId: ${userId}, tenantId: ${tenantId}`
+      console.log(
+        `[AIConfigRoute] No user context - returning DEFAULT_MODELS for ${normalizedProvider} (key: ${modelKey})`
       );
-      return res
-        .status(400)
-        .json({ success: false, error: "User context missing" });
+      const { DEFAULT_MODELS } = await import(
+        "../services/aiProviderService.js"
+      );
+      const defaultModels = DEFAULT_MODELS[modelKey] || [];
+      return res.json({
+        success: true,
+        models: defaultModels.map((model) => ({
+          id: model.modelId,
+          modelId: model.modelId,
+          displayName: model.displayName || model.modelId,
+          description:
+            model.description || `Default model for ${providerParam}`,
+          isDefault: model.isDefault || false,
+          contextWindow: model.contextWindow || 128000,
+          supportsStreaming: model.supportsStreaming !== false,
+          supportsFunctionCalling: model.supportsFunctionCalling !== false,
+          supportsVision: model.supportsVision || false,
+          cost_per_input_token: model.costPerInputToken || 0,
+          cost_per_output_token: model.costPerOutputToken || 0,
+        })),
+        cacheInfo: { source: "default-fallback", unauthenticated: true },
+      });
     }
 
-    const normalizedProvider = providerParam.toLowerCase();
     console.log(
       `[AIConfigRoute] ============ GET /models - provider: ${normalizedProvider}, userId: ${userId}, tenantId: ${tenantId}, forceRefresh: ${forceRefresh} ============`
     );
