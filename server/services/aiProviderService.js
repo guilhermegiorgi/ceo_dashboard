@@ -1153,20 +1153,38 @@ export async function syncProviderModels(userId, providerId) {
         `[syncProviderModels] ℹ️ Using ${remoteModels.length} models from DEFAULT_MODELS for ${provider.provider_name}`
       );
     } else {
-      const { apiKey, baseUrl } = await getProviderApiKey(userId, providerId);
-      console.log(
-        `[syncProviderModels] Got API key, calling fetcher for ${provider.provider_name}...`
-      );
+      try {
+        console.log(
+          `[syncProviderModels] 📞 Fetcher FOUND! Calling ${fetcherKey} fetcher...`
+        );
+        const { apiKey, baseUrl } = await getProviderApiKey(userId, providerId);
+        console.log(
+          `[syncProviderModels] Got API key (length: ${apiKey?.length}), calling fetcher for ${provider.provider_name}...`
+        );
 
-      remoteModels = await fetcher({ apiKey, baseUrl });
+        remoteModels = await fetcher({ apiKey, baseUrl });
+        console.log(
+          `[syncProviderModels] ✅ Fetcher returned ${remoteModels.length} models`
+        );
+        console.log(
+          `[syncProviderModels] Model IDs from API:`,
+          remoteModels
+            .slice(0, 5)
+            .map((m) => m.modelId)
+            .join(", "),
+          remoteModels.length > 5
+            ? `... (+${remoteModels.length - 5} more)`
+            : ""
+        );
+      } catch (fetchError) {
+        console.error(
+          `[syncProviderModels] ❌ FETCHER ERROR for ${provider.provider_name}:`,
+          fetchError.message
+        );
+        console.error(`[syncProviderModels] Full error:`, fetchError);
+        throw fetchError;
+      }
     }
-    console.log(
-      `[syncProviderModels] ✅ Fetcher returned ${remoteModels.length} models`
-    );
-    console.log(
-      `[syncProviderModels] Model IDs from API:`,
-      remoteModels.map((m) => m.modelId).join(", ")
-    );
 
     if (!remoteModels.length) {
       logger.warn(
