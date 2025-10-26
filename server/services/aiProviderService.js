@@ -14,7 +14,7 @@ const ENCRYPTION_KEY =
 const ALGORITHM = "aes-256-cbc";
 
 // Default models registered when a provider is configured
-const DEFAULT_MODELS = {
+export const DEFAULT_MODELS = {
   openai: [
     {
       modelId: "gpt-4o",

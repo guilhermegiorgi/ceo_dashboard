@@ -16,9 +16,12 @@ import providersRouter from "./providers.js"; // Importa as rotas dos Provedores
 import toolsRouter from "./tools.js"; // Importa as rotas das Ferramentas
 import settingsRouter from "./settings.js";
 import dashboardRouter from "./dashboard.js";
-import { authenticateJWT as authenticateToken } from "../middleware/auth.js";
+import {
+  authenticateJWT as authenticateToken,
+  optionalAuth,
+} from "../middleware/auth.js";
 
-console.log('[routes/index] Auth middleware loaded:', typeof authenticateToken);
+console.log("[routes/index] Auth middleware loaded:", typeof authenticateToken);
 import inboxRouter from "./inbox.js";
 import tasksRouter from "./tasks.js";
 import conversationsRouter from "./conversations.js";
@@ -40,21 +43,25 @@ router.use("/health", healthRouter);
 router.use("/brain", authenticateToken, brainRouter);
 // TEMPORARILY DISABLED - keep connection open to prevent reconnect loop
 router.get("/brain/events", (req, res) => {
-  console.log('[routes/index] /brain/events - keeping connection open (disabled)');
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+  console.log(
+    "[routes/index] /brain/events - keeping connection open (disabled)"
+  );
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
   res.status(200);
   // Send initial message and keep connection open
-  res.write('data: {"type":"disabled","message":"EventSource temporarily disabled"}\n\n');
+  res.write(
+    'data: {"type":"disabled","message":"EventSource temporarily disabled"}\n\n'
+  );
   // Send keepalive every 30 seconds
   const keepalive = setInterval(() => {
-    res.write(':keepalive\n\n');
+    res.write(":keepalive\n\n");
   }, 30000);
   // Cleanup on connection close
-  req.on('close', () => {
+  req.on("close", () => {
     clearInterval(keepalive);
-    console.log('[routes/index] /brain/events - connection closed');
+    console.log("[routes/index] /brain/events - connection closed");
   });
 });
 // router.use("/brain", authenticateToken, brainEventsRouter);
@@ -71,16 +78,21 @@ router.use("/vault", authenticateToken, vaultRouter); // Monta as rotas do Vault
 router.use("/agents", authenticateToken, agentsRouter); // Monta as rotas dos Agentes
 router.use("/providers", authenticateToken, providersRouter); // Monta as rotas dos Provedores
 router.use("/tools", authenticateToken, toolsRouter); // Monta as rotas das Ferramentas
-router.use("/ai/config", authenticateToken, aiConfigRouter);
+router.use("/ai/config", optionalAuth, aiConfigRouter);
 // DEBUG: Log before applying auth middleware
-router.use("/settings", (req, res, next) => {
-  console.log('[routes/index] /settings route hit:', {
-    path: req.path,
-    url: req.url,
-    isAuthenticated: req.isAuthenticated?.(),
-  });
-  next();
-}, authenticateToken, settingsRouter);
+router.use(
+  "/settings",
+  (req, res, next) => {
+    console.log("[routes/index] /settings route hit:", {
+      path: req.path,
+      url: req.url,
+      isAuthenticated: req.isAuthenticated?.(),
+    });
+    next();
+  },
+  authenticateToken,
+  settingsRouter
+);
 router.use("/dashboard", authenticateToken, dashboardRouter);
 router.use("/inbox", authenticateToken, inboxRouter);
 router.use("/tasks", authenticateToken, tasksRouter);
