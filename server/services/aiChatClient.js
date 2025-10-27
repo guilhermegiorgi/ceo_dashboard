@@ -1233,6 +1233,16 @@ async function callGoogle({
     `[Google] Using model: ${model}, temperature: ${temperature}, maxTokens: ${maxTokens}`
   );
 
+  // Debug logging for URL construction
+  console.log(
+    `[Google] Constructed URL: ${url.substring(
+      0,
+      url.lastIndexOf("?")
+    )}?key=***`
+  );
+  console.log(`[Google] API Key present: ${!!apiKey && apiKey.length > 0}`);
+  console.log(`[Google] Request body:`, JSON.stringify(body));
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
 
@@ -1250,6 +1260,10 @@ async function callGoogle({
 
     if (!response.ok) {
       const errorMessage = data?.error?.message || response.statusText;
+      console.error(
+        `[Google] API Error - Status: ${response.status}, Message: ${errorMessage}`
+      );
+      console.error(`[Google] Full response:`, JSON.stringify(data));
       throw new Error(`Provider error ${response.status}: ${errorMessage}`);
     }
 
