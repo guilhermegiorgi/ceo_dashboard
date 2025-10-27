@@ -136,7 +136,7 @@ const getProviderMeta = (provider: ProviderKey) =>
   };
 
 const getModelIdentifier = (model: ProviderModelInfo): string =>
-  (model as { name?: string }).name ?? model.modelId ?? model.id ?? "";
+  model.modelId ?? (model as { name?: string }).name ?? model.id ?? "";
 
 const getModelDisplayName = (model: ProviderModelInfo): string =>
   model.displayName ??
