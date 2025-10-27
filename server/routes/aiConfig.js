@@ -307,16 +307,30 @@ router.get("/models", async (req, res, next) => {
     const ensureModelsSynced = async () => {
       if (!provider.id) {
         console.log(
-          `[AIConfigRoute] ⚠️ Provider ${normalizedProvider} has no ID, cannot sync models from API`
+          `[AIConfigRoute] ⚠️ Provider ${normalizedProvider} has no ID, using DEFAULT_MODELS fallback`
         );
         console.log(
           `[AIConfigRoute] Provider object:`,
           JSON.stringify(provider, null, 2)
         );
         logger.warn(
-          `[AIConfigRoute] Provider ${normalizedProvider} has no ID, cannot sync models`
+          `[AIConfigRoute] Provider ${normalizedProvider} has no ID, using DEFAULT_MODELS fallback`
         );
-        return [];
+        // Use DEFAULT_MODELS fallback when provider wasn't created in database
+        const { DEFAULT_MODELS } = await import(
+          "../services/aiProviderService.js"
+        );
+        const modelKey =
+          providerNameMap[normalizedProvider] || normalizedProvider;
+        const defaultModels = DEFAULT_MODELS[modelKey] || [];
+        return defaultModels.map((model) => ({
+          ...model,
+          provider_id: null,
+          user_id: userId,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
       }
 
       console.log(
