@@ -443,6 +443,42 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
             })
           );
 
+          // Validate that selected models still exist after reload
+          // If a selected model no longer exists, use the first available model
+          setModelSelections((prev) => {
+            const next = cloneSelectionMap(prev);
+            let changed = false;
+
+            MODEL_CONTEXTS.forEach((context) => {
+              const provider = next[context].provider;
+              const selectedModelId = next[context].model;
+              const availableModels =
+                modelCacheRef.current[provider]?.models || [];
+
+              // Check if selected model still exists
+              const modelExists = availableModels.some(
+                (model) =>
+                  getModelIdentifier(model as ProviderModelInfo) ===
+                  selectedModelId
+              );
+
+              if (!modelExists && availableModels.length > 0) {
+                console.warn(
+                  `[Settings] Selected model ${selectedModelId} no longer exists for ${provider}, switching to first available`
+                );
+                next[context] = {
+                  ...next[context],
+                  model: getModelIdentifier(
+                    availableModels[0] as ProviderModelInfo
+                  ),
+                };
+                changed = true;
+              }
+            });
+
+            return changed ? next : prev;
+          });
+
           setModelsUpdatedAt(Date.now());
         }
 
