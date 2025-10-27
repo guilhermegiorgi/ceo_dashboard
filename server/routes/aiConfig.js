@@ -330,7 +330,18 @@ router.get("/models", async (req, res, next) => {
         `[AIConfigRoute] Found ${models.length} cached models in database for provider ${provider.provider_name}`
       );
 
-      if (!models.length || forceRefresh) {
+      // Check if cached models are incomplete (fallback models without proper metadata)
+      const hasIncompleteModels =
+        models.length > 0 &&
+        models.some((m) => !m.context_window && !m.max_tokens);
+
+      if (hasIncompleteModels) {
+        console.log(
+          `[AIConfigRoute] ⚠️ Cached models are INCOMPLETE (no context_window/max_tokens) - forcing re-sync from API`
+        );
+      }
+
+      if (!models.length || forceRefresh || hasIncompleteModels) {
         if (forceRefresh && models.length > 0) {
           console.log(
             `[AIConfigRoute] 🔄 Force refresh requested, re-syncing ${models.length} cached models from API...`
