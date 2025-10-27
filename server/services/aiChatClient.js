@@ -1198,9 +1198,10 @@ async function callGoogle({
   );
 
   // Google Generative AI (Gemini) API
+  // Note: GEMINI_DEFAULT_BASE_URL already includes /v1beta, so we just add /models/
   const url = `${
     baseUrl || GEMINI_DEFAULT_BASE_URL
-  }/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  }/models/${model}:generateContent?key=${apiKey}`;
 
   console.error(
     `[Google] DEBUG: Constructed URL: ${url.substring(
