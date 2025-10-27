@@ -90,7 +90,7 @@ router.use(
     });
     next();
   },
-  authenticateToken,
+  optionalAuth,
   settingsRouter
 );
 router.use("/dashboard", authenticateToken, dashboardRouter);
