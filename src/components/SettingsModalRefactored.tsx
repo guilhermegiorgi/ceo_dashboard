@@ -80,8 +80,9 @@ const PROVIDER_METADATA: Record<
   openai: { label: "OpenAI", icon: "🟠", accent: "#f97316" },
   anthropic: { label: "Anthropic", icon: "🔵", accent: "#6366f1" },
   google: { label: "Google Gemini", icon: "🟢", accent: "#22c55e" },
+  deepseek: { label: "DeepSeek", icon: "🔴", accent: "#ef4444" },
   perplexity: { label: "Perplexity", icon: "🔷", accent: "#06b6d4" },
-  openrouter: { label: "OpenRouter", icon: "🔺", accent: "#ef4444" },
+  openrouter: { label: "OpenRouter", icon: "🔺", accent: "#f59e0b" },
   custom: { label: "Custom Provider", icon: "⚙️", accent: "#71717a" },
 };
 
@@ -90,6 +91,7 @@ const ALL_PROVIDERS: AIProvider[] = [
   "openai",
   "anthropic",
   "google",
+  "deepseek",
   "perplexity",
   "openrouter",
   "custom",
