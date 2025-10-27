@@ -335,13 +335,30 @@ router.get("/models", async (req, res, next) => {
         models.length > 0 &&
         models.some((m) => !m.context_window && !m.max_tokens);
 
+      // For non-OpenAI providers, if models < 10, likely fallback - force re-sync
+      const isLikelyFallback =
+        models.length > 0 &&
+        models.length < 10 &&
+        normalizedProvider !== "openai";
+
+      if (isLikelyFallback) {
+        console.log(
+          `[AIConfigRoute] ⚠️ Provider ${normalizedProvider} has only ${models.length} models - likely fallback - forcing re-sync from API`
+        );
+      }
+
       if (hasIncompleteModels) {
         console.log(
           `[AIConfigRoute] ⚠️ Cached models are INCOMPLETE (no context_window/max_tokens) - forcing re-sync from API`
         );
       }
 
-      if (!models.length || forceRefresh || hasIncompleteModels) {
+      if (
+        !models.length ||
+        forceRefresh ||
+        hasIncompleteModels ||
+        isLikelyFallback
+      ) {
         if (forceRefresh && models.length > 0) {
           console.log(
             `[AIConfigRoute] 🔄 Force refresh requested, re-syncing ${models.length} cached models from API...`
