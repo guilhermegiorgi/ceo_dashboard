@@ -1191,10 +1191,23 @@ async function callGoogle({
   tools = null,
   tool_choice = "auto",
 }) {
+  console.error(`[Google] DEBUG: callGoogle invoked with model=${model}`);
+  console.error(`[Google] DEBUG: apiKey present=${!!apiKey}`);
+  console.error(
+    `[Google] DEBUG: baseUrl=${baseUrl || GEMINI_DEFAULT_BASE_URL}`
+  );
+
   // Google Generative AI (Gemini) API
   const url = `${
     baseUrl || GEMINI_DEFAULT_BASE_URL
   }/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  console.error(
+    `[Google] DEBUG: Constructed URL: ${url.substring(
+      0,
+      url.lastIndexOf("?")
+    )}?key=***`
+  );
 
   // Transform messages to Gemini format
   const contents = messages.map((msg) => ({
@@ -1232,16 +1245,6 @@ async function callGoogle({
   logger.info(
     `[Google] Using model: ${model}, temperature: ${temperature}, maxTokens: ${maxTokens}`
   );
-
-  // Debug logging for URL construction
-  console.log(
-    `[Google] Constructed URL: ${url.substring(
-      0,
-      url.lastIndexOf("?")
-    )}?key=***`
-  );
-  console.log(`[Google] API Key present: ${!!apiKey && apiKey.length > 0}`);
-  console.log(`[Google] Request body:`, JSON.stringify(body));
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
