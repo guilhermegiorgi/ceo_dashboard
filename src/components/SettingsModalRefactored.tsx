@@ -270,8 +270,28 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
   useEffect(() => {
     if (open) {
       setLoading(true);
-      // Force fresh load from server when modal opens to get latest API keys
-      loadSettings(true).finally(() => setLoading(false));
+
+      const loadWithRetry = async () => {
+        // Force fresh load from server when modal opens to get latest API keys
+        await loadSettings(true);
+
+        // If API keys are all empty, server may have lost auth context after reload
+        // Wait a moment and try again to ensure authentication is fully established
+        const keys = Object.values(aiApiKeys || {});
+        const allEmpty = keys.every(
+          (k) => typeof k === "string" && k.trim().length === 0
+        );
+
+        if (allEmpty && Object.keys(aiApiKeys || {}).length > 0) {
+          console.warn(
+            "[SettingsModal] API keys are empty, retrying after auth delay..."
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          await loadSettings(true);
+        }
+      };
+
+      loadWithRetry().finally(() => setLoading(false));
       setIsModelPristine(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
