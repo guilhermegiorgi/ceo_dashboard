@@ -397,6 +397,15 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     try {
       const modelChangesResult = await applyModelChanges();
 
+      // Update aiProviderConfig IMMEDIATELY with the result from applyModelChanges
+      // This ensures that if applyModelChanges is called again (on next save),
+      // it compares against current values, not stale values from initial load
+      setAIProviderConfig((prev) => ({
+        ...prev,
+        modelSelection: modelChangesResult.modelSelection,
+        fallbackProvider: modelChangesResult.fallbackProvider,
+      }));
+
       // Pass the updated model selection from applyModelChanges to saveSettings
       // to avoid stale state issue where React hasn't updated context yet
       const result = await saveSettings(
