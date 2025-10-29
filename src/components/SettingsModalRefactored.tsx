@@ -313,27 +313,9 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
         setModelCache({ ...modelCacheRef.current });
         setModelsUpdatedAt(now);
 
-        setModelSelections((prev) => {
-          const next = cloneSelectionMap(prev);
-          let mutated = false;
-          MODEL_CONTEXTS.forEach((context) => {
-            if (next[context].provider === provider) {
-              const identifier = next[context].model;
-              const exists = (models || []).some(
-                (model) =>
-                  getModelIdentifier(model as ProviderModelInfo) === identifier
-              );
-              if (!exists && models.length > 0) {
-                next[context] = {
-                  ...next[context],
-                  model: getModelIdentifier(models[0] as ProviderModelInfo),
-                };
-                mutated = true;
-              }
-            }
-          });
-          return mutated ? next : prev;
-        });
+        // Don't validate/replace model selections here. User's selections should be
+        // preserved even if there's a mismatch during loading. The selections were
+        // loaded from server and should be trusted.
 
         return models as ProviderModelInfo[];
       } catch (error) {
