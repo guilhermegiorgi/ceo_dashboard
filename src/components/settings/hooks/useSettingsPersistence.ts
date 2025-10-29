@@ -231,19 +231,39 @@ export function useSettingsPersistence() {
     }
   };
 
-  const saveSettings = async () => {
+  const saveSettings = async (
+    overrideModelSelection?: ModelSelectionMap,
+    overrideFallbackProvider?: string
+  ) => {
     try {
+      // Use overridden values if provided (from applyModelChanges), otherwise use context state
+      const finalAiProviderConfig = overrideModelSelection
+        ? {
+            ...aiProviderConfig,
+            modelSelection: overrideModelSelection,
+            ...(overrideFallbackProvider && {
+              fallbackProvider: overrideFallbackProvider,
+            }),
+          }
+        : aiProviderConfig;
+
       // Save to localStorage first (always works)
       localStorage.setItem(BRAINCLOUD_KEY, JSON.stringify(brainCloudSettings));
       localStorage.setItem(INTERFACE_KEY, JSON.stringify(interfacePreferences));
       localStorage.setItem(
         AI_KEYS_KEY,
-        JSON.stringify(aiProviderConfig.apiKeys)
+        JSON.stringify(finalAiProviderConfig.apiKeys)
       );
       localStorage.setItem(SYSTEM_KEY, JSON.stringify(systemSettings));
-      localStorage.setItem(AI_PROVIDER_KEY, JSON.stringify(aiProviderConfig));
+      localStorage.setItem(
+        AI_PROVIDER_KEY,
+        JSON.stringify(finalAiProviderConfig)
+      );
 
-      console.log("[useSettingsPersistence] Settings saved to localStorage");
+      console.log(
+        "[useSettingsPersistence] Settings saved to localStorage",
+        overrideModelSelection ? "(with override)" : ""
+      );
 
       // Try to sync with server if authenticated
       try {
@@ -254,9 +274,9 @@ export function useSettingsPersistence() {
           body: JSON.stringify({
             brainCloud: brainCloudSettings,
             interface: interfacePreferences,
-            aiKeys: aiProviderConfig.apiKeys,
+            aiKeys: finalAiProviderConfig.apiKeys,
             system: systemSettings,
-            aiProvider: aiProviderConfig,
+            aiProvider: finalAiProviderConfig,
           }),
         });
 
