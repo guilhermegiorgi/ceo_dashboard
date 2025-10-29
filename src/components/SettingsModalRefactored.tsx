@@ -226,6 +226,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     aiProviderConfig.fallbackProvider
   );
   const modelCacheRef = useRef<Record<string, ProviderModelCacheEntry>>({});
+  const aiProviderConfigRef = useRef(aiProviderConfig);
   const [modelCache, setModelCache] = useState<
     Record<string, ProviderModelCacheEntry>
   >({});
@@ -288,6 +289,11 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     aiProviderConfig.modelSelection,
     aiProviderConfig.fallbackProvider,
   ]);
+
+  // Keep ref in sync so applyModelChanges reads current baseline, not stale closure value
+  useEffect(() => {
+    aiProviderConfigRef.current = aiProviderConfig;
+  }, [aiProviderConfig]);
 
   const ensureModels = useCallback(
     async (provider: AIProvider, force = false) => {
@@ -774,7 +780,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
     for (const context of MODEL_CONTEXTS) {
       const current = modelSelections[context];
-      const baseline = aiProviderConfig.modelSelection[context];
+      const baseline = aiProviderConfigRef.current.modelSelection[context];
 
       if (
         current.provider === baseline.provider &&
@@ -795,7 +801,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       }
     }
 
-    if (fallbackProvider !== aiProviderConfig.fallbackProvider) {
+    if (fallbackProvider !== aiProviderConfigRef.current.fallbackProvider) {
       const response = await api.updateFallbackProvider(fallbackProvider);
       if (response.config) {
         latestConfig = cloneSelectionMap(response.config.modelSelection);
@@ -823,9 +829,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     api,
     hasModelChanges,
     modelSelections,
-    aiProviderConfig.modelSelection,
     fallbackProvider,
-    aiProviderConfig.fallbackProvider,
     setAIProviderConfig,
   ]);
 
