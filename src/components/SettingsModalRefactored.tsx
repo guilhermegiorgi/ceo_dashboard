@@ -246,11 +246,19 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
   const availableProviders = useMemo(() => {
     const entries = Object.entries(aiApiKeys || {}) as [string, string][];
-    return entries
+    const available = entries
       .filter(
         ([, value]) => typeof value === "string" && value.trim().length > 0
       )
       .map(([provider]) => provider as AIProvider);
+    console.log("[SettingsModal] Available providers from aiApiKeys:", {
+      aiApiKeysKeys: Object.keys(aiApiKeys || {}),
+      aiApiKeysValues: Object.values(aiApiKeys || {}).map((v) =>
+        typeof v === "string" ? `[${v.length} chars]` : v
+      ),
+      availableProviders: available,
+    });
+    return available;
   }, [aiApiKeys]);
 
   const providerOptions = useMemo(() => {

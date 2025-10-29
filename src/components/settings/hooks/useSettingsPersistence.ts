@@ -195,7 +195,13 @@ export function useSettingsPersistence() {
                 ...serverSettings.aiProvider,
               }));
             }
-            if (serverSettings.aiKeys) setAIApiKeys(serverSettings.aiKeys);
+            if (serverSettings.aiKeys) {
+              console.log(
+                "✅ [useSettingsPersistence] Setting AI API keys from server:",
+                Object.keys(serverSettings.aiKeys)
+              );
+              setAIApiKeys(serverSettings.aiKeys);
+            }
             if (serverSettings.system) setSystemSettings(serverSettings.system);
             break; // Success, exit retry loop
           } else if (serverResponse.status === 401 && retries > 1) {
