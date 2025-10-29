@@ -345,13 +345,13 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
           return;
         }
 
-        setAIProviderConfig((prev) => ({
-          ...prev,
-          modelSelection: cloneSelectionMap(serverConfig.modelSelection),
-          fallbackProvider: serverConfig.fallbackProvider,
-        }));
-
+        // Only sync server config to local state if user hasn't edited yet
         if (isModelPristine) {
+          setAIProviderConfig((prev) => ({
+            ...prev,
+            modelSelection: cloneSelectionMap(serverConfig.modelSelection),
+            fallbackProvider: serverConfig.fallbackProvider,
+          }));
           setModelSelections(cloneSelectionMap(serverConfig.modelSelection));
           setFallbackProvider(serverConfig.fallbackProvider);
         }
