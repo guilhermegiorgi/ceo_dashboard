@@ -443,8 +443,16 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                     fetchedAt: now,
                   };
                   setModelCache({ ...modelCacheRef.current });
+                  const modelIds = (models as ProviderModelInfo[]).map((m) =>
+                    getModelIdentifier(m)
+                  );
                   console.log(
-                    `[Settings] ✅ Loaded ${models.length} models for ${provider} from API (force refreshed)`
+                    `[Settings] ✅ Loaded ${models.length} models for ${provider}`,
+                    {
+                      provider,
+                      modelIds,
+                      sample: models[0],
+                    }
                   );
                 } else {
                   console.warn(`[Settings] No models returned for ${provider}`);
@@ -478,8 +486,17 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
               );
 
               if (!modelExists && availableModels.length > 0) {
+                const availableIds = availableModels.map((m) =>
+                  getModelIdentifier(m as ProviderModelInfo)
+                );
                 console.warn(
-                  `[Settings] Selected model ${selectedModelId} no longer exists for ${provider}, switching to first available`
+                  `[Settings] Selected model ${selectedModelId} not found for ${provider}`,
+                  {
+                    selectedModelId,
+                    availableIds,
+                    provider,
+                    availableModelsCount: availableModels.length,
+                  }
                 );
                 next[context] = {
                   ...next[context],

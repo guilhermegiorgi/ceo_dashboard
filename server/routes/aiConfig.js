@@ -359,35 +359,13 @@ router.get("/models", async (req, res, next) => {
         `[AIConfigRoute] Found ${models.length} cached models in database for provider ${provider.provider_name}`
       );
 
-      // Check if cached models are incomplete (fallback models without proper metadata)
-      const hasIncompleteModels =
-        models.length > 0 &&
-        models.some((m) => !m.context_window && !m.max_tokens);
+      // Only re-sync if:
+      // 1. forceRefresh is explicitly requested
+      // 2. No cached models at all
+      // Don't re-sync just because models lack context_window - many APIs don't provide this
+      const shouldSync = !models.length || forceRefresh;
 
-      // For non-OpenAI providers, if models < 10, likely fallback - force re-sync
-      const isLikelyFallback =
-        models.length > 0 &&
-        models.length < 10 &&
-        normalizedProvider !== "openai";
-
-      if (isLikelyFallback) {
-        console.log(
-          `[AIConfigRoute] ⚠️ Provider ${normalizedProvider} has only ${models.length} models - likely fallback - forcing re-sync from API`
-        );
-      }
-
-      if (hasIncompleteModels) {
-        console.log(
-          `[AIConfigRoute] ⚠️ Cached models are INCOMPLETE (no context_window/max_tokens) - forcing re-sync from API`
-        );
-      }
-
-      if (
-        !models.length ||
-        forceRefresh ||
-        hasIncompleteModels ||
-        isLikelyFallback
-      ) {
+      if (shouldSync) {
         if (forceRefresh && models.length > 0) {
           console.log(
             `[AIConfigRoute] 🔄 Force refresh requested, re-syncing ${models.length} cached models from API...`
@@ -497,9 +475,14 @@ router.get("/models", async (req, res, next) => {
     logger.info(`[AIConfigRoute] Sample model:`, models[0]);
 
     const formatted = models.map((model) => {
-      const contextWindow = Number(
-        model.context_window || model.max_tokens || 0
-      );
+      // Only set contextWindow if we have actual data, not 0/null fallback
+      let contextWindow = null;
+      if (model.context_window) {
+        contextWindow = Number(model.context_window);
+      } else if (model.max_tokens) {
+        contextWindow = Number(model.max_tokens);
+      }
+
       const costInput =
         model.cost_per_input_token !== null &&
         model.cost_per_input_token !== undefined
@@ -578,6 +561,14 @@ router.get("/models", async (req, res, next) => {
 router.patch("/", authenticateJWT, async (req, res, next) => {
   try {
     const { context, selection, fallbackProvider } = req.body || {};
+    const userId = req.user?.id;
+
+    console.log(`[AIConfigRoute PATCH] Received update request:`, {
+      userId,
+      context,
+      selection,
+      fallbackProvider,
+    });
 
     if (!selection && !fallbackProvider) {
       return res.status(400).json({
@@ -596,6 +587,11 @@ router.patch("/", authenticateJWT, async (req, res, next) => {
     const fullSettings = await loadUserSettings(req.user);
     const settings = await getUserAIConfig(req.user);
 
+    console.log(`[AIConfigRoute PATCH] Current settings:`, {
+      currentModelSelection: settings.modelSelection,
+      fallbackProvider: settings.fallbackProvider,
+    });
+
     const nextConfig = {
       ...settings,
       modelSelection: { ...settings.modelSelection },
@@ -610,11 +606,24 @@ router.patch("/", authenticateJWT, async (req, res, next) => {
           ...selection,
         },
       };
+      console.log(`[AIConfigRoute PATCH] Updated ${context} selection:`, {
+        before: currentSelection,
+        after: nextConfig.modelSelection[context],
+      });
     }
 
     if (fallbackProvider) {
       nextConfig.fallbackProvider = fallbackProvider;
+      console.log(
+        `[AIConfigRoute PATCH] Updated fallback provider:`,
+        fallbackProvider
+      );
     }
+
+    console.log(`[AIConfigRoute PATCH] Saving config:`, {
+      modelSelection: nextConfig.modelSelection,
+      fallbackProvider: nextConfig.fallbackProvider,
+    });
 
     await saveUserSettings(req.user, {
       braincloud: fullSettings.braincloud,
@@ -624,8 +633,11 @@ router.patch("/", authenticateJWT, async (req, res, next) => {
       system: fullSettings.system,
     });
 
+    console.log(`[AIConfigRoute PATCH] ✅ Config saved successfully`);
+
     res.json({ success: true, config: sanitizeConfigForClient(nextConfig) });
   } catch (error) {
+    console.error(`[AIConfigRoute PATCH] ❌ Error:`, error);
     next(error);
   }
 });
