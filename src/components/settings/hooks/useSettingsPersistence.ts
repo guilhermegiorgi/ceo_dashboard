@@ -117,44 +117,50 @@ export function useSettingsPersistence() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadSettings = async () => {
+  const loadSettings = async (fromServer = false) => {
     try {
       console.log(
-        "[useSettingsPersistence] Loading settings from localStorage and server"
+        `[useSettingsPersistence] Loading settings${
+          fromServer ? " from SERVER (fresh)" : " from localStorage + server"
+        }`
       );
 
-      // Load from localStorage first (immediate)
-      const brainCloud = localStorage.getItem(BRAINCLOUD_KEY);
-      const interface_ = localStorage.getItem(INTERFACE_KEY);
-      const aiKeys = localStorage.getItem(AI_KEYS_KEY);
-      const system = localStorage.getItem(SYSTEM_KEY);
-      const aiProvider = localStorage.getItem(AI_PROVIDER_KEY);
+      // Load from localStorage first (immediate) - UNLESS forced from server
+      if (!fromServer) {
+        const brainCloud = localStorage.getItem(BRAINCLOUD_KEY);
+        const interface_ = localStorage.getItem(INTERFACE_KEY);
+        const aiKeys = localStorage.getItem(AI_KEYS_KEY);
+        const system = localStorage.getItem(SYSTEM_KEY);
+        const aiProvider = localStorage.getItem(AI_PROVIDER_KEY);
 
-      if (brainCloud) setBrainCloudSettings(JSON.parse(brainCloud));
-      if (interface_) setInterfacePreferences(JSON.parse(interface_));
-      if (system) setSystemSettings(JSON.parse(system));
-      if (aiProvider) {
-        try {
-          setAIProviderConfig((prev) => ({
-            ...prev,
-            ...JSON.parse(aiProvider),
-          }));
-        } catch (error) {
-          console.error(
-            "[useSettingsPersistence] Failed to parse AI provider config from localStorage:",
-            error
-          );
+        if (brainCloud) setBrainCloudSettings(JSON.parse(brainCloud));
+        if (interface_) setInterfacePreferences(JSON.parse(interface_));
+        if (system) setSystemSettings(JSON.parse(system));
+        if (aiProvider) {
+          try {
+            setAIProviderConfig((prev) => ({
+              ...prev,
+              ...JSON.parse(aiProvider),
+            }));
+          } catch (error) {
+            console.error(
+              "[useSettingsPersistence] Failed to parse AI provider config from localStorage:",
+              error
+            );
+          }
         }
-      }
-      if (aiKeys) {
-        setAIApiKeys(JSON.parse(aiKeys));
+        if (aiKeys) {
+          setAIApiKeys(JSON.parse(aiKeys));
+        }
       }
 
       // Try to load from server with retry logic
       let retries = 3;
       let delay = 500; // Start with 500ms delay
 
-      console.log("[useSettingsPersistence] Starting server fetch...");
+      console.log(
+        "[useSettingsPersistence] Starting server fetch (always fetch fresh data)..."
+      );
       while (retries > 0) {
         try {
           console.log(
@@ -177,6 +183,7 @@ export function useSettingsPersistence() {
               "✅ [useSettingsPersistence] Settings loaded from server:",
               serverSettings
             );
+            // Always override with server data (server is source of truth)
             if (serverSettings.brainCloud)
               setBrainCloudSettings(serverSettings.brainCloud);
             if (serverSettings.interface)

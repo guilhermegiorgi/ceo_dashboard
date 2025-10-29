@@ -261,7 +261,8 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
   useEffect(() => {
     if (open) {
       setLoading(true);
-      loadSettings().finally(() => setLoading(false));
+      // Force fresh load from server when modal opens to get latest API keys
+      loadSettings(true).finally(() => setLoading(false));
       setIsModelPristine(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
