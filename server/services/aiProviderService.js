@@ -968,14 +968,39 @@ async function fetchDeepSeekModels({ apiKey, baseUrl }) {
   console.log(
     `[fetchDeepSeekModels] ✅ Total models from API: ${models.length}`
   );
-  return models.map((model) => {
+
+  // Filter out models without valid IDs and ensure all modelIds are unique
+  const validModels = models.filter((model) => {
     const id = model.id || model.name;
+    if (!id || typeof id !== "string" || id.trim() === "") {
+      console.warn(
+        `[fetchDeepSeekModels] ⚠️ Skipping model with invalid ID:`,
+        model
+      );
+      return false;
+    }
+    return true;
+  });
+
+  console.log(
+    `[fetchDeepSeekModels] 📊 Filtered ${
+      validModels.length
+    } valid models (removed ${
+      models.length - validModels.length
+    } with invalid IDs)`
+  );
+
+  return validModels.map((model, index) => {
+    const id = (model.id || model.name || "").trim();
+    // Fallback if somehow ID is still empty - use provider + index
+    const finalId = id || `deepseek-model-${index}`;
+
     return {
-      modelId: id,
-      displayName: model.display_name || id,
+      modelId: finalId,
+      displayName: model.display_name || id || `DeepSeek Model ${index}`,
       description: model.description || "Modelo DeepSeek",
       supportsStreaming: true,
-      supportsFunctionCalling: /coder/i.test(id) ? false : true,
+      supportsFunctionCalling: /coder/i.test(finalId) ? false : true,
       supportsVision: false,
       maxTokens: model.max_tokens || null,
       contextWindow: model.context_window || null,
@@ -1006,24 +1031,42 @@ async function fetchOpenRouterModels({ apiKey, baseUrl }) {
   console.log(
     `[fetchOpenRouterModels] ✅ Total models from API: ${models.length}`
   );
-  return models.map((model) => {
-    const pricing = model.pricing || {};
-    const id = model.id || model.slug;
 
-    return {
-      modelId: id,
-      displayName: model.name || id,
-      description:
-        model.description ||
-        model.top_provider?.description ||
-        "Modelo OpenRouter",
-      supportsStreaming: true,
-      supportsFunctionCalling: true,
-      supportsVision: Boolean(model.capabilities?.vision),
-      costPerInputToken: pricing?.prompt || null,
-      costPerOutputToken: pricing?.completion || null,
-    };
-  });
+  const filtered = models
+    .filter((model) => {
+      const id = model.id || model.slug;
+      if (!id || typeof id !== "string" || id.trim() === "") {
+        console.warn(
+          `[fetchOpenRouterModels] ⚠️ Skipping model with invalid ID:`,
+          model
+        );
+        return false;
+      }
+      return true;
+    })
+    .map((model) => {
+      const pricing = model.pricing || {};
+      const id = (model.id || model.slug || "").trim();
+
+      return {
+        modelId: id,
+        displayName: model.name || id,
+        description:
+          model.description ||
+          model.top_provider?.description ||
+          "Modelo OpenRouter",
+        supportsStreaming: true,
+        supportsFunctionCalling: true,
+        supportsVision: Boolean(model.capabilities?.vision),
+        costPerInputToken: pricing?.prompt || null,
+        costPerOutputToken: pricing?.completion || null,
+      };
+    });
+
+  console.log(
+    `[fetchOpenRouterModels] ✅ Returning ${filtered.length} models after filtering`
+  );
+  return filtered;
 }
 
 async function fetchGeminiModels({ apiKey, baseUrl }) {

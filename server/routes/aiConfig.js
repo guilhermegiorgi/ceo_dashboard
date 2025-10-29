@@ -323,11 +323,26 @@ router.get("/models", async (req, res, next) => {
         const modelKey =
           providerNameMap[normalizedProvider] || normalizedProvider;
         const defaultModels = DEFAULT_MODELS[modelKey] || [];
-        return defaultModels.map((model) => ({
-          ...model,
+        return defaultModels.map((model, index) => ({
+          id: `${normalizedProvider}:${model.modelId}`,
+          model_id: model.modelId,
+          display_name: model.displayName || model.modelId,
+          description: model.description,
+          supports_streaming: model.supportsStreaming !== false,
+          supports_function_calling: model.supportsFunctionCalling !== false,
+          supports_vision: model.supportsVision || false,
+          max_tokens: model.maxTokens || null,
+          context_window: model.contextWindow || null,
+          cost_per_input_token: model.costPerInputToken || null,
+          cost_per_output_token: model.costPerOutputToken || null,
+          is_default: model.isDefault || index === 0,
+          is_active: true,
+          training_data_cutoff: model.trainingDataCutoff || null,
+          total_requests: 0,
+          total_tokens: 0,
+          last_used_at: null,
           provider_id: null,
           user_id: userId,
-          is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }));

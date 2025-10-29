@@ -137,8 +137,21 @@ const getProviderMeta = (provider: ProviderKey) =>
     accent: "#71717a",
   };
 
-const getModelIdentifier = (model: ProviderModelInfo): string =>
-  model.modelId ?? (model as { name?: string }).name ?? model.id ?? "";
+const getModelIdentifier = (model: ProviderModelInfo): string => {
+  const id =
+    model.modelId?.trim?.() ||
+    (model as { name?: string }).name?.trim?.() ||
+    model.id?.toString?.()?.trim?.() ||
+    "";
+
+  // Ensure we never return an empty string - generate fallback if needed
+  if (!id || id === "") {
+    console.warn("[SettingsModal] ⚠️ Model has no valid identifier:", model);
+    return `model-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  return id;
+};
 
 const getModelDisplayName = (model: ProviderModelInfo): string =>
   model.displayName ??
