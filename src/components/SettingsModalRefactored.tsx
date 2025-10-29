@@ -395,9 +395,14 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
     event.preventDefault();
     setSaving(true);
     try {
-      await applyModelChanges();
+      const modelChangesResult = await applyModelChanges();
 
-      const result = await saveSettings();
+      // Pass the updated model selection from applyModelChanges to saveSettings
+      // to avoid stale state issue where React hasn't updated context yet
+      const result = await saveSettings(
+        modelChangesResult.modelSelection,
+        modelChangesResult.fallbackProvider
+      );
       if (result.success) {
         if (result.localOnly) {
           showSuccessToast(
@@ -752,7 +757,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
   const applyModelChanges = useCallback(async () => {
     if (!hasModelChanges) {
-      return;
+      return { modelSelection: modelSelections, fallbackProvider };
     }
 
     let latestConfig: ModelSelectionMap | null = null;
@@ -789,23 +794,22 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       }
     }
 
-    if (latestConfig) {
-      setAIProviderConfig((prev) => ({
-        ...prev,
-        modelSelection: cloneSelectionMap(latestConfig as ModelSelectionMap),
-        fallbackProvider: (latestFallback ?? fallbackProvider) as AIProvider,
-      }));
-      setModelSelections(cloneSelectionMap(latestConfig as ModelSelectionMap));
-      setFallbackProvider((latestFallback ?? fallbackProvider) as AIProvider);
-    } else {
-      setAIProviderConfig((prev) => ({
-        ...prev,
-        modelSelection: cloneSelectionMap(modelSelections),
-        fallbackProvider,
-      }));
-    }
+    // Build final config with either latest from server or current from UI
+    const finalConfig = latestConfig || cloneSelectionMap(modelSelections);
+    const finalFallback = (latestFallback ?? fallbackProvider) as AIProvider;
+
+    setAIProviderConfig((prev) => ({
+      ...prev,
+      modelSelection: cloneSelectionMap(finalConfig),
+      fallbackProvider: finalFallback,
+    }));
+    setModelSelections(cloneSelectionMap(finalConfig));
+    setFallbackProvider(finalFallback);
 
     setIsModelPristine(true);
+
+    // Return the final config for use in saveSettings
+    return { modelSelection: finalConfig, fallbackProvider: finalFallback };
   }, [
     api,
     hasModelChanges,
