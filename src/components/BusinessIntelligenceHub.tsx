@@ -829,8 +829,6 @@ const BusinessIntelligenceHub: React.FC = () => {
           )
         );
 
-        timelineSetStreamingMessage("Gerando resposta...");
-
         let streamedContent = "";
         let thinkingContent = "";
         let isInThinkingPhase = false;
@@ -851,14 +849,8 @@ const BusinessIntelligenceHub: React.FC = () => {
           conversationId,
           (chunk) => {
             if (!chunk) return;
-            if (isInThinkingPhase) {
-              isInThinkingPhase = false;
-              setIsThinking(false);
-            }
             streamedContent += chunk;
-            timelineSetStreamingMessage((prev) =>
-              prev === "Gerando resposta..." ? chunk : prev + chunk
-            );
+            timelineSetStreamingMessage((prev) => prev + chunk);
           },
           (error) => {
             console.error("Streaming error:", error);
@@ -875,7 +867,7 @@ const BusinessIntelligenceHub: React.FC = () => {
               try {
                 const savedThinking = await api.addMessage(conversationId, {
                   role: "assistant",
-                  content: `🧠 **PROCESSO DE RACIOCÍNIO:**\n\n${thinkingContent.trim()}`,
+                  content: thinkingContent.trim(),
                 });
 
                 timelineSetChatMessages((prev) => [...prev, savedThinking]);
@@ -973,9 +965,7 @@ const BusinessIntelligenceHub: React.FC = () => {
                 const summaryText = summaries.join("\n");
                 streamedContent += `\n${summaryText}`;
                 timelineSetStreamingMessage((prev) =>
-                  prev === "Gerando resposta..."
-                    ? summaryText
-                    : `${prev}\n${summaryText}`
+                  prev ? `${prev}\n${summaryText}` : summaryText
                 );
               }
             }
