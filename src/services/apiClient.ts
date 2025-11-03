@@ -351,6 +351,22 @@ type ConversationResponseApiResponse = {
   };
 };
 
+export interface ChatStreamOptions {
+  providerOverride?: {
+    provider?: string;
+    model?: string;
+    customProviderId?: string;
+    temperature?: number;
+    maxTokens?: number;
+  };
+  context?: string;
+  conversationId?: string;
+  tools?: boolean;
+  projectName?: string;
+  contextNotePath?: string;
+  contextType?: string;
+}
+
 type AIProviderResponse = {
   id: string;
   provider_name?: string;
@@ -1017,7 +1033,7 @@ export class APIClient {
     onChunk: (chunk: string) => void,
     onError: (error: Error) => void,
     onComplete: () => void,
-    modelId?: string,
+    optionsOrModelId?: string | ChatStreamOptions,
     onEvent?: (
       event:
         | { type: "thinking"; content: string }
@@ -1026,6 +1042,36 @@ export class APIClient {
     ) => void
   ): Promise<void> {
     try {
+      console.log(
+        "[chatStream] Called with messages:",
+        messages.length,
+        "sessionId:",
+        sessionId
+      );
+
+      let options: ChatStreamOptions = {};
+      if (typeof optionsOrModelId === "string") {
+        options = {
+          providerOverride: {
+            model: optionsOrModelId,
+          },
+        };
+      } else if (optionsOrModelId) {
+        options = optionsOrModelId;
+      }
+
+      const {
+        providerOverride,
+        context,
+        conversationId,
+        tools = true,
+        projectName,
+        contextNotePath,
+        contextType,
+      } = options;
+
+      console.log("[chatStream] Provider override:", providerOverride);
+
       // Usa fetch direto para streaming
       const response = await fetch(`${this.baseUrl}/api/mcp/chat/stream`, {
         method: "POST",
@@ -1036,10 +1082,22 @@ export class APIClient {
         body: JSON.stringify({
           messages,
           sessionId,
-          tools: true, // Habilita ferramentas MCP
-          modelId,
+          tools,
+          providerOverride,
+          context,
+          conversationId,
+          project_name: projectName,
+          context_note_path: contextNotePath,
+          context_type: contextType,
         }),
       });
+
+      console.log(
+        "[chatStream] Response status:",
+        response.status,
+        "ok:",
+        response.ok
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -1055,19 +1113,33 @@ export class APIClient {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
+          console.log("[chatStream] Stream done");
           break;
         }
         const chunk = decoder.decode(value);
+        console.log(
+          "[chatStream] Raw chunk:",
+          JSON.stringify(chunk.substring(0, 300))
+        );
 
         // Process Server-Sent Events
         const lines = chunk.split("\n");
+        console.log("[chatStream] Split into", lines.length, "lines");
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const data = line.slice(6);
             if (data === "[DONE]") continue;
 
+            console.log("[chatStream] Received event:", data.substring(0, 200));
+
             try {
               const parsed = JSON.parse(data);
+              console.log("[chatStream] Parsed event type:", {
+                hasToolResult: !!parsed.tool_result,
+                hasToolSummary: !!parsed.tool_summary,
+                type: parsed.type,
+                hasChoices: !!parsed.choices,
+              });
 
               if (parsed.tool_result) {
                 onEvent?.({
@@ -1085,8 +1157,36 @@ export class APIClient {
                 continue;
               }
 
+              if (parsed.type === "text-delta") {
+                if (parsed.textDelta) {
+                  console.log(
+                    "[chatStream] Text delta:",
+                    parsed.textDelta.substring(0, 100)
+                  );
+                  onChunk(parsed.textDelta);
+                }
+                continue;
+              }
+
+              if (parsed.type === "thinking" && parsed.content) {
+                console.log(
+                  "[chatStream] Thinking content:",
+                  parsed.content.substring(0, 100)
+                );
+                onEvent?.({ type: "thinking", content: parsed.content });
+                continue;
+              }
+
+              if (parsed.type === "error" && parsed.error) {
+                throw new Error(parsed.error);
+              }
+
               const delta = parsed.choices?.[0]?.delta;
               if (delta?.content) {
+                console.log(
+                  "[chatStream] Delta content:",
+                  delta.content.substring(0, 100)
+                );
                 if (delta.thinking) {
                   onEvent?.({
                     type: "thinking",
@@ -1096,7 +1196,13 @@ export class APIClient {
                   onChunk(delta.content);
                 }
               }
-            } catch {
+            } catch (error) {
+              console.error(
+                "[chatStream] Parse error:",
+                error,
+                "Data:",
+                data.substring(0, 200)
+              );
               // Trying to parse as plain text
               if (data && data.trim()) {
                 onChunk(data);
