@@ -9,15 +9,13 @@ import React, {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { showSuccessToast, showErrorToast } from "../lib/toast";
+import { showSuccessToast } from "../lib/toast";
 import { useAdminModeActivation } from "../hooks/useAdminModeActivation";
 import {
   AlertTriangle,
   ChevronLeft,
-  ChevronRight,
   Cpu,
   Flag,
-  Link2,
   Loader2,
   RefreshCw,
   Search as SearchIcon,
@@ -46,13 +44,11 @@ import type {
   CompletedTask,
   TaskPreferences,
   ChatMessage,
-  ConversationModelConfig,
 } from "../services/apiClient";
 import { useAPI } from "../hooks/useAPI";
 import ChatWidget from "./ChatWidget";
 import FeedbackLoopTracker from "./FeedbackLoopTracker";
 import ProjectOverview from "./ProjectOverview";
-import EventListener from "./EventListener";
 import ConversationSection from "./workflow/ConversationSection";
 import ProjectCard from "./ProjectCard";
 import FocusSummaryWidget from "./workflow/FocusSummaryWidget";
@@ -72,11 +68,13 @@ import { useInboxState } from "../hooks/useInboxState";
 import { useSemanticInsights } from "../hooks/useSemanticInsights";
 import { useTimelineState } from "../hooks/useTimelineState";
 import { useUIState, UtilityView } from "../hooks/useUIState";
+import { useAssistantChatRuntime } from "../hooks/useAssistantChatRuntime";
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0.0";
 const APP_VERSION_LABEL = APP_VERSION.toUpperCase().startsWith("V")
   ? APP_VERSION.toUpperCase()
   : `V${APP_VERSION}`;
+const SAVE_CONVERSATION_INTERVAL = 6;
 
 type TimelineCard =
   | {
@@ -115,17 +113,6 @@ type TimelineCard =
       nextRun?: string;
       timestamp: string;
     };
-
-type ConversationModelOption = {
-  id: string;
-  modelId: string;
-  displayName: string;
-  providerId: string;
-  providerName: string;
-  providerDisplayName: string;
-  isDefault: boolean;
-  supportsStreaming?: boolean;
-};
 
 type Task = {
   id: string;
@@ -211,241 +198,6 @@ const formatDateTimeRange = (
   return "Execução sem horário registrado";
 };
 
-const readStringProp = (
-  event: BrainCloudEvent,
-  key: string
-): string | undefined => {
-  const value = event[key];
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value;
-  }
-  return undefined;
-};
-
-const readNumberProp = (
-  event: BrainCloudEvent,
-  key: string
-): number | undefined => {
-  const value = event[key];
-  return typeof value === "number" ? value : undefined;
-};
-
-const readStringArrayProp = (
-  event: BrainCloudEvent,
-  key: string
-): string[] | undefined => {
-  const value = event[key];
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const items = value.filter(
-    (item): item is string => typeof item === "string" && item.trim().length > 0
-  );
-  return items.length > 0 ? items : undefined;
-};
-
-const formatDurationLabel = (duration?: number): string | undefined => {
-  if (duration === undefined || duration === null || Number.isNaN(duration)) {
-    return undefined;
-  }
-  if (duration >= 1000) {
-    const seconds = duration / 1000;
-    return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)}s`;
-  }
-  return `${Math.round(duration)}ms`;
-};
-
-const buildEventCardId = (event: BrainCloudEvent): string => {
-  if (
-    "taskId" in event &&
-    typeof event.taskId === "string" &&
-    event.taskId.trim().length > 0
-  ) {
-    return `${event.type}-${event.taskId}-${event.timestamp}`;
-  }
-  if (
-    "conversationId" in event &&
-    typeof event.conversationId === "string" &&
-    event.conversationId.trim().length > 0
-  ) {
-    return `${event.type}-${event.conversationId}-${event.timestamp}`;
-  }
-  if (
-    "workflowId" in event &&
-    typeof event.workflowId === "string" &&
-    event.workflowId.trim().length > 0
-  ) {
-    return `${event.type}-${event.workflowId}-${event.timestamp}`;
-  }
-  if (
-    "path" in event &&
-    typeof event.path === "string" &&
-    event.path.trim().length > 0
-  ) {
-    return `${event.type}-${event.path}-${event.timestamp}`;
-  }
-  return `${event.type}-${event.timestamp}`;
-};
-
-const buildTimelineCardFromEvent = (event: BrainCloudEvent): TimelineCard => {
-  const eventType = String(event.type);
-  const timestamp = formatTimestampLabel(event.timestamp);
-  const bodyParts: string[] = [];
-
-  let title = `🔔 ${eventType}`;
-
-  if (eventType.startsWith("task:")) {
-    const taskLabels: Record<string, string> = {
-      "task:created": "🆕 Tarefa criada",
-      "task:updated": "✏️ Tarefa atualizada",
-      "task:completed": "✅ Tarefa concluída",
-    };
-    title = taskLabels[eventType] ?? "Atualização de tarefa";
-    const taskTitle = readStringProp(event, "title");
-    if (taskTitle) {
-      bodyParts.push(taskTitle);
-    }
-    const status = readStringProp(event, "status");
-    if (status) {
-      bodyParts.push(`Status: ${status}`);
-    }
-    const filePath = readStringProp(event, "filePath");
-    if (filePath) {
-      bodyParts.push(`Nota: ${filePath}`);
-    }
-  } else if (eventType.startsWith("file:")) {
-    const fileLabels: Record<string, string> = {
-      "file:created": "📁 Arquivo criado",
-      "file:updated": "📄 Arquivo atualizado",
-      "file:deleted": "🗑️ Arquivo removido",
-      "file:moved": "📂 Arquivo movido",
-    };
-    title = fileLabels[eventType] ?? "Atualização de arquivo";
-    const path = readStringProp(event, "path");
-    if (path) {
-      bodyParts.push(path);
-    }
-    if (eventType === "file:moved") {
-      const newPath = readStringProp(event, "newPath");
-      if (newPath) {
-        bodyParts.push(`➡️ ${newPath}`);
-      }
-    }
-  } else if (eventType.startsWith("note:")) {
-    title =
-      eventType === "note:created" ? "📝 Nota criada" : "📝 Nota atualizada";
-    const noteTitle = readStringProp(event, "title");
-    if (noteTitle) {
-      bodyParts.push(noteTitle);
-    }
-    const path = readStringProp(event, "path");
-    if (path) {
-      bodyParts.push(`Arquivo: ${path}`);
-    }
-    const tags = readStringArrayProp(event, "tags");
-    if (tags) {
-      bodyParts.push(`Tags: ${tags.join(", ")}`);
-    }
-  } else if (eventType === "conversation:saved") {
-    title = "💬 Conversa salva";
-    const conversationId = readStringProp(event, "conversationId");
-    if (conversationId) {
-      bodyParts.push(`ID: ${conversationId}`);
-    }
-    const notePath = readStringProp(event, "notePath");
-    if (notePath) {
-      bodyParts.push(`Registrada em: ${notePath}`);
-    }
-    const messageCount = readNumberProp(event, "messageCount");
-    if (messageCount !== undefined) {
-      bodyParts.push(`Mensagens: ${messageCount}`);
-    }
-  } else if (eventType === "graph:updated") {
-    title = "🧠 Grafo atualizado";
-    const nodesAdded = readNumberProp(event, "nodesAdded");
-    const nodesRemoved = readNumberProp(event, "nodesRemoved");
-    const edgesChanged = readNumberProp(event, "edgesChanged");
-    const changes: string[] = [];
-    if (nodesAdded && nodesAdded > 0) {
-      changes.push(`+${nodesAdded} nós`);
-    }
-    if (nodesRemoved && nodesRemoved > 0) {
-      changes.push(`-${nodesRemoved} nós`);
-    }
-    if (edgesChanged && edgesChanged !== 0) {
-      changes.push(`${edgesChanged > 0 ? "+" : ""}${edgesChanged} conexões`);
-    }
-    if (changes.length > 0) {
-      bodyParts.push(changes.join(" • "));
-    }
-  } else if (eventType === "focus:changed") {
-    title = "🎯 Foco atualizado";
-    const dailyNote = readStringProp(event, "dailyNote");
-    if (dailyNote) {
-      bodyParts.push(`Nota diária: ${dailyNote}`);
-    }
-    const weeklyFocus = readStringProp(event, "weeklyFocus");
-    if (weeklyFocus) {
-      bodyParts.push(`Foco semanal: ${weeklyFocus}`);
-    }
-  } else if (eventType.startsWith("sync:")) {
-    const syncLabels: Record<string, string> = {
-      "sync:started": "🔄 Sincronização iniciada",
-      "sync:completed": "✅ Sincronização concluída",
-      "sync:failed": "⚠️ Sincronização falhou",
-    };
-    title = syncLabels[eventType] ?? "Atualização de sincronização";
-    const filesChanged = readNumberProp(event, "filesChanged");
-    if (filesChanged !== undefined) {
-      bodyParts.push(`Arquivos alterados: ${filesChanged}`);
-    }
-    const duration = formatDurationLabel(readNumberProp(event, "duration"));
-    if (duration) {
-      bodyParts.push(`Duração: ${duration}`);
-    }
-    const errorMessage = readStringProp(event, "error");
-    if (errorMessage) {
-      bodyParts.push(`Erro: ${errorMessage}`);
-    }
-  } else if (eventType.startsWith("workflow:")) {
-    const workflowLabels: Record<string, string> = {
-      "workflow:triggered": "⚙️ Workflow iniciado",
-      "workflow:completed": "✅ Workflow concluído",
-      "workflow:failed": "🚫 Workflow falhou",
-    };
-    title = workflowLabels[eventType] ?? "Atualização de workflow";
-    const workflowName = readStringProp(event, "workflowName");
-    if (workflowName) {
-      bodyParts.push(`Workflow: ${workflowName}`);
-    }
-    const trigger = readStringProp(event, "trigger");
-    if (trigger) {
-      bodyParts.push(`Trigger: ${trigger}`);
-    }
-    const duration = formatDurationLabel(readNumberProp(event, "duration"));
-    if (duration) {
-      bodyParts.push(`Duração: ${duration}`);
-    }
-    if (eventType === "workflow:failed") {
-      const errorMessage = readStringProp(event, "error");
-      if (errorMessage) {
-        bodyParts.push(`Erro: ${errorMessage}`);
-      }
-    }
-  }
-
-  const body = bodyParts.filter(Boolean).join("\n");
-
-  return {
-    id: `live-${buildEventCardId(event)}`,
-    type: "message",
-    author: "assistant",
-    title,
-    body: body.length > 0 ? body : "Atualização registrada no Brain Cloud.",
-    timestamp,
-  };
-};
-
 const normalizeAgentStatus = (status?: string) => {
   const value = (status || "").toLowerCase();
   if (value.includes("running")) return "Rodando";
@@ -489,7 +241,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     () => searchParams?.toString() || "",
     [searchParams]
   );
-
 
   const {
     snapshot,
@@ -539,9 +290,6 @@ const BusinessIntelligenceHub: React.FC = () => {
   const timelineSetChatMode = timeline.setChatMode;
   const timelineSetIsTimelineCollapsed = timeline.setIsTimelineCollapsed;
   const timelineSetComposerValue = timeline.setComposerValue;
-  const timelineSetEventsConnected = timeline.setEventsConnected;
-  const timelineSetEventsError = timeline.setEventsError;
-  const timelinePushLiveTimelineCard = timeline.pushLiveTimelineCard;
 
   const inboxSetInboxNotes = inbox.setInboxNotes;
   const inboxSetInboxLoading = inbox.setInboxLoading;
@@ -555,6 +303,104 @@ const BusinessIntelligenceHub: React.FC = () => {
   const insightsFetchInsights = insights.fetchInsights;
   const insightsList = insights.insights;
 
+  const activeModelContext = useMemo(() => {
+    const type = timeline.activeConversation?.contextType;
+    if (type === "global") return "global" as const;
+    if (type === "insights") return "insights" as const;
+    return "chat" as const;
+  }, [timeline.activeConversation?.contextType]);
+
+  const { runtime: assistantRuntime, selection: activeSelection } =
+    useAssistantChatRuntime(activeModelContext);
+
+  const activeConversationId = timeline.activeConversation?.id;
+
+  const threadMessages = useMemo(() => {
+    const base = timeline.chatMessages.map((message) => ({
+      id: message.id,
+      role: message.role,
+      content: [{ type: "text", text: message.content }],
+      createdAt: new Date(message.createdAt),
+    }));
+
+    if (timeline.streamingMessage) {
+      base.push({
+        id: "streaming",
+        role: "assistant" as const,
+        content: [{ type: "text", text: timeline.streamingMessage }],
+      });
+    }
+
+    return base;
+  }, [timeline.chatMessages, timeline.streamingMessage]);
+
+  const serializedThreadMessages = useMemo(
+    () =>
+      JSON.stringify(
+        threadMessages.map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content.map((part) => part.text),
+        }))
+      ),
+    [threadMessages]
+  );
+
+  const lastSerializedThreadRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!assistantRuntime) return;
+
+    let retryHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const syncRuntimeThread = () => {
+      if (assistantRuntime.thread.state === null) {
+        if (retryHandle === null) {
+          retryHandle = window.setTimeout(() => {
+            retryHandle = null;
+            syncRuntimeThread();
+          }, 50);
+        }
+        return;
+      }
+
+      if (serializedThreadMessages === lastSerializedThreadRef.current) return;
+
+      try {
+        assistantRuntime.thread.reset(threadMessages);
+        lastSerializedThreadRef.current = serializedThreadMessages;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("empty thread")) {
+          if (retryHandle === null) {
+            retryHandle = window.setTimeout(() => {
+              retryHandle = null;
+              syncRuntimeThread();
+            }, 50);
+          }
+          return;
+        }
+        console.error("Failed to sync assistant runtime thread", error);
+      }
+    };
+
+    syncRuntimeThread();
+    const unsubscribe = assistantRuntime.thread.subscribe(syncRuntimeThread);
+
+    return () => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+      if (retryHandle !== null) {
+        clearTimeout(retryHandle);
+      }
+    };
+  }, [
+    assistantRuntime,
+    serializedThreadMessages,
+    threadMessages,
+    activeConversationId,
+  ]);
+
   useEffect(() => {
     tasksSetCompletedTaskIds(new Set());
   }, [snapshot, tasksSetCompletedTaskIds]);
@@ -562,14 +408,6 @@ const BusinessIntelligenceHub: React.FC = () => {
   // Chat/Conversation states not gerenciados pelos hooks
   const [chatLoading, setChatLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
-  const [modelOptions, setModelOptions] = useState<ConversationModelOption[]>(
-    []
-  );
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelUpdating, setModelUpdating] = useState(false);
-  const [conversationModelConfig, setConversationModelConfig] =
-    useState<ConversationModelConfig | null>(null);
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [taskPrefsReady, setTaskPrefsReady] = useState(false);
   const [openPriorityMenuId, setOpenPriorityMenuId] = useState<string | null>(
     null
@@ -582,8 +420,9 @@ const BusinessIntelligenceHub: React.FC = () => {
   const [expandedDailyPath, setExpandedDailyPath] = useState<string | null>(
     null
   );
-  const [expandedDailyContent, setExpandedDailyContent] =
-    useState<string | null>(null);
+  const [expandedDailyContent, setExpandedDailyContent] = useState<
+    string | null
+  >(null);
   const [expandedDailyTitle, setExpandedDailyTitle] = useState<string | null>(
     null
   );
@@ -591,8 +430,9 @@ const BusinessIntelligenceHub: React.FC = () => {
   const [expandedDailyError, setExpandedDailyError] = useState<string | null>(
     null
   );
-  const [expandedDailyFrontmatter, setExpandedDailyFrontmatter] =
-    useState<Record<string, unknown> | string | null>(null);
+  const [expandedDailyFrontmatter, setExpandedDailyFrontmatter] = useState<
+    Record<string, unknown> | string | null
+  >(null);
 
   const tasksList = useMemo<Task[]>(() => {
     const simplified = snapshot?.data?.tasks?.simplified;
@@ -614,8 +454,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     }
     return [];
   }, [snapshot]);
-
-  
 
   // Buscar insights quando o contexto mudar
   useEffect(() => {
@@ -809,8 +647,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     }
   }, [viewMode, uiSetActiveUtility]);
 
-  
-
   const handleResizeMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -826,181 +662,34 @@ const BusinessIntelligenceHub: React.FC = () => {
     },
     [uiHandleResizeStart]
   );
-  
 
-  const initializeConversationModels = useCallback(
-    async (conversationId: string) => {
-      setModelOptions([]);
-      setConversationModelConfig(null);
-      setSelectedModelId(null);
-      setModelsLoading(true);
+  const createConversationWithContext = useCallback(async () => {
+    const params = new URLSearchParams(searchParamsString);
+    const collectionId = params.get("collection");
 
-      try {
-        const [initialModelsResponse, configResponse] = await Promise.all([
-          api.getAvailableModels(),
-          api.getConversationModel(conversationId),
-        ]);
+    const conversation = await api.createConversation({
+      contextType: collectionId ? "project" : "global",
+      contextProjectId: collectionId || undefined,
+    });
 
-        let modelsResponse = initialModelsResponse;
+    timelineSetActiveConversation(conversation);
+    timelineSetChatMessages([]);
+    timelineSetStreamingMessage("");
+    timelineSetThinkingMessage("");
+    timelineSetChatMode("conversation");
+    timelineSetIsTimelineCollapsed(false);
 
-        let mappedModels: ConversationModelOption[] =
-          (modelsResponse.models || []).map((model) => ({
-            id: model.id,
-            modelId: model.modelId,
-            displayName: model.displayName,
-            providerId: model.providerId || "",
-            providerName: model.providerName || "",
-            providerDisplayName:
-              model.providerDisplayName || model.providerName || "",
-            isDefault: Boolean(model.isDefault),
-            supportsStreaming: model.supportsStreaming,
-          })) || [];
-
-        if (mappedModels.length === 0) {
-          try {
-            const providerList = await api.getAIProviders();
-            const providers = providerList.providers || [];
-            if (providers.length > 0) {
-              await Promise.all(
-                providers.map((provider) =>
-                  api.syncProviderModels(provider.id).catch((error) => {
-                    console.error(
-                      `Error syncing models for provider ${provider.displayName}:`,
-                      error
-                    );
-                    return null;
-                  })
-                )
-              );
-
-              modelsResponse = await api.getAvailableModels();
-              mappedModels = (modelsResponse.models || []).map((model) => ({
-                id: model.id,
-                modelId: model.modelId,
-                displayName: model.displayName,
-                providerId: model.providerId || "",
-                providerName: model.providerName || "",
-                providerDisplayName:
-                  model.providerDisplayName || model.providerName || "",
-                isDefault: Boolean(model.isDefault),
-                supportsStreaming: model.supportsStreaming,
-              }));
-            }
-          } catch (syncError) {
-            console.error("Error syncing models automatically:", syncError);
-          }
-        }
-
-        setModelOptions(mappedModels);
-
-        let finalConfig = configResponse;
-
-        if (!finalConfig && mappedModels.length > 0) {
-          const defaultOption =
-            mappedModels.find((option) => option.isDefault) || mappedModels[0];
-
-          try {
-            finalConfig = await api.setConversationModel(
-              conversationId,
-              defaultOption.id
-            );
-          } catch (error) {
-            console.error("Error setting default model:", error);
-            toast.error("Falha ao definir o modelo padrão da conversa");
-          }
-        }
-
-        if (finalConfig) {
-          setConversationModelConfig(finalConfig);
-          setSelectedModelId(finalConfig.modelId);
-        } else {
-          setConversationModelConfig(null);
-          setSelectedModelId(null);
-        }
-
-        if (mappedModels.length === 0) {
-          toast.error(
-            "Nenhum modelo disponível. Configure um provedor de IA nas configurações."
-          );
-        }
-
-        return finalConfig ?? null;
-      } catch (error) {
-        console.error("Error loading conversation models:", error);
-        toast.error("Não foi possível carregar os modelos de IA");
-        setConversationModelConfig(null);
-        setSelectedModelId(null);
-        setModelOptions([]);
-        return null;
-      } finally {
-        setModelsLoading(false);
-      }
-    },
-    [api]
-  );
-
-  useEffect(() => {
-    if (
-      timeline.chatMode === "conversation" &&
-      timeline.activeConversation?.id &&
-      !modelsLoading &&
-      modelOptions.length === 0
-    ) {
-      initializeConversationModels(timeline.activeConversation.id);
-    }
+    return conversation;
   }, [
-    timeline.activeConversation?.id,
-    timeline.chatMode,
-    initializeConversationModels,
-    modelOptions.length,
-    modelsLoading,
+    api,
+    searchParamsString,
+    timelineSetActiveConversation,
+    timelineSetChatMessages,
+    timelineSetStreamingMessage,
+    timelineSetThinkingMessage,
+    timelineSetChatMode,
+    timelineSetIsTimelineCollapsed,
   ]);
-
-  // Chat/Conversation handlers
-  const handleStartChat = useCallback(
-    async (initialMessage: string, sendMessageFn?: (msg: string) => Promise<void>) => {
-      try {
-        setChatLoading(true);
-
-        // Get current context (project if in collection view)
-        const params = new URLSearchParams(searchParamsString);
-        const collectionId = params.get("collection");
-
-        // Create new conversation with context
-        const conversation = await api.createConversation({
-          contextType: collectionId ? "project" : "global",
-          contextProjectId: collectionId || undefined,
-        });
-
-        timelineSetActiveConversation(conversation);
-        timelineSetChatMessages([]);
-        timelineSetStreamingMessage("");
-        timelineSetChatMode("conversation");
-
-        await initializeConversationModels(conversation.id);
-
-        // Send initial message (using callback passed as parameter)
-        if (initialMessage.trim() && sendMessageFn) {
-          await sendMessageFn(initialMessage);
-        }
-      } catch (error) {
-        console.error("Error starting chat:", error);
-        toast.error("Erro ao iniciar conversa");
-      } finally {
-        setChatLoading(false);
-      }
-    },
-    [
-      api,
-      initializeConversationModels,
-      searchParamsString,
-      timelineSetActiveConversation,
-      timelineSetChatMessages,
-      timelineSetStreamingMessage,
-      timelineSetChatMode,
-    ]
-  );
-
   const openConversationFromHistory = useCallback(
     async (conversationId: string) => {
       try {
@@ -1018,7 +707,6 @@ const BusinessIntelligenceHub: React.FC = () => {
         timelineSetThinkingMessage("");
         timelineSetChatMode("conversation");
         timelineSetIsTimelineCollapsed(false);
-        await initializeConversationModels(conversationId);
       } catch (error) {
         console.error("Failed to open conversation:", error);
         toast.error("Não foi possível carregar a conversa selecionada.");
@@ -1028,7 +716,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     },
     [
       api,
-      initializeConversationModels,
       timelineSetActiveConversation,
       timelineSetChatMessages,
       timelineSetStreamingMessage,
@@ -1070,13 +757,22 @@ const BusinessIntelligenceHub: React.FC = () => {
   const handleSendMessage = useCallback(
     async (content: string) => {
       const trimmedContent = content.trim();
+      if (!trimmedContent) return;
 
-      if (!timeline.activeConversation || !trimmedContent) return;
-
-      if (!selectedModelId) {
-        toast.error("Selecione um modelo de IA antes de enviar mensagens.");
+      if (!activeSelection?.provider || !activeSelection?.model) {
+        toast.error(
+          "Configure um provedor e modelo de IA nas configurações antes de usar o chat."
+        );
         return;
       }
+
+      const providerOverride = {
+        provider: activeSelection.provider,
+        model: activeSelection.model,
+        customProviderId: activeSelection.customProviderId,
+        temperature: activeSelection.temperature,
+        maxTokens: activeSelection.maxTokens,
+      };
 
       const tempMessage: ChatMessage = {
         id: `temp-${Date.now()}`,
@@ -1085,14 +781,47 @@ const BusinessIntelligenceHub: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
 
+      let conversation = timeline.activeConversation;
+      let conversationReady = Boolean(conversation);
+
       try {
         setChatLoading(true);
+
+        if (!conversation) {
+          conversation = await createConversationWithContext();
+          conversationReady = Boolean(conversation);
+        }
+
+        if (!conversation) {
+          throw new Error("Não foi possível preparar a conversa");
+        }
+
+        const conversationId = conversation.id;
+        const conversationContext = conversation.contextType || "chat";
+        const conversationProjectName = conversation.projectName;
+        const conversationNotePath = conversation.contextNotePath;
+
+        timelineSetThinkingMessage("");
+        setIsThinking(false);
+
+        const baseMessages =
+          timeline.activeConversation?.id === conversationId
+            ? timeline.chatMessages
+            : conversation.messages ?? [];
+
+        let messageHistoryForPersistence = [...baseMessages];
+
         timelineSetChatMessages((prev) => [...prev, tempMessage]);
 
-        const savedMessage = await api.addMessage(timeline.activeConversation.id, {
+        const savedMessage = await api.addMessage(conversationId, {
           role: "user",
           content: trimmedContent,
         });
+
+        messageHistoryForPersistence = [
+          ...messageHistoryForPersistence,
+          savedMessage,
+        ];
 
         timelineSetChatMessages((prev) =>
           prev.map((message) =>
@@ -1100,33 +829,8 @@ const BusinessIntelligenceHub: React.FC = () => {
           )
         );
 
-        // 🔗 Salvar conversa no Brain Cloud (só se tiver conteúdo)
-        try {
-          const conversationContent = [...timeline.chatMessages, savedMessage]
-            .map((m) => m.content)
-            .join(" ");
-          if (conversationContent && conversationContent.trim()) {
-            await api.saveConversation(
-              timeline.activeConversation.id,
-              [...timeline.chatMessages, savedMessage],
-              {
-                source: "claude",
-                modelId: selectedModelId,
-                timestamp: new Date().toISOString(),
-              }
-            );
-          }
-        } catch (brainError) {
-          console.warn(
-            "Erro ao salvar conversation no Brain Cloud:",
-            brainError
-          );
-          // Não bloqueia a conversa se o Brain Cloud falhar
-        }
-
         timelineSetStreamingMessage("Gerando resposta...");
 
-        // 🔥 USAR STREAMING REAL COM MCP TOOLS
         let streamedContent = "";
         let thinkingContent = "";
         let isInThinkingPhase = false;
@@ -1138,13 +842,13 @@ const BusinessIntelligenceHub: React.FC = () => {
               content:
                 "Você é um assistente IA com acesso às ferramentas MCP. Sempre use as ferramentas quando disponíveis para ajudar o usuário. Quando estiver pensando, compartilhe seu processo de raciocínio para que o usuário possa acompanhar seu desenvolvimento.",
             },
-            ...timeline.chatMessages.map((msg) => ({
+            ...baseMessages.map((msg) => ({
               role: msg.role,
               content: msg.content,
             })),
             { role: "user", content: trimmedContent },
           ],
-          timeline.activeConversation.id,
+          conversationId,
           (chunk) => {
             if (!chunk) return;
             if (isInThinkingPhase) {
@@ -1164,31 +868,30 @@ const BusinessIntelligenceHub: React.FC = () => {
             );
             setIsThinking(false);
             timelineSetThinkingMessage("");
+            timelineSetStreamingMessage("");
           },
           async () => {
-            // Salvar thinking no histórico se tiver conteúdo
             if (thinkingContent.trim()) {
               try {
-                const savedThinking = await api.addMessage(
-                  timeline.activeConversation.id,
-                  {
-                    role: "assistant",
-                    content: `🧠 **PROCESSO DE RACIOCÍNIO:**\n\n${thinkingContent.trim()}`,
-                  }
-                );
+                const savedThinking = await api.addMessage(conversationId, {
+                  role: "assistant",
+                  content: `🧠 **PROCESSO DE RACIOCÍNIO:**\n\n${thinkingContent.trim()}`,
+                });
 
                 timelineSetChatMessages((prev) => [...prev, savedThinking]);
+                messageHistoryForPersistence = [
+                  ...messageHistoryForPersistence,
+                  savedThinking,
+                ];
               } catch (saveError) {
                 console.error("Error saving thinking to history:", saveError);
               }
             }
 
-            // Marcar thinking como complete mas não limpar ainda (deixa usuário controlar)
             if (isInThinkingPhase) {
               setIsThinking(false);
             }
 
-            // Streaming completo - usar conteúdo acumulado local
             if (streamedContent.trim()) {
               const assistantMessage: ChatMessage = {
                 id: `assistant-${Date.now()}`,
@@ -1198,47 +901,59 @@ const BusinessIntelligenceHub: React.FC = () => {
               };
 
               try {
-                const savedResponse = await api.addMessage(
-                  timeline.activeConversation.id,
-                  {
-                    role: "assistant",
-                    content: streamedContent,
-                  }
-                );
+                const savedResponse = await api.addMessage(conversationId, {
+                  role: "assistant",
+                  content: streamedContent,
+                });
 
                 timelineSetChatMessages((prev) => [...prev, savedResponse]);
+                messageHistoryForPersistence = [
+                  ...messageHistoryForPersistence,
+                  savedResponse,
+                ];
 
-                // 🔗 Salvar conversa completa no Brain Cloud (com tratamento de erro)
-                try {
-                  await api.saveConversation(
-                    timeline.activeConversation.id,
-                    [...timeline.chatMessages, tempMessage, savedResponse],
-                    {
-                      source: "claude",
-                      modelId: selectedModelId,
-                      timestamp: new Date().toISOString(),
-                    }
-                  );
-                } catch (brainError) {
-                  console.warn(
-                    "Erro ao salvar conversation no Brain Cloud (continuando normalmente):",
-                    brainError
-                  );
-                  // Não falha a conversa se o Brain Cloud salvar falhar
+                const totalMessages = messageHistoryForPersistence.length;
+                const shouldPersist =
+                  totalMessages >= SAVE_CONVERSATION_INTERVAL &&
+                  totalMessages % SAVE_CONVERSATION_INTERVAL === 0;
+
+                if (shouldPersist) {
+                  try {
+                    await api.saveConversation(
+                      conversationId,
+                      messageHistoryForPersistence,
+                      {
+                        source: providerOverride.provider || "system",
+                        modelId: activeSelection?.model,
+                        timestamp: new Date().toISOString(),
+                      }
+                    );
+                  } catch (brainError) {
+                    console.warn(
+                      "Erro ao salvar conversation no Brain Cloud (continuando normalmente):",
+                      brainError
+                    );
+                  }
                 }
               } catch (saveError) {
                 console.error("Error saving streaming response:", saveError);
-                // Adicionar mensagem local mesmo se falhar save
                 timelineSetChatMessages((prev) => [...prev, assistantMessage]);
               }
             } else {
               console.log("Skipping save - empty streaming response");
             }
 
-            // Limpar streaming state
             timelineSetStreamingMessage("");
           },
-          selectedModelId,
+          {
+            providerOverride,
+            context: conversationContext,
+            conversationId,
+            tools: true,
+            projectName: conversationProjectName,
+            contextNotePath: conversationNotePath,
+            contextType: conversationContext,
+          },
           (event) => {
             if (!event) return;
             if (event.type === "thinking") {
@@ -1268,45 +983,38 @@ const BusinessIntelligenceHub: React.FC = () => {
         );
       } catch (error) {
         console.error("Error sending message:", error);
-        toast.error("Erro ao processar a resposta da IA");
+        toast.error(
+          conversationReady
+            ? "Erro ao processar a resposta da IA"
+            : "Erro ao iniciar conversa"
+        );
         timelineSetChatMessages((prev) =>
           prev.filter((message) => message.id !== tempMessage.id)
         );
         timelineSetStreamingMessage("");
+        timelineSetThinkingMessage("");
+        setIsThinking(false);
       } finally {
         setChatLoading(false);
       }
     },
     [
-      timeline.activeConversation,
+      activeSelection,
       api,
-      selectedModelId,
+      createConversationWithContext,
+      timeline.activeConversation,
       timeline.chatMessages,
       timelineSetChatMessages,
       timelineSetStreamingMessage,
       timelineSetThinkingMessage,
     ]
   );
-
-  // Wrapper para handleStartChat que passa handleSendMessage automaticamente
-  const startChatWithMessage = useCallback(
-    async (initialMessage: string) => {
-      await handleStartChat(initialMessage, handleSendMessage);
-    },
-    [handleStartChat, handleSendMessage]
-  );
-
   const handleBackToTimeline = useCallback(() => {
     timelineSetChatMode("timeline");
     timelineSetActiveConversation(null);
     timelineSetChatMessages([]);
     timelineSetStreamingMessage("");
     timelineSetComposerValue("");
-    setModelOptions([]);
-    setConversationModelConfig(null);
-    setSelectedModelId(null);
-    setModelsLoading(false);
-    setModelUpdating(false);
   }, [
     timelineSetChatMode,
     timelineSetActiveConversation,
@@ -1314,31 +1022,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     timelineSetStreamingMessage,
     timelineSetComposerValue,
   ]);
-
-  const handleModelChange = useCallback(
-    async (modelId: string) => {
-      if (!timeline.activeConversation || !modelId) return;
-
-      try {
-        setModelUpdating(true);
-        const config = await api.setConversationModel(
-          timeline.activeConversation.id,
-          modelId
-        );
-        setConversationModelConfig(config);
-        setSelectedModelId(config.modelId);
-        toast.success(
-          `Modelo atualizado para ${config.modelName || "modelo selecionado"}`
-        );
-      } catch (error) {
-        console.error("Error updating conversation model:", error);
-        toast.error("Não foi possível atualizar o modelo da conversa");
-      } finally {
-        setModelUpdating(false);
-      }
-    },
-    [timeline.activeConversation, api]
-  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1380,89 +1063,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     };
   }, [uiUpdatePanelRatio]);
 
-  const appendEventToTimeline = useCallback(
-    (event: BrainCloudEvent) => {
-      const card = buildTimelineCardFromEvent(event);
-      timelinePushLiveTimelineCard(card);
-    },
-    [timelinePushLiveTimelineCard]
-  );
-
-  const handleTaskEvent = useCallback(
-    (event: BrainCloudEvent) => {
-      appendEventToTimeline(event);
-      void loadDashboardSnapshot({ silent: true });
-    },
-    [appendEventToTimeline, loadDashboardSnapshot]
-  );
-
-  const handleFileEvent = useCallback(
-    (event: BrainCloudEvent) => {
-      appendEventToTimeline(event);
-      const shouldRefresh =
-        event.type === "file:created" ||
-        event.type === "file:updated" ||
-        event.type === "file:deleted";
-      if (shouldRefresh) {
-        void loadDashboardSnapshot({ silent: true });
-      }
-    },
-    [appendEventToTimeline, loadDashboardSnapshot]
-  );
-
-  const handleNoteEvent = useCallback(
-    (event: BrainCloudEvent) => {
-      appendEventToTimeline(event);
-      void loadDashboardSnapshot({ silent: true });
-    },
-    [appendEventToTimeline, loadDashboardSnapshot]
-  );
-
-  const handleConversationEvent = useCallback(
-    (event: BrainCloudEvent) => {
-      appendEventToTimeline(event);
-    },
-    [appendEventToTimeline]
-  );
-
-  const handleGraphEvent = useCallback(
-    (event: BrainCloudEvent) => {
-      appendEventToTimeline(event);
-    },
-    [appendEventToTimeline]
-  );
-
-  const handleSyncEvent = useCallback(
-    (event: BrainCloudEvent) => {
-      appendEventToTimeline(event);
-      if (event.type === "sync:completed") {
-        void loadDashboardSnapshot({ silent: true });
-      }
-    },
-    [appendEventToTimeline, loadDashboardSnapshot]
-  );
-
-  const handleWorkflowEvent = useCallback(
-    (event: BrainCloudEvent) => {
-      appendEventToTimeline(event);
-    },
-    [appendEventToTimeline]
-  );
-
-  const handleEventsConnect = useCallback(() => {
-    timelineSetEventsConnected(true);
-    timelineSetEventsError(null);
-  }, [timelineSetEventsConnected, timelineSetEventsError]);
-
-  const handleEventsDisconnect = useCallback(() => {
-    timelineSetEventsConnected(false);
-  }, [timelineSetEventsConnected]);
-
-  const handleEventsError = useCallback((err: Error) => {
-    timelineSetEventsConnected(false);
-    timelineSetEventsError(err);
-  }, [timelineSetEventsConnected, timelineSetEventsError]);
-
   useEffect(() => {
     const cleanup = getDashboardCollections();
     return () => {
@@ -1501,7 +1101,13 @@ const BusinessIntelligenceHub: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [ui.activeUtility, api, inboxSetInboxLoading, inboxSetInboxNotes, inboxSetInboxError]);
+  }, [
+    ui.activeUtility,
+    api,
+    inboxSetInboxLoading,
+    inboxSetInboxNotes,
+    inboxSetInboxError,
+  ]);
 
   useEffect(() => {
     if (ui.activeUtility !== "inbox") {
@@ -1510,7 +1116,13 @@ const BusinessIntelligenceHub: React.FC = () => {
       inboxSetExpandedInboxFrontmatter(null);
       inboxSetExpandedInboxError(null);
     }
-  }, [ui.activeUtility, inboxSetExpandedInboxPath, inboxSetExpandedInboxContent, inboxSetExpandedInboxFrontmatter, inboxSetExpandedInboxError]);
+  }, [
+    ui.activeUtility,
+    inboxSetExpandedInboxPath,
+    inboxSetExpandedInboxContent,
+    inboxSetExpandedInboxFrontmatter,
+    inboxSetExpandedInboxError,
+  ]);
 
   useEffect(() => {
     if (ui.activeUtility !== "search") {
@@ -2103,7 +1715,9 @@ const BusinessIntelligenceHub: React.FC = () => {
     );
   }, [utilityButtons, ui.activeUtility]);
   const timelineFlex = timeline.isTimelineCollapsed ? 0 : ui.rightPanelRatio;
-  const executionFlex = timeline.isTimelineCollapsed ? 1 : Math.max(0.3, 1 - ui.rightPanelRatio);
+  const executionFlex = timeline.isTimelineCollapsed
+    ? 1
+    : Math.max(0.3, 1 - ui.rightPanelRatio);
 
   const renderUtilityContent = () => {
     if (ui.activeUtility === "inbox") {
@@ -2655,9 +2269,7 @@ const BusinessIntelligenceHub: React.FC = () => {
                   onExpand={note.vaultPath ? handleToggleDailyNote : undefined}
                 />
                 {isExpanded && expandedDailyError && !expandedDailyLoading && (
-                  <p className="text-xs text-rose-400">
-                    {expandedDailyError}
-                  </p>
+                  <p className="text-xs text-rose-400">{expandedDailyError}</p>
                 )}
               </div>
             );
@@ -2819,8 +2431,12 @@ const BusinessIntelligenceHub: React.FC = () => {
         <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
           <div className="flex h-[420px] items-center justify-center">
             <div className="text-center">
-              <p className="text-zinc-400 mb-2">Visualização do Grafo de Conhecimento</p>
-              <p className="text-zinc-500 text-sm">Temporariamente desabilitado para build</p>
+              <p className="text-zinc-400 mb-2">
+                Visualização do Grafo de Conhecimento
+              </p>
+              <p className="text-zinc-500 text-sm">
+                Temporariamente desabilitado para build
+              </p>
             </div>
           </div>
         </div>
@@ -2965,7 +2581,9 @@ const BusinessIntelligenceHub: React.FC = () => {
         tasksSetSelectedTaskId(null);
         tasksSetSelectedTaskPath(null);
         tasksSetSelectedTaskTitle(task.title);
-        tasksSetSelectedTaskHeading(task.headingContext || task.project || null);
+        tasksSetSelectedTaskHeading(
+          task.headingContext || task.project || null
+        );
         tasksSetSelectedTaskContent(null);
         tasksSetSelectedTaskError("Esta tarefa não possui nota vinculada.");
         return;
@@ -2985,7 +2603,9 @@ const BusinessIntelligenceHub: React.FC = () => {
         tasksSetSelectedTaskId(task.id);
         tasksSetSelectedTaskPath(task.filePath);
         tasksSetSelectedTaskTitle(task.title);
-        tasksSetSelectedTaskHeading(task.headingContext || task.project || null);
+        tasksSetSelectedTaskHeading(
+          task.headingContext || task.project || null
+        );
         tasksSetSelectedTaskLoading(true);
         tasksSetSelectedTaskError(null);
         tasksSetSelectedTaskContent(null);
@@ -3033,20 +2653,20 @@ const BusinessIntelligenceHub: React.FC = () => {
           completed,
           title: task.title,
         });
-        
+
         // Show success toast
         if (completed) {
-          showSuccessToast('Tarefa concluída');
+          showSuccessToast("Tarefa concluída");
         }
-        
+
         // Dispatch admin mode activation event if path override was enabled
         if (result?.adminModeExpiry) {
-          const event = new CustomEvent('admin-mode-activated', {
+          const event = new CustomEvent("admin-mode-activated", {
             detail: { expiresAt: result.adminModeExpiry },
           });
           window.dispatchEvent(event);
         }
-        
+
         tasksSetCompletedTaskIds((prev) => {
           const next = new Set(prev);
           if (completed) next.add(task.id);
@@ -3464,40 +3084,6 @@ const BusinessIntelligenceHub: React.FC = () => {
 
   return (
     <div className="flex h-[calc(100vh-3rem)] min-h-0 flex-col gap-4 overflow-hidden text-zinc-100">
-      {/* TEMPORARILY DISABLED - infinite 401 loop */}
-      {/* <EventListener
-        eventTypes={[
-          "task:created",
-          "task:updated",
-          "task:completed",
-          "conversation:saved",
-          "file:created",
-          "file:updated",
-          "file:deleted",
-          "file:moved",
-          "note:created",
-          "note:updated",
-          "graph:updated",
-          "sync:started",
-          "sync:completed",
-          "sync:failed",
-          "workflow:triggered",
-          "workflow:completed",
-          "workflow:failed",
-        ]}
-        onTaskEvent={handleTaskEvent}
-        onFileEvent={handleFileEvent}
-        onNoteEvent={handleNoteEvent}
-        onConversationEvent={handleConversationEvent}
-        onGraphEvent={handleGraphEvent}
-        onSyncEvent={handleSyncEvent}
-        onWorkflowEvent={handleWorkflowEvent}
-        showToasts={false}
-        debug={process.env.NODE_ENV === "development"}
-        onConnect={handleEventsConnect}
-        onDisconnect={handleEventsDisconnect}
-        onError={handleEventsError}
-      /> */}
       <div className="rounded-2xl border border-neutral-800/60 bg-neutral-950/80 px-6 py-4 shadow-2xl shadow-black/30">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex-1">
@@ -3543,7 +3129,8 @@ const BusinessIntelligenceHub: React.FC = () => {
               eventsTooltipMessage={
                 timeline.eventsConnected
                   ? "Conectado ao Brain Cloud"
-                  : timeline.eventsError?.message || "Tentando reconectar aos eventos"
+                  : timeline.eventsError?.message ||
+                    "Tentando reconectar aos eventos"
               }
             />
           </div>
@@ -3577,17 +3164,15 @@ const BusinessIntelligenceHub: React.FC = () => {
               snapshot={snapshot}
               onSendMessage={handleSendMessage}
               onBackToTimeline={handleBackToTimeline}
-              onModelChange={handleModelChange}
-              handleModelChange={handleModelChange}
-              modelsLoading={modelsLoading}
-              modelUpdating={modelUpdating}
-              conversationModelConfig={conversationModelConfig}
-              selectedModelId={selectedModelId}
-              modelOptions={modelOptions}
               handleCollapseTimeline={timeline.handleCollapseTimeline}
-              isTimelineCollapsed={timeline.isTimelineCollapsed}
               setComposerValue={timelineSetComposerValue}
-              handleStartChat={startChatWithMessage}
+              providerLabel={
+                activeSelection
+                  ? `${activeSelection.provider.toUpperCase()} • ${
+                      activeSelection.model
+                    }`
+                  : undefined
+              }
             />
           </section>
 
@@ -3638,7 +3223,9 @@ const BusinessIntelligenceHub: React.FC = () => {
                       <input
                         ref={searchInputRef}
                         value={tasks.searchTerm}
-                        onChange={(event) => tasksSetSearchTerm(event.target.value)}
+                        onChange={(event) =>
+                          tasksSetSearchTerm(event.target.value)
+                        }
                         placeholder="Buscar no snapshot..."
                         className="flex-1 bg-transparent text-sm focus:outline-none"
                       />
@@ -3646,29 +3233,30 @@ const BusinessIntelligenceHub: React.FC = () => {
                   )}
                 </div>
               </div>
-              {ui.activeUtility !== "search" && ui.activeUtility !== "tasks" && (
-                <p className="mt-2 text-xs text-zinc-500">
-                  {ui.activeUtility === "inbox"
-                    ? "Notas brutas e capturas rápidas vindas do Segundo Cérebro."
-                    : ui.activeUtility === "dailyNotes"
-                    ? "Notas capturadas automaticamente e curadoria diária."
-                    : ui.activeUtility === "workflows"
-                    ? "Execute e monitore workflows automáticos para Daily Review, Weekly Review, Sync e Embeddings."
-                    : ui.activeUtility === "agents"
-                    ? "Status dos agentes autônomos e execuções recentes."
-                    : ui.activeUtility === "projects"
-                    ? "Organize e ative projetos do Vectal em um painel dedicado."
-                    : ui.activeUtility === "chatHistory"
-                    ? "Histórico resumido das conversas recentes com o Cognito."
-                    : ui.activeUtility === "knowledgeGraph"
-                    ? "Visualização do grafo de conhecimento do seu Segundo Cérebro."
-                    : ui.activeUtility === "mcpTools"
-                    ? "Ferramentas MCP disponíveis para o contexto atual."
-                    : ui.activeUtility === "shortcuts"
-                    ? "Atalhos para acelerar sua navegação."
-                    : null}
-                </p>
-              )}
+              {ui.activeUtility !== "search" &&
+                ui.activeUtility !== "tasks" && (
+                  <p className="mt-2 text-xs text-zinc-500">
+                    {ui.activeUtility === "inbox"
+                      ? "Notas brutas e capturas rápidas vindas do Segundo Cérebro."
+                      : ui.activeUtility === "dailyNotes"
+                      ? "Notas capturadas automaticamente e curadoria diária."
+                      : ui.activeUtility === "workflows"
+                      ? "Execute e monitore workflows automáticos para Daily Review, Weekly Review, Sync e Embeddings."
+                      : ui.activeUtility === "agents"
+                      ? "Status dos agentes autônomos e execuções recentes."
+                      : ui.activeUtility === "projects"
+                      ? "Organize e ative projetos do Vectal em um painel dedicado."
+                      : ui.activeUtility === "chatHistory"
+                      ? "Histórico resumido das conversas recentes com o Cognito."
+                      : ui.activeUtility === "knowledgeGraph"
+                      ? "Visualização do grafo de conhecimento do seu Segundo Cérebro."
+                      : ui.activeUtility === "mcpTools"
+                      ? "Ferramentas MCP disponíveis para o contexto atual."
+                      : ui.activeUtility === "shortcuts"
+                      ? "Atalhos para acelerar sua navegação."
+                      : null}
+                  </p>
+                )}
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
               {renderUtilityContent()}
@@ -3769,7 +3357,9 @@ const BusinessIntelligenceHub: React.FC = () => {
                   Carregando nota...
                 </div>
               ) : tasks.selectedTaskError ? (
-                <p className="text-sm text-rose-400">{tasks.selectedTaskError}</p>
+                <p className="text-sm text-rose-400">
+                  {tasks.selectedTaskError}
+                </p>
               ) : tasks.selectedTaskPath && tasks.selectedTaskContent ? (
                 <div className="prose prose-invert max-w-none">
                   <ReactMarkdown
@@ -3865,7 +3455,8 @@ const BusinessIntelligenceHub: React.FC = () => {
             {tasks.selectedTaskPath && (
               <div className="border-t border-neutral-800 px-6 py-3">
                 <p className="text-xs text-zinc-500">
-                  Nota: <span className="font-mono">{tasks.selectedTaskPath}</span>
+                  Nota:{" "}
+                  <span className="font-mono">{tasks.selectedTaskPath}</span>
                 </p>
               </div>
             )}
@@ -4092,6 +3683,8 @@ const BusinessIntelligenceHub: React.FC = () => {
   );
 };
 
+export default BusinessIntelligenceHub;
+
 type HubTimelineCardProps = {
   card: TimelineCard;
 };
@@ -4218,5 +3811,3 @@ const _HubTimelineCard: React.FC<HubTimelineCardProps> = ({ card }) => {
     </div>
   );
 };
-
-export default BusinessIntelligenceHub;
