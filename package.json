@@ -1,0 +1,33 @@
+{
+  "name": "gg-ai-labs-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "PORT=3000 next dev",
+    "dev:backend": "PORT=3002 nodemon server/index.js",
+    "build": "next build",
+    "start": "next start",
+    "server": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "next": "^15.5.6",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.10",
+    "dotenv": "^16.6.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guilhermegiorgi/ceo_dashboard.git"
+  }
+}
