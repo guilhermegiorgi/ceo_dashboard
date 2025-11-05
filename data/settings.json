@@ -1,22 +1,19 @@
 {
   "braincloud": {
-    "baseUrl": "https://obsidian-mcp.ggailabs.com/api/v1",
-    "apiToken": "ggai_90e2c6b20c8315906f843798bbc1598df596978a2ec79457e6d00563c76d03dc",
-    "tenantId": "",
-    "tenantPlan": "",
-    "mcpWs": "wss://obsidian-mcp.ggailabs.com/mcp",
-    "mcpHttp": "",
-    "enableRest": true,
-    "enableMcp": true,
     "connectionMode": "auto",
-    "mcpEnabled": false,
-    "restEnabled": false,
-    "mcpServerUrl": "http://localhost:3100",
-    "restApiUrl": "https://obsidian-brain.cloud/api/v1",
-    "restApiKey": ""
+    "mcpEnabled": true,
+    "restEnabled": true,
+    "mcpServerUrl": "wss://obsidian-mcp.ggailabs.com/mcp",
+    "restApiUrl": "https://obsidian-mcp.ggailabs.com/api/v1",
+    "restApiKey": "",
+    "baseUrl": "https://obsidian-mcp.ggailabs.com/api/v1",
+    "apiToken": "",
+    "enableMcp": true,
+    "enableRest": true,
+    "mcpWs": "wss://obsidian-mcp.ggailabs.com/mcp"
   },
   "interface": {
-    "theme": "auto",
+    "theme": "dark",
     "language": "pt-BR",
     "enableSounds": true,
     "enableAnimations": true,
@@ -27,30 +24,47 @@
     "openai": "",
     "anthropic": "",
     "google": "",
-    "perplexity": ""
+    "perplexity": "",
+    "openrouter": "",
+    "deepseek": ""
+  },
+  "aiProvider": {
+    "apiKeys": {
+      "openai": "",
+      "anthropic": "",
+      "google": "",
+      "perplexity": "",
+      "openrouter": "",
+      "deepseek": ""
+    },
+    "modelSelection": {
+      "chat": {
+        "provider": "openrouter",
+        "model": "minimax/minimax-m2:free",
+        "temperature": 0.7,
+        "maxTokens": 2048
+      },
+      "insights": {
+        "provider": "openrouter",
+        "model": "minimax/minimax-m2:free",
+        "temperature": 0.4,
+        "maxTokens": 1536
+      },
+      "global": {
+        "provider": "openrouter",
+        "model": "minimax/minimax-m2:free",
+        "temperature": 0.5,
+        "maxTokens": 2048
+      }
+    },
+    "customProviders": {},
+    "fallbackProvider": "openai"
   },
   "system": {
-    "allowEditAllDirectories": false,
+    "allowEditAllDirectories": true,
     "adminApiToken": "",
     "pathOverrideTTL": 600,
     "autoSaveInterval": 30,
     "enableDebugMode": true
-  },
-  "dashboard": {
-    "collections": [],
-    "taskPreferences": {
-      "viewMode": "list",
-      "sortBy": "due",
-      "pinnedTaskIds": [],
-      "priorityMap": {},
-      "boardOrder": {},
-      "lastContextId": null,
-      "contextTemplate": {
-        "workDescription": "",
-        "shortTermFocus": "",
-        "longTermGoals": "",
-        "otherContext": ""
-      }
-    }
   }
 }

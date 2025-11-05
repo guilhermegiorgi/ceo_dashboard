@@ -7,9 +7,10 @@ import React, {
   useRef,
   useState,
 } from "react";
+import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { showSuccessToast } from "../lib/toast";
+import { showSuccessToast, showErrorToast } from "../lib/toast";
 import { useAdminModeActivation } from "../hooks/useAdminModeActivation";
 import {
   AlertTriangle,
@@ -44,6 +45,7 @@ import type {
   CompletedTask,
   TaskPreferences,
   ChatMessage,
+  Conversation,
 } from "../services/apiClient";
 import { useAPI } from "../hooks/useAPI";
 import ChatWidget from "./ChatWidget";
@@ -55,7 +57,9 @@ import FocusSummaryWidget from "./workflow/FocusSummaryWidget";
 import ActiveProjectBanner from "./workflow/ActiveProjectBanner";
 import InboxPanel from "./workflow/InboxPanel";
 import InboxNoteCard from "./InboxNoteCard";
-import ChatHistoryRenderer from "./workflow/ChatHistoryRenderer";
+import ChatHistoryRenderer, {
+  type ChatHistoryItem,
+} from "./workflow/ChatHistoryRenderer";
 import McpToolsRenderer from "./workflow/McpToolsRenderer";
 import ShortcutsRenderer from "./workflow/ShortcutsRenderer";
 import WorkflowManager from "./workflow/WorkflowManager";
@@ -75,6 +79,7 @@ const APP_VERSION_LABEL = APP_VERSION.toUpperCase().startsWith("V")
   ? APP_VERSION.toUpperCase()
   : `V${APP_VERSION}`;
 const SAVE_CONVERSATION_INTERVAL = 6;
+const STREAMING_PLACEHOLDER = "⌛️ Processando...";
 
 type TimelineCard =
   | {
@@ -313,6 +318,10 @@ const BusinessIntelligenceHub: React.FC = () => {
   const { runtime: assistantRuntime, selection: activeSelection } =
     useAssistantChatRuntime(activeModelContext);
 
+  const providerLabel = activeSelection
+    ? `${activeSelection.provider.toUpperCase()} • ${activeSelection.model}`
+    : undefined;
+
   const activeConversationId = timeline.activeConversation?.id;
 
   const threadMessages = useMemo(() => {
@@ -321,18 +330,59 @@ const BusinessIntelligenceHub: React.FC = () => {
       role: message.role,
       content: [{ type: "text", text: message.content }],
       createdAt: new Date(message.createdAt),
+      status:
+        message.role === "assistant"
+          ? ({
+              type: "complete",
+              reason: "stop",
+            } as const)
+          : undefined,
     }));
 
+    if (timeline.thinkingMessage) {
+      base.push({
+        id: "thinking",
+        role: "assistant" as const,
+        content: [
+          {
+            type: "reasoning",
+            text: timeline.thinkingMessage,
+          },
+        ],
+        status: { type: "running" as const },
+        createdAt: new Date(),
+      });
+    }
+
     if (timeline.streamingMessage) {
+      const isPlaceholder =
+        timeline.streamingMessage === STREAMING_PLACEHOLDER;
+
       base.push({
         id: "streaming",
         role: "assistant" as const,
-        content: [{ type: "text", text: timeline.streamingMessage }],
+        content: [
+          {
+            type: "text",
+            text: isPlaceholder ? "" : timeline.streamingMessage,
+          },
+        ],
+        status: { type: "running" as const },
+        metadata: {
+          custom: {
+            isPlaceholder,
+          },
+        },
+        createdAt: new Date(),
       });
     }
 
     return base;
-  }, [timeline.chatMessages, timeline.streamingMessage]);
+  }, [
+    timeline.chatMessages,
+    timeline.streamingMessage,
+    timeline.thinkingMessage,
+  ]);
 
   const serializedThreadMessages = useMemo(
     () =>
@@ -433,6 +483,44 @@ const BusinessIntelligenceHub: React.FC = () => {
   const [expandedDailyFrontmatter, setExpandedDailyFrontmatter] = useState<
     Record<string, unknown> | string | null
   >(null);
+  const [conversationList, setConversationList] = useState<Conversation[]>([]);
+  const [conversationListLoading, setConversationListLoading] =
+    useState(false);
+
+  const conversationContextFilter = useMemo<
+    "global" | "project" | "note" | undefined
+  >(() => {
+    const contextType = timeline.activeConversation?.contextType;
+    if (contextType === "project" || contextType === "note") {
+      return contextType;
+    }
+    if (activeModelContext === "insights") {
+      return "note";
+    }
+    if (activeModelContext === "global") {
+      return "global";
+    }
+    return undefined;
+  }, [timeline.activeConversation?.contextType, activeModelContext]);
+
+  const refreshConversationList = useCallback(async () => {
+    try {
+      setConversationListLoading(true);
+      const { conversations } = await api.getConversations({
+        limit: 30,
+        contextType: conversationContextFilter,
+      });
+      setConversationList(conversations);
+    } catch (error) {
+      console.error("Failed to load conversation list:", error);
+    } finally {
+      setConversationListLoading(false);
+    }
+  }, [api, conversationContextFilter]);
+
+  useEffect(() => {
+    refreshConversationList();
+  }, [refreshConversationList]);
 
   const tasksList = useMemo<Task[]>(() => {
     const simplified = snapshot?.data?.tasks?.simplified;
@@ -725,6 +813,74 @@ const BusinessIntelligenceHub: React.FC = () => {
     ]
   );
 
+  const handleSelectConversationFromList = useCallback(
+    async (conversationId: string) => {
+      await openConversationFromHistory(conversationId);
+    },
+    [openConversationFromHistory]
+  );
+
+  const handleBackToTimeline = useCallback(() => {
+    timelineSetChatMode("timeline");
+    timelineSetActiveConversation(null);
+    timelineSetChatMessages([]);
+    timelineSetStreamingMessage("");
+    timelineSetComposerValue("");
+  }, [
+    timelineSetChatMode,
+    timelineSetActiveConversation,
+    timelineSetChatMessages,
+    timelineSetStreamingMessage,
+    timelineSetComposerValue,
+  ]);
+
+  const handleDeleteConversationFromList = useCallback(
+    async (conversationId: string) => {
+      try {
+        await api.deleteConversation(conversationId);
+        setConversationList((prev) =>
+          prev.filter((conversation) => conversation.id !== conversationId)
+        );
+        void refreshConversationList();
+        if (timeline.activeConversation?.id === conversationId) {
+          handleBackToTimeline();
+        }
+        toast.success("Conversa removida.");
+      } catch (error) {
+        console.error("Failed to delete conversation:", error);
+        toast.error("Não foi possível remover a conversa.");
+      }
+    },
+    [
+      api,
+      timeline.activeConversation?.id,
+      handleBackToTimeline,
+      refreshConversationList,
+    ]
+  );
+
+  const handleCreateConversationFromList = useCallback(async () => {
+    try {
+      const conversation = await createConversationWithContext();
+      if (!conversation) return;
+      setConversationList((prev) => {
+        const existingIndex = prev.findIndex(
+          (item) => item.id === conversation.id
+        );
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = conversation;
+          return next;
+        }
+        return [conversation, ...prev];
+      });
+      void refreshConversationList();
+    } catch (error) {
+      console.error("Failed to create conversation from history:", error);
+      toast.error("Não foi possível iniciar uma nova conversa.");
+    }
+  }, [createConversationWithContext, refreshConversationList]);
+
   useEffect(() => {
     const params = new URLSearchParams(searchParamsString);
     const conversationId = params.get("conversation");
@@ -829,6 +985,8 @@ const BusinessIntelligenceHub: React.FC = () => {
           )
         );
 
+        timelineSetStreamingMessage(STREAMING_PLACEHOLDER);
+
         let streamedContent = "";
         let thinkingContent = "";
         let isInThinkingPhase = false;
@@ -849,18 +1007,34 @@ const BusinessIntelligenceHub: React.FC = () => {
           conversationId,
           (chunk) => {
             if (!chunk) return;
+            if (isInThinkingPhase) {
+              isInThinkingPhase = false;
+              setIsThinking(false);
+            }
             streamedContent += chunk;
-            timelineSetStreamingMessage((prev) => prev + chunk);
+            timelineSetStreamingMessage((prev) =>
+              !prev || prev === STREAMING_PLACEHOLDER ? chunk : prev + chunk
+            );
           },
           (error) => {
             console.error("Streaming error:", error);
-            toast.error("Erro no streaming da resposta");
-            timelineSetChatMessages((prev) =>
-              prev.filter((message) => message.id !== tempMessage.id)
+            const message =
+              error instanceof Error ? error.message : "Falha no streaming";
+            const normalizedStreamMessage = message.toLowerCase();
+            const isToolSupportError = normalizedStreamMessage.includes(
+              "no endpoints found that support tool use"
             );
+            const friendlyMessage = isToolSupportError
+              ? "O modelo selecionado não suporta uso de ferramentas MCP. Escolha um provedor/modelo com suporte a ferramentas nas configurações de IA."
+              : `Erro ao processar a resposta da IA: ${message}`;
+            showErrorToast(friendlyMessage);
             setIsThinking(false);
             timelineSetThinkingMessage("");
-            timelineSetStreamingMessage("");
+            timelineSetStreamingMessage(
+              isToolSupportError
+                ? "⚠️ O modelo selecionado não suporta uso de ferramentas MCP. Ajuste o provedor/modelo nas configurações."
+                : `⚠️ Erro ao processar a resposta da IA: ${message}`
+            );
           },
           async () => {
             if (thinkingContent.trim()) {
@@ -936,6 +1110,7 @@ const BusinessIntelligenceHub: React.FC = () => {
             }
 
             timelineSetStreamingMessage("");
+            refreshConversationList();
           },
           {
             providerOverride,
@@ -965,22 +1140,51 @@ const BusinessIntelligenceHub: React.FC = () => {
                 const summaryText = summaries.join("\n");
                 streamedContent += `\n${summaryText}`;
                 timelineSetStreamingMessage((prev) =>
-                  prev ? `${prev}\n${summaryText}` : summaryText
+                  !prev || prev === STREAMING_PLACEHOLDER
+                    ? summaryText
+                    : `${prev}\n${summaryText}`
                 );
               }
+            }
+            if (event.type === "tool_result") {
+              const resultText =
+                typeof event.data === "string"
+                  ? event.data
+                  : JSON.stringify(event.data, null, 2);
+              streamedContent += `\n${resultText}`;
+              timelineSetStreamingMessage((prev) =>
+                !prev || prev === STREAMING_PLACEHOLDER
+                  ? resultText
+                  : `${prev}\n${resultText}`
+              );
             }
           }
         );
       } catch (error) {
         console.error("Error sending message:", error);
-        toast.error(
-          conversationReady
-            ? "Erro ao processar a resposta da IA"
-            : "Erro ao iniciar conversa"
+        const message =
+          error instanceof Error ? error.message : "Falha desconhecida";
+        const normalizedCatchMessage = message.toLowerCase();
+        const toolSupportError = normalizedCatchMessage.includes(
+          "no endpoints found that support tool use"
         );
-        timelineSetChatMessages((prev) =>
-          prev.filter((message) => message.id !== tempMessage.id)
-        );
+        const friendlyCatchMessage = toolSupportError
+          ? "O modelo selecionado não suporta uso de ferramentas MCP. Escolha um provedor/modelo com suporte a ferramentas nas configurações de IA."
+          : conversationReady
+          ? `Erro ao processar a resposta da IA: ${message}`
+          : `Erro ao iniciar conversa: ${message}`;
+        showErrorToast(friendlyCatchMessage);
+        const assistantContent = toolSupportError
+          ? "⚠️ O modelo selecionado não suporta uso de ferramentas MCP. Escolha um provedor/modelo com suporte a ferramentas nas configurações de IA."
+          : `⚠️ Não foi possível concluir esta solicitação.\n\n${message}`;
+
+        const assistantErrorMessage: ChatMessage = {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          content: assistantContent,
+          createdAt: new Date().toISOString(),
+        };
+        timelineSetChatMessages((prev) => [...prev, assistantErrorMessage]);
         timelineSetStreamingMessage("");
         timelineSetThinkingMessage("");
         setIsThinking(false);
@@ -997,22 +1201,9 @@ const BusinessIntelligenceHub: React.FC = () => {
       timelineSetChatMessages,
       timelineSetStreamingMessage,
       timelineSetThinkingMessage,
+      refreshConversationList,
     ]
   );
-  const handleBackToTimeline = useCallback(() => {
-    timelineSetChatMode("timeline");
-    timelineSetActiveConversation(null);
-    timelineSetChatMessages([]);
-    timelineSetStreamingMessage("");
-    timelineSetComposerValue("");
-  }, [
-    timelineSetChatMode,
-    timelineSetActiveConversation,
-    timelineSetChatMessages,
-    timelineSetStreamingMessage,
-    timelineSetComposerValue,
-  ]);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(
@@ -1675,6 +1866,43 @@ const BusinessIntelligenceHub: React.FC = () => {
     });
     return { recent, older };
   }, [chatThreads]);
+
+  const chatHistoryItems = useMemo<ChatHistoryItem[]>(() => {
+    if (conversationList.length > 0) {
+      return conversationList
+        .map((conversation) => {
+          const updatedAt =
+            conversation.updatedAt ||
+            conversation.createdAt ||
+            new Date().toISOString();
+          return {
+            id: conversation.id,
+            title: conversation.title || "Conversa",
+            summary:
+              conversation.lastMessagePreview ?? conversation.projectName ?? undefined,
+            messageCount:
+              conversation.messageCount ??
+              (Array.isArray(conversation.messages)
+                ? conversation.messages.length
+                : 0),
+            updatedAt,
+            tags: conversation.detectedTags,
+          };
+        })
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    }
+
+    return chatThreadsByRecency.recent
+      .concat(chatThreadsByRecency.older)
+      .map((thread) => ({
+        id: thread.id,
+        title: thread.title,
+        summary: thread.summary,
+        messageCount: thread.messageCount,
+        updatedAt: thread.updatedAt,
+        tags: thread.tags,
+      }));
+  }, [conversationList, chatThreadsByRecency]);
 
   const utilityButtons: DockButton[] = useMemo(
     () => [
@@ -2408,10 +2636,12 @@ const BusinessIntelligenceHub: React.FC = () => {
     if (ui.activeUtility === "chatHistory") {
       return (
         <ChatHistoryRenderer
-          chatThreads={chatThreadsByRecency.recent.concat(
-            chatThreadsByRecency.older
-          )}
-          onOpenChatThread={handleOpenChatThread}
+          conversations={chatHistoryItems}
+          loading={conversationListLoading}
+          activeConversationId={timeline.activeConversation?.id ?? null}
+          onCreate={handleCreateConversationFromList}
+          onSelect={handleSelectConversationFromList}
+          onDelete={handleDeleteConversationFromList}
         />
       );
     }
@@ -3025,13 +3255,6 @@ const BusinessIntelligenceHub: React.FC = () => {
     ]
   );
 
-  const handleOpenChatThread = useCallback(
-    (threadId: string) => {
-      openConversationFromHistory(threadId);
-    },
-    [openConversationFromHistory]
-  );
-
   const handleOpenInboxNote = useCallback(
     async (path: string) => {
       if (inbox.expandedInboxPath === path && !inbox.expandedInboxLoading) {
@@ -3143,9 +3366,6 @@ const BusinessIntelligenceHub: React.FC = () => {
             <ConversationSection
               chatMode={timeline.chatMode}
               activeConversation={timeline.activeConversation}
-              chatMessages={timeline.chatMessages}
-              streamingMessage={timeline.streamingMessage}
-              thinkingMessage={timeline.thinkingMessage}
               chatLoading={chatLoading}
               isThinking={isThinking}
               composerValue={timeline.composerValue}
@@ -3156,13 +3376,9 @@ const BusinessIntelligenceHub: React.FC = () => {
               onBackToTimeline={handleBackToTimeline}
               handleCollapseTimeline={timeline.handleCollapseTimeline}
               setComposerValue={timelineSetComposerValue}
-              providerLabel={
-                activeSelection
-                  ? `${activeSelection.provider.toUpperCase()} • ${
-                      activeSelection.model
-                    }`
-                  : undefined
-              }
+              runtime={assistantRuntime}
+              messageCount={timeline.chatMessages.length}
+              providerLabel={providerLabel}
             />
           </section>
 
@@ -3668,7 +3884,11 @@ const BusinessIntelligenceHub: React.FC = () => {
       )}
 
       {/* Integrated Chat Widget */}
-      <ChatWidget className="fixed bottom-0 right-6 z-50" />
+      <ChatWidget
+        className="fixed bottom-0 right-6 z-50"
+        context={activeModelContext}
+        providerLabel={providerLabel}
+      />
     </div>
   );
 };

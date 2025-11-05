@@ -254,7 +254,7 @@ Contexto histórico para query
 - **Auth**: JWT + bcrypt + Passport.js
 - **MCP**: Model Context Protocol (FastMCP)
 - **Transport**: HTTP SSE
-- **Frontend**: React + TypeScript + Vite
+- **Frontend**: Next.js (App Router) + React + TypeScript
 - **Styling**: TailwindCSS
 
 ### Estrutura de Pastas
@@ -341,11 +341,14 @@ curl http://localhost:3001/api/brain/status \
 ### 4. Frontend
 
 ```bash
-# Iniciar dev server (Vite)
+# Iniciar dev server (Next.js + backend Express)
 npm run dev
 
-# Build para produção
+# Build para produção (Next.js)
 npm run build
+
+# Servir build de produção
+npm run start
 ```
 
 ---

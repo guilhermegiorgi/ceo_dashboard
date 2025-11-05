@@ -66,9 +66,9 @@ graph TD
 ## Tecnologias Utilizadas (Stack)
 
 ### Stack do Frontend
-- **Framework de UI**: React 18
+- **Framework de UI**: Next.js 15 (App Router) + React 19
 - **Segurança de Tipos**: TypeScript
-- **Ferramenta de Build**: Vite
+- **Build/SSR**: Next.js (`next build` / `next start`)
 - **Estilização**: Tailwind CSS
 - **Ícones**: Lucide React
 - **Notificações**: React Hot Toast

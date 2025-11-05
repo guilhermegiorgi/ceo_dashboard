@@ -267,7 +267,6 @@ router.post("/chat/stream", async (req, res) => {
                 `data: ${JSON.stringify({
                   type: "text-delta",
                   textDelta: deltaContent,
-                  content: fullContent,
                 })}\n\n`
               );
             }
@@ -291,7 +290,6 @@ router.post("/chat/stream", async (req, res) => {
               `data: ${JSON.stringify({
                 type: "text-delta",
                 textDelta: deltaContent,
-                content: fullContent,
               })}\n\n`
             );
           }
@@ -321,12 +319,6 @@ router.post("/chat/stream", async (req, res) => {
 router.post("/query-stream", async (req, res) => {
   const { messages, sessionId, tools = true } = req.body;
 
-    messagesLength: messages?.length,
-    sessionId,
-    tools,
-    bodyKeys: Object.keys(req.body),
-  });
-
   if (!messages || messages.length === 0) {
     return res.status(400).json({ error: "messages are required" });
   }
@@ -336,9 +328,6 @@ router.post("/query-stream", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("Access-Control-Allow-Origin", "*");
-
-      `[DEBUG] Processing ${messages.length} messages with tools=${tools}`
-    );
 
     // 1. Inicializa sessão MCP dinamicamente (sem fallback)
     let mcpSession = null;
@@ -491,13 +480,6 @@ router.post("/query-stream", async (req, res) => {
     });
 
     // 4. Processa streaming com suporte a function calls
-      completionType: typeof completion,
-      isAsyncIterator:
-        completion && typeof completion[Symbol.asyncIterator] === "function",
-      completionKeys: Object.keys(completion || {}),
-      completionString: JSON.stringify(completion).substring(0, 300),
-    });
-
     if (completion && typeof completion[Symbol.asyncIterator] === "function") {
       let buffer = "";
       let chunksProcessed = 0;
@@ -512,9 +494,6 @@ router.post("/query-stream", async (req, res) => {
 
       for await (const chunk of completion) {
         chunksProcessed++;
-          "[DEBUG] Chunk received:",
-          JSON.stringify(chunk).substring(0, 300)
-        );
         logger.info(`[CognitoAgent] Processing chunk ${chunksProcessed}:`, {
           hasContent: !!chunk.content,
           hasFunctionCalls: !!chunk.function_calls,
