@@ -5,6 +5,42 @@ import path from 'path';
 const SETTINGS_FILE = path.resolve(process.cwd(), 'data', 'settings.json');
 
 // Default settings for new users
+const defaultAIProviderConfig = {
+  apiKeys: {
+    openai: '',
+    anthropic: '',
+    google: '',
+    perplexity: '',
+    openrouter: '',
+    deepseek: '',
+  },
+  modelSelection: {
+    chat: {
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      temperature: 0.7,
+      maxTokens: 2048,
+    },
+    insights: {
+      provider: 'anthropic',
+      model: 'claude-3-haiku',
+      temperature: 0.4,
+      maxTokens: 1536,
+    },
+    global: {
+      provider: 'google',
+      model: 'gemini-1.5-flash',
+      temperature: 0.5,
+      maxTokens: 2048,
+    },
+  },
+  customProviders: {},
+  fallbackProvider: 'openai',
+};
+
+const cloneDefaultAIProviderConfig = () =>
+  JSON.parse(JSON.stringify(defaultAIProviderConfig));
+
 const defaultSettings = {
   braincloudConfig: {
     connectionMode: 'auto',
@@ -26,13 +62,8 @@ const defaultSettings = {
     compactMode: false,
     showBetaFeatures: false,
   },
-  aiApiKeys: {
-    openai: '',
-    anthropic: '',
-    google: '',
-    perplexity: '',
-    openrouter: '',
-  },
+  aiApiKeys: { ...defaultAIProviderConfig.apiKeys },
+  aiProviderConfig: cloneDefaultAIProviderConfig(),
   systemSettings: {
     allowEditAllDirectories: false,
     adminApiToken: '',
@@ -62,6 +93,7 @@ export async function loadUserSettings(user) {
         ai_api_keys,
         system_settings,
         interface_preferences,
+        ai_provider_config,
         ui_preferences
       FROM user_settings
       WHERE user_id = $1 AND tenant_id = $2`,
@@ -75,6 +107,31 @@ export async function loadUserSettings(user) {
     }
 
     const row = result.rows[0];
+    const aiProviderRaw = row.ai_provider_config || {};
+    const aiProvider = {
+      apiKeys: {
+        ...defaultSettings.aiProviderConfig.apiKeys,
+        ...(aiProviderRaw.apiKeys || {}),
+      },
+      modelSelection: {
+        chat: {
+          ...defaultSettings.aiProviderConfig.modelSelection.chat,
+          ...(aiProviderRaw.modelSelection?.chat || {}),
+        },
+        insights: {
+          ...defaultSettings.aiProviderConfig.modelSelection.insights,
+          ...(aiProviderRaw.modelSelection?.insights || {}),
+        },
+        global: {
+          ...defaultSettings.aiProviderConfig.modelSelection.global,
+          ...(aiProviderRaw.modelSelection?.global || {}),
+        },
+      },
+      customProviders: aiProviderRaw.customProviders || {},
+      fallbackProvider:
+        aiProviderRaw.fallbackProvider ||
+        defaultSettings.aiProviderConfig.fallbackProvider,
+    };
     
     // Get braincloud config and map both formats
     const braincloudConfig = row.braincloud_config || defaultSettings.braincloudConfig;
@@ -102,6 +159,7 @@ export async function loadUserSettings(user) {
         ...(row.interface_preferences || defaultSettings.interfacePreferences),
       },
       aiKeys: row.ai_api_keys || defaultSettings.aiApiKeys,
+      aiProvider,
       system: row.system_settings || defaultSettings.systemSettings,
       uiPreferences: row.ui_preferences || {},
     };
@@ -128,6 +186,7 @@ export async function saveUserSettings(user, settings) {
     tenantId: user.tenantId,
     braincloud: settings.braincloud,
     aiKeys: settings.aiKeys ? Object.keys(settings.aiKeys) : null,
+    aiProvider: settings.aiProvider ? Object.keys(settings.aiProvider) : null,
     system: settings.system ? Object.keys(settings.system) : null,
   });
 
@@ -140,25 +199,28 @@ export async function saveUserSettings(user, settings) {
         language,
         braincloud_config,
         ai_api_keys,
+        ai_provider_config,
         system_settings,
         interface_preferences,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
       ON CONFLICT (tenant_id, user_id) 
       DO UPDATE SET
         theme = COALESCE($3, user_settings.theme),
         language = COALESCE($4, user_settings.language),
         braincloud_config = COALESCE($5, user_settings.braincloud_config),
         ai_api_keys = COALESCE($6, user_settings.ai_api_keys),
-        system_settings = COALESCE($7, user_settings.system_settings),
-        interface_preferences = COALESCE($8, user_settings.interface_preferences),
+        ai_provider_config = COALESCE($7, user_settings.ai_provider_config),
+        system_settings = COALESCE($8, user_settings.system_settings),
+        interface_preferences = COALESCE($9, user_settings.interface_preferences),
         updated_at = NOW()
       RETURNING 
         theme,
         language,
         braincloud_config,
         ai_api_keys,
+        ai_provider_config,
         system_settings,
         interface_preferences`,
       [
@@ -168,13 +230,16 @@ export async function saveUserSettings(user, settings) {
         settings.interface?.language || null,
         settings.braincloud || null,
         settings.aiKeys || null,
+        settings.aiProvider || null,
         settings.system || null,
-        settings.interface ? {
-          enableSounds: settings.interface.enableSounds,
-          enableAnimations: settings.interface.enableAnimations,
-          compactMode: settings.interface.compactMode,
-          showBetaFeatures: settings.interface.showBetaFeatures,
-        } : null,
+        settings.interface
+          ? {
+              enableSounds: settings.interface.enableSounds,
+              enableAnimations: settings.interface.enableAnimations,
+              compactMode: settings.interface.compactMode,
+              showBetaFeatures: settings.interface.showBetaFeatures,
+            }
+          : null,
       ]
     );
 
@@ -190,6 +255,7 @@ export async function saveUserSettings(user, settings) {
         ...row.interface_preferences,
       },
       aiKeys: row.ai_api_keys,
+      aiProvider,
       system: row.system_settings,
     };
   } catch (error) {
@@ -228,6 +294,7 @@ async function createDefaultSettings(user) {
       ...defaultSettings.interfacePreferences,
     },
     aiKeys: defaultSettings.aiApiKeys,
+    aiProvider: cloneDefaultAIProviderConfig(),
     system: defaultSettings.systemSettings,
   };
 
@@ -264,6 +331,32 @@ async function loadSettingsFromFile() {
       mcpWs: fileBraincloud.mcpWs || fileBraincloud.mcpServerUrl || 'http://localhost:3100',
     };
 
+    const fileAiProviderRaw = parsed.aiProvider || {};
+    const aiProvider = {
+      apiKeys: {
+        ...defaultSettings.aiProviderConfig.apiKeys,
+        ...(fileAiProviderRaw.apiKeys || {}),
+      },
+      modelSelection: {
+        chat: {
+          ...defaultSettings.aiProviderConfig.modelSelection.chat,
+          ...(fileAiProviderRaw.modelSelection?.chat || {}),
+        },
+        insights: {
+          ...defaultSettings.aiProviderConfig.modelSelection.insights,
+          ...(fileAiProviderRaw.modelSelection?.insights || {}),
+        },
+        global: {
+          ...defaultSettings.aiProviderConfig.modelSelection.global,
+          ...(fileAiProviderRaw.modelSelection?.global || {}),
+        },
+      },
+      customProviders: fileAiProviderRaw.customProviders || {},
+      fallbackProvider:
+        fileAiProviderRaw.fallbackProvider ||
+        defaultSettings.aiProviderConfig.fallbackProvider,
+    };
+
     return {
       braincloud,
       interface: {
@@ -276,6 +369,7 @@ async function loadSettingsFromFile() {
         ...defaultSettings.aiApiKeys,
         ...(parsed.aiKeys || {}),
       },
+      aiProvider,
       system: {
         ...defaultSettings.systemSettings,
         ...(parsed.system || {}),
@@ -309,6 +403,7 @@ async function loadSettingsFromFile() {
         ...defaultSettings.interfacePreferences,
       },
       aiKeys: defaultSettings.aiApiKeys,
+      aiProvider: cloneDefaultAIProviderConfig(),
       system: defaultSettings.systemSettings,
     };
   }
@@ -319,10 +414,41 @@ async function loadSettingsFromFile() {
  */
 async function saveSettingsToFile(settings) {
   const current = await loadSettingsFromFile();
+  const incomingAiProvider = settings.aiProvider || {};
+  const mergedAiProvider = {
+    apiKeys: {
+      ...current.aiProvider?.apiKeys,
+      ...(incomingAiProvider.apiKeys || {}),
+    },
+    modelSelection: {
+      chat: {
+        ...current.aiProvider?.modelSelection?.chat,
+        ...(incomingAiProvider.modelSelection?.chat || {}),
+      },
+      insights: {
+        ...current.aiProvider?.modelSelection?.insights,
+        ...(incomingAiProvider.modelSelection?.insights || {}),
+      },
+      global: {
+        ...current.aiProvider?.modelSelection?.global,
+        ...(incomingAiProvider.modelSelection?.global || {}),
+      },
+    },
+    customProviders: {
+      ...current.aiProvider?.customProviders,
+      ...(incomingAiProvider.customProviders || {}),
+    },
+    fallbackProvider:
+      incomingAiProvider.fallbackProvider ??
+      current.aiProvider?.fallbackProvider ??
+      defaultSettings.aiProviderConfig.fallbackProvider,
+  };
+
   const merged = {
     braincloud: { ...current.braincloud, ...(settings.braincloud || {}) },
     interface: { ...current.interface, ...(settings.interface || {}) },
     aiKeys: { ...current.aiKeys, ...(settings.aiKeys || {}) },
+    aiProvider: mergedAiProvider,
     system: { ...current.system, ...(settings.system || {}) },
   };
   

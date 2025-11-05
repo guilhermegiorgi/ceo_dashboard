@@ -18,8 +18,8 @@ O CEO Dashboard passou por um processo completo de estabilização e correção 
 - **WebSocket:** Eventos em tempo real operacionais
 
 ### 2.2 ✅ Frontend (100% Funcional)
-- **React 18 + TypeScript:** Compilação sem erros
-- **Vite Build:** Build sucesso (1.1MB bundle)
+- **Next.js 15 + TypeScript:** Compilação sem erros
+- **Next Build:** `next build` sucesso (bundle ~1.1MB)
 - **API Client:** Tokens e endpoints corrigidos
 - **Componentes:** Todos principalies funcionando
 

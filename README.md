@@ -1,12 +1,12 @@
 # 🚀 CEO Dashboard — Refatoração App Router
 
-O CEO Dashboard é a plataforma executiva da GG.AI Labs que conecta dados operacionais, Obsidian Brain Cloud e serviços MCP. Esta branch (`feature/app-router-refactor`) está migrando o frontend para **Next.js 14 (App Router)** enquanto mantemos o backend Express/Node rodando em paralelo.
+O CEO Dashboard é a plataforma executiva da GG.AI Labs que conecta dados operacionais, Obsidian Brain Cloud e serviços MCP. Esta branch (`feature/app-router-refactor`) consolida o frontend em **Next.js 15 (App Router)** enquanto mantemos o backend Express/Node rodando em paralelo.
 
 ## 🧭 Estado atual
 
 | Área | Status | Observações |
 | --- | --- | --- |
-| App Router (Next.js 14) | ✅ Base criada | Rotas `/`, `/projects`, `/knowledge-graph`, `/session-planner`, `/agents`, `/chat`, `/chat-centered`, `/login` já usam App Router. |
+| App Router (Next.js 15) | ✅ Base criada | Rotas `/`, `/projects`, `/knowledge-graph`, `/session-planner`, `/agents`, `/chat`, `/chat-centered`, `/login` já usam App Router. |
 | Backend Express | ✅ | Continua servindo em `server/` (porta `3001`). Integrações Supabase/PostgreSQL e Brain Cloud preservadas. |
 | Integração Brain Cloud | ✅ | Endpoints REST (`/api/brain/*`) ativos. Busca semântica usada em cards do dashboard. |
 | Módulos MCP / Agents legados | ⚠️ Em reconstrução | Componentes antigos foram substituídos por placeholders informativos (detalhes abaixo). |
@@ -32,7 +32,7 @@ Os restantes serão reimplementados conforme cada fluxo entrar no Sprint dedicad
 
 ## 🧱 Stack principal
 
-- **Frontend**: Next.js 14 (App Router), React 18, TypeScript, TailwindCSS
+- **Frontend**: Next.js 15 (App Router), React 19, TypeScript, TailwindCSS
 - **Backend**: Node.js 18+, Express, PostgreSQL (Supabase)
 - **Autenticação**: JWT + refresh token, Passport Google OAuth2
 - **Integrações**: Obsidian Brain Cloud REST, serviços MCP (refatoração)

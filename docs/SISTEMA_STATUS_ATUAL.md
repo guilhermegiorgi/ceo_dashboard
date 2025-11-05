@@ -32,7 +32,7 @@
 - ❌ Modelos AI não configurados
 
 ### 3. Rotas/Páginas Desnecessárias
-- ❌ Páginas antigas do Vite podem ainda existir
+- ❌ Páginas legadas do build anterior (React Router) ainda presentes
 - ❌ Rotas duplicadas ou não utilizadas
 - ❌ Componentes importados mas não usados (TimelineCardComponent, etc)
 

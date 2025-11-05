@@ -19,48 +19,36 @@ npm install
 
 2. **Configuração de Ambiente**
 
-   O projeto utiliza um único arquivo `.env` na raiz para gerenciar todas as variáveis de ambiente, tanto para o frontend quanto para o backend. Para começar, copie o arquivo de exemplo:
+   O projeto utiliza arquivos `.env` para centralizar credenciais do backend e variáveis expostas ao Next.js. Para começar, duplique os arquivos de exemplo:
 
    ```bash
-   cp .env.example .env
+   cp .env.example .env          # Variáveis globais (Next.js + serviços compartilhados)
+   cp server/.env.example server/.env  # Caso deseje isolar configs do backend
    ```
 
-   Em seguida, edite o arquivo `.env` e preencha as variáveis com suas chaves de API e configurações locais. O arquivo contém as seguintes seções:
+   Ajuste os valores conforme a sua stack. Os nomes de variáveis seguem o padrão atual de cada camada:
 
    ```env
-   # Variáveis de Ambiente do Frontend
-   VITE_API_BASE_URL=http://localhost:3001
-   VITE_WEBSOCKET_URL=ws://localhost:3001
+   # Next.js (variáveis expostas ao cliente)
+   NEXT_PUBLIC_API_BASE_URL=http://localhost:3002
+   NEXT_PUBLIC_APP_VERSION=1.0.0
 
-   # Variáveis de Ambiente do Backend
+   # Backend Node/Express
    PORT=3001
    NODE_ENV=development
+   DATABASE_URL=postgres://...
+   REDIS_URL=redis://localhost:6379
+   JWT_SECRET=change-me
+   SESSION_SECRET=change-me
 
-   # Integração com Obsidian
-   OBSIDIAN_API_URL=http://localhost:27123
-   OBSIDIAN_API_KEY=your_obsidian_api_key
-   OBSIDIAN_VAULT_NAME=your_vault_name
-
-   # Serviços de IA
+   # Integrações externas (mantidas com prefixo VITE_ por compatibilidade)
+   VITE_BRAINCLOUD_BASE_URL=https://obsidian-mcp.ggailabs.com
+   VITE_BRAINCLOUD_API_TOKEN=ggai_...
+   VITE_BRAINCLOUD_MCP_HTTP=https://obsidian-mcp.ggailabs.com/api/v1/mcp/http/
+   VITE_WEBSOCKET_URL=ws://localhost:3001
    EMBEDDINGS_API_URL=http://localhost:8000
    EMBEDDINGS_API_KEY=your_embeddings_api_key
    OPENAI_API_KEY=your_openai_api_key
-
-   # Configuração do MCP
-   MCP_ENDPOINT=ws://localhost:8080/mcp
-   MCP_API_KEY=your_mcp_key
-
-   # Banco de Dados
-   DATABASE_URL=./data/dashboard.db
-   REDIS_URL=redis://localhost:6379
-
-   # Segurança
-   JWT_SECRET=your_jwt_secret_key
-   API_RATE_LIMIT=100
-
-   # Monitoramento
-   SENTRY_DSN=your_sentry_dsn
-   LOG_LEVEL=info
    ```
 
 3. **Iniciar Servidores de Desenvolvimento**
@@ -71,44 +59,44 @@ npm install
    npm run dev
    ```
 
-   Este comando utilizará o `concurrently` para:
-   - Iniciar o servidor backend com `nodemon` em `http://localhost:3001`.
-   - Iniciar o servidor de desenvolvimento frontend com `vite` em `http://localhost:5173`.
+   Este comando utiliza `concurrently` para:
+   - Reiniciar o backend Express via `nodemon` em `http://localhost:3001`.
+   - Rodar o Next.js em modo desenvolvimento na porta `3000`.
 
 4. **Abrir Navegador**
-   Após a execução do comando, navegue para `http://localhost:5173`.
+   Após a execução do comando, navegue para `http://localhost:3000`.
 
 ## Estrutura do Projeto
 
-A arquitetura do projeto é dividida em duas partes principais: o `frontend` (construído com React e Vite) e o `backend` (um servidor Node.js/Express). A estrutura foi projetada para ser modular e escalável.
+A arquitetura combina um frontend em **Next.js (App Router)** com um backend em **Node.js/Express**. O repositório mantém pastas legadas (`src/pages`) para referência, mas o fluxo oficial roda no diretório `app/`.
 
 ```
 / (Raiz do Projeto)
-├── src/                     # Código-fonte do Frontend
-├── server/                  # Código-fonte do Backend
+├── app/                     # Rotas e layouts do Next.js App Router
+├── src/                     # Componentes compartilhados, hooks e serviços
+├── server/                  # Código-fonte do backend Express
 ├── docs/                    # Documentação do projeto
-├── .env.example             # Arquivo de exemplo para variáveis de ambiente
+├── next.config.mjs          # Configuração do Next.js
 ├── package.json             # Dependências e scripts do projeto
-└── vite.config.ts           # Configuração do Vite
+└── tsconfig.json            # Configuração TypeScript raiz
 ```
 
-### Estrutura do Frontend (`src/`)
+### Estrutura do Frontend (Next.js)
 
 ```
+app/
+├── (dashboard)/             # Rotas autenticadas (Dashboard, projetos, chat)
+├── (auth)/                  # Fluxo de login, logout e callback OAuth
+├── api/                     # Endpoints server actions/route handlers
+├── globals.css              # Estilos globais
+└── providers.tsx            # Providers compartilhados (tema, query, etc.)
+
 src/
-├── components/              # Componentes React de alta especialização
-│   ├── AIAgentOrchestrator.tsx # Orquestrador de Agentes de IA
-│   ├── BusinessIntelligenceHub.tsx # Hub de Inteligência de Negócios
-│   ├── DecisionJournal.tsx      # Diário de Decisões Estratégicas
-│   ├── KnowledgeGraphVisualizer.tsx # Visualizador do Grafo de Conhecimento
-│   ├── ProactiveSynergyPanel.tsx  # Painel de Sinergia Proativa
-│   └── ... (20+ outros componentes)
-├── services/                # Camada de serviço do Frontend
-│   └── apiClient.ts         # Cliente de API centralizado para comunicação com o backend
-├── contexts/                # Contextos React (ex: LanguageContext)
-├── hooks/                   # Hooks customizados (ex: useAPI)
-├── types/                   # Definições de tipo TypeScript globais
-└── App.tsx                  # Componente principal da aplicação
+├── components/              # Componentes React reutilizáveis
+├── services/                # Cliente de API e integrações
+├── hooks/                   # Hooks customizados (ex: useAPI, useUIState)
+├── contexts/                # Contextos (ex: DashboardDataProvider)
+└── lib/                     # Utilitários e helpers
 ```
 
 ### Estrutura do Backend (`server/`)
@@ -211,8 +199,12 @@ class NewService {
   private apiKey: string;
 
   constructor() {
-    this.baseUrl = import.meta.env.VITE_NEW_SERVICE_URL;
-    this.apiKey = import.meta.env.VITE_NEW_SERVICE_KEY;
+    this.baseUrl =
+      process.env.NEXT_PUBLIC_NEW_SERVICE_URL ??
+      process.env.NEW_SERVICE_URL ??
+      "";
+    this.apiKey =
+      process.env.NEXT_PUBLIC_NEW_SERVICE_KEY ?? process.env.NEW_SERVICE_KEY ?? "";
   }
 
   async fetchData() {
@@ -337,15 +329,12 @@ return <span>{t('new.key')}</span>;
 ## Otimização de Desempenho
 
 ### Análise do Bundle
-Para analisar o tamanho do bundle de produção, você pode usar uma ferramenta como `vite-bundle-visualizer`.
+Para investigar o tamanho do bundle produzido pelo Next.js, utilize o script dedicado:
 ```bash
-# Primeiro, gere o build de produção
-npm run build
-
-# Em seguida, analise os stats do build
-# (Requer a instalação do pacote: npm install -g vite-bundle-visualizer)
-vite-bundle-visualizer
+# Gera relatórios de bundle usando a automação interna
+npm run analyze:bundle
 ```
+O comando acima executa `next build` com a configuração de análise embutida em `scripts/analyze-bundle.js`, gerando arquivos em `.next/analyze`.
 
 ### Melhores Práticas de Desempenho
 - Use `React.memo` para componentes caros
@@ -378,10 +367,10 @@ const LazyComponent = React.lazy(() => import('./LazyComponent'));
 #### Problemas de Conexão com a API
 ```typescript
 // Verificar variáveis de ambiente
-console.log('API URL:', import.meta.env.VITE_API_URL);
+console.log('API URL:', process.env.NEXT_PUBLIC_API_BASE_URL);
 
 // Testar conectividade da API
-fetch(import.meta.env.VITE_API_URL + '/health')
+fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3002'}/health`)
   .then(response => console.log('Status da API:', response.status))
   .catch(error => console.error('Erro na API:', error));
 ```
@@ -403,16 +392,20 @@ fetch(import.meta.env.VITE_API_URL + '/health')
 # Criar build de produção
 npm run build
 
-# Visualizar build de produção localmente
-npm run preview
+# Servir o build de produção localmente (Next.js)
+npm run start
 ```
 
 ### Variáveis de Ambiente
 ```bash
 # Variáveis de ambiente de produção
-VITE_OBSIDIAN_API_URL=https://sua-api-obsidian.com
-VITE_EMBEDDINGS_API_URL=https://sua-api-embeddings.com
-VITE_MCP_ENDPOINT=wss://seu-servidor-mcp.com/mcp
+NEXT_PUBLIC_API_BASE_URL=https://api.seu-dominio.com
+NEXT_PUBLIC_APP_VERSION=1.0.0
+
+# Variáveis legadas (prefixo VITE_) ainda consumidas por serviços MCP
+VITE_BRAINCLOUD_BASE_URL=https://obsidian-mcp.ggailabs.com
+VITE_BRAINCLOUD_API_TOKEN=ggai_prod_token
+VITE_BRAINCLOUD_MCP_HTTP=https://obsidian-mcp.ggailabs.com/api/v1/mcp/http/
 ```
 
 ### Checklist de Implantação
@@ -459,7 +452,7 @@ Inclua capturas de tela para alterações na UI
 - [Documentação do React](https://pt-br.reactjs.org/docs/getting-started.html)
 - [Manual do TypeScript](https://www.typescriptlang.org/docs/)
 - [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-- [Vite Documentation](https://vitejs.dev/)
+- [Next.js Documentation](https://nextjs.org/docs)
 
 ### Tools
 - [VS Code Extensions](https://marketplace.visualstudio.com/items?itemName=bradlc.vscode-tailwindcss)

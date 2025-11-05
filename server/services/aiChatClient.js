@@ -181,6 +181,39 @@ const PROVIDER_PARAMETER_CONFIGS = {
   },
 };
 
+const OPENROUTER_PROVIDER_HINTS = {
+  anthropic: ["Anthropic"],
+  openai: ["OpenAI"],
+  meta: ["Meta"],
+  mistral: ["Mistral"],
+  google: ["Google"],
+  perplexity: ["Perplexity"],
+  deepseek: ["DeepSeek"],
+  xai: ["xAI"],
+  minimax: ["MiniMax"],
+};
+
+function inferOpenRouterProviders(model) {
+  if (!model || typeof model !== "string") return null;
+  const prefix = model.split("/")[0]?.toLowerCase();
+  if (!prefix) return null;
+  return OPENROUTER_PROVIDER_HINTS[prefix] || null;
+}
+
+function buildFallbackProviderHint(model) {
+  if (!model || typeof model !== "string") return null;
+  const rawPrefix = model.split("/")[0];
+  if (!rawPrefix) return null;
+
+  const normalized = rawPrefix
+    .split(/[\W_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+  return normalized ? [normalized] : null;
+}
+
 async function callOpenAI({
   baseUrl,
   apiKey,
@@ -201,6 +234,17 @@ async function callOpenAI({
     model,
     messages: toOpenAIMessages(messages, systemPrompt),
   };
+
+  if (tools && tools.length > 0 && !body.providers) {
+    const providerHint =
+      inferOpenRouterProviders(model) || buildFallbackProviderHint(model);
+    if (providerHint) {
+      body.providers = providerHint;
+      logger.info(
+        `[OpenRouter] Provider hint injected for tool use: ${providerHint.join(",")}`
+      );
+    }
+  }
 
   // Adiciona tools se fornecidos
   if (tools && tools.length > 0) {

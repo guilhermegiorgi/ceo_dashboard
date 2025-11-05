@@ -3,7 +3,9 @@
 import React from "react";
 import McpToolsRenderer from "./McpToolsRenderer";
 import ShortcutsRenderer from "./ShortcutsRenderer";
-import ChatHistoryRenderer from "./ChatHistoryRenderer";
+import ChatHistoryRenderer, {
+  type ChatHistoryItem,
+} from "./ChatHistoryRenderer";
 
 export type UtilityType = "mcp-tools" | "shortcuts" | "history";
 
@@ -45,7 +47,7 @@ export default function UtilityContentRenderer({
       if (!Array.isArray(data)) return null;
       return (
         <ChatHistoryRenderer
-          conversations={data as Array<Record<string, unknown>>}
+          conversations={data as ChatHistoryItem[]}
           onSelect={onSelect}
           onDelete={onDelete}
         />

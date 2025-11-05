@@ -34,6 +34,7 @@ router.get('/', async (req, res, next) => {
       brainCloud: settings.braincloud,
       interface: settings.interface,
       aiKeys: settings.aiKeys,
+      aiProvider: settings.aiProvider,
       system: settings.system,
     });
   } catch (error) {
@@ -43,12 +44,19 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { brainCloud, interface: interfacePrefs, aiKeys, system } = req.body;
+    const {
+      brainCloud,
+      interface: interfacePrefs,
+      aiKeys,
+      aiProvider,
+      system,
+    } = req.body;
     
     const saved = await saveUserSettings(req.user, {
       braincloud: brainCloud,
       interface: interfacePrefs,
       aiKeys,
+      aiProvider,
       system,
     });
     
@@ -57,6 +65,7 @@ router.post('/', async (req, res, next) => {
       brainCloud: saved.braincloud,
       interface: saved.interface,
       aiKeys: saved.aiKeys,
+      aiProvider: saved.aiProvider,
       system: saved.system,
     });
   } catch (error) {

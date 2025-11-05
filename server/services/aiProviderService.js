@@ -873,7 +873,7 @@ async function fetchOpenAIModels({ apiKey, baseUrl }) {
     .map((model) => {
       const id = model.id;
       const description = model.root || model.owned_by || "Modelo OpenAI";
-      const supportsFunctionCalling = /gpt-4|gpt-3.5|gpt-4o/i.test(id);
+      const supportsFunctionCalling = /gpt-4|gpt-3.5|gpt-4o|gpt-5/i.test(id);
       const supportsVision = /gpt-4o|gpt-4\.1|vision/i.test(id);
 
       return {

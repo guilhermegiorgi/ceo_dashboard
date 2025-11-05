@@ -8,7 +8,7 @@
 ## 2. Arquitetura Geral
 ### 2.1 Visao em camadas
 ```
-Frontend SPA (React 18 + Vite + Tailwind)
+Frontend (Next.js 15 App Router + Tailwind)
         |
         | HTTP (REST, SSE)
         v
@@ -29,46 +29,42 @@ Persistencia: PostgreSQL (Supabase) + SQLite (dashboard.db) + arquivos (`data/`,
 - IA: Cognito (gateway proprietario), provedores externos (OpenAI, Anthropic, DeepSeek, Google, OpenRouter), ferramenta MCP com mais de 30 funcoes expostas.
 - Observabilidade: logs estruturados (Winston), health checks, WebSocket broadcast e scripts de manutencao.
 
-## 3. Frontend (React + Vite)
+## 3. Frontend (Next.js App Router)
 ### 3.1 Stack e build
-- Local: `src/`, Vite (`vite.config.ts`) com proxy `/api -> http://localhost:3001`.
-- Dependencias principais: React 18, TypeScript, Tailwind, lucide-react, react-hot-toast, react-markdown.
-- Scripts: `npm run dev` (Vite + Express via `concurrently`), `npm run build`, `npm run preview`.
-- CSS base em `src/index.css`; Tailwind configurado em `tailwind.config.js`.
+- Next.js 15 App Router (`app/`) com React 19, TypeScript, Tailwind, lucide-react, react-hot-toast e assistant-ui.
+- Scripts: `npm run dev` (Next + Express via `concurrently`), `npm run build`, `npm run start`, `npm run analyze:bundle`.
+- Artefatos gerados em `.next/`; estáticos compartilhados residem em `public/`.
+- Configurações relevantes: `next.config.mjs` (rewrites/proxy para o backend), `tailwind.config.js`, `postcss.config.js`.
 
-### 3.2 Estrutura e navegacao
-- `src/main.tsx` monta o app com `BrowserRouter`.
-- `src/App.tsx` define rotas protegidas via `<PrivateRoute>` (verifica token no `localStorage`).
-- `src/components/DashboardLayout.tsx` organiza `NavigationSidebar` + `<Outlet />`.
-- Navegacao lateral centraliza acessos a `BusinessIntelligenceHub`, `Chat`, `KnowledgeGraph`, `DecisionJournal`, `Projects`, `StrategicSessionPlanner`, `Agents`.
+### 3.2 Estrutura e navegação
+- `app/layout.tsx` define HTML base e carrega provedores globais (`app/providers.tsx`).
+- `app/(dashboard)/layout.tsx` aplica o layout autenticado; `app/(dashboard)/page.tsx` renderiza `BusinessIntelligenceHubWrapper`.
+- Rotas App Router já implementadas: `/agents`, `/knowledge-graph`, `/projects`, `/chat`, `/chat-centered`, `/session-planner`, `/login`.
+- Pastas legadas em `src/pages` e `src/App.tsx` permanecem apenas para consulta histórica; novas features devem nascer em `app/`.
 
 ### 3.3 Estado e contextos
-- `src/contexts/LanguageContext.tsx` oferece internacionalizacao basica (portugues/ingles).
-- `src/contexts/SettingsModalContext.tsx` controla modal de configuracoes.
-- `src/hooks/useAPI.tsx` injeta instancia unica de `APIClient`; hooks especializados (`useChat`, `useInsightsService`, `useMCP`, etc.) encapsulam chamadas especificas.
+- `src/contexts/DashboardDataContext.tsx` disponibiliza snapshot diário, coleções e preferências de tarefas.
+- Hooks auxiliares (`useTasksState`, `useInboxState`, `useSemanticInsights`, `useUIState`, `useTimelineState`) alimentam widgets específicos.
+- `useAdminModeActivation` ativa o modo administrador via atalho de teclado.
+- Providers definidos em `app/providers.tsx` integram toasts, theming e autenticação.
 
-### 3.4 API client e consumo
-- `src/services/apiClient.ts` agrega chamadas REST/SSE. Destaques:
-  - `request()` adiciona JWT, tenta refresh automatico, gerencia fila durante renovacao.
-  - Streaming via `chatStream()` (SSE) para `/api/mcp/chat/stream`.
-  - Helpers para Brain Cloud (`getGraphData`, `getDueTasks`, `getRecentPeriodics`), agentes, conversas, projetos, tarefas e provedores de IA.
-  - Declara interfaces tipadas para insights, tarefas, conversas, provedores, modelos, etc.
+### 3.4 Cliente de API e consumo
+- `src/services/apiClient.ts` resolve `NEXT_PUBLIC_API_BASE_URL`, injeta JWT, executa refresh automático, suporta SSE/streaming.
+- Expõe helpers para Brain Cloud (`getGraphData`, `getDashboardSnapshot`, `searchBrainCloud`, `triggerWorkflow`), tarefas, inbox, conversas, agentes e provedores de IA.
+- Hooks (`useAPI`, `useSemanticInsights`, `useTimelineState`) encapsulam chamadas e evitam duplicação nos componentes.
 
-### 3.5 Principais paginas/componentes
-- `BusinessIntelligenceHub.tsx`: dashboard vivo combinando timeline (mensagens, insights, notas, agentes), tasks simplificadas, conversas, grafo. Usa fallback `FALLBACK_*` caso API falhe e exibe configuracoes de modelos conversacionais.
-- `ChatPage.tsx`: cliente conversacional com streaming, sugestoes rapidas, painel lateral para notas/contextos (to-do), suporte a historico (`apiClient.searchConversations`). Depende de `/api/mcp/chat/stream`.
-- `KnowledgeGraphPage.tsx`: visualizacao e analise do grafo, exporta JSON, dispara `/api/obsidian/analyze-graph`.
-- `ProjectsPage.tsx`: CRUD de projetos (SQLite), integra com Brain Cloud para extrair diretorios/tags correlacionados.
-- `DecisionJournalPage.tsx`: formulario para registrar decisoes (gera nota via Brain Cloud). `GET` ainda retorna lista vazia.
-- `StrategicSessionPlanner.tsx`: agenda sessoes estrategicas (SQLite). Nota: o hook esta incorreto (`const { apiClient } = useAPI()`), causando erro; precisa de `const api = useAPI()`.
-- `AgentsPage.tsx` + `components/AgentManager.tsx`: gestao de agentes de IA (PostgreSQL), execucao sob demanda, exibicao de `agent_runs`.
-- Componentes auxiliares: `KnowledgeGraphVisualizer`, `ConversationView`, `SettingsModal`, `FeedbackLoopTracker`, `MCPIntegration`, `AIInsightCard`, etc., permitindo reuso e especializacao.
+### 3.5 Principais páginas/componentes
+- `BusinessIntelligenceHub.tsx`: agrega timeline (mensagens, insights, notas), tarefas, conversas, analytics, workflows e widgets MCP.
+- Pasta `src/components/workflow/`: `ConversationSection`, `FocusSummaryWidget`, `ShortcutsRenderer`, `McpToolsRenderer`, `WorkflowManager`.
+- `app/(auth)/login/page.tsx`: fluxo de autenticação (credenciais + Google OAuth).
+- `app/(dashboard)/agents/page.tsx`: gestão de agentes, execuções recentes e triggers.
+- `app/(dashboard)/knowledge-graph/page.tsx`: visualização do grafo de conhecimento, filtros e análises.
+- `components/ChatWidget` e `ChatHistoryRenderer`: interface conversacional usando assistant-ui com streaming.
 
-### 3.6 Observacoes e pontos de atencao
-- O fallback massivo em `BusinessIntelligenceHub` indica dependencia forte de API; garantir que `/api/dashboard/today` esteja solido.
-- Refresh de token no `APIClient` usa endpoint `/api/auth/refresh-token`, mas o backend expe `/api/auth/refresh` (deve ser ajustado).
-- Algumas paginas (StrategicSessionPlanner, MarketIntelligenceEngine) ainda consomem rotas prototipo, exigindo validacao antes de habilitar em producao.
-- Validar persistencia de preferencias de tarefas e colecoes (salvas em `data/settings.json` pelo backend).
+### 3.6 Observações e pontos de atenção
+- Componentes placeholders (`ProjectOverview`, `ProactiveSynergyPanel`, etc.) exibem mensagens informativas até a reimplementação.
+- Garantir estabilidade de `/api/dashboard/today` e `/api/brain/*` para minimizar fallback no hub.
+- Variáveis com prefixo `VITE_` seguem ativas para integrações MCP e serão migradas gradualmente para `NEXT_PUBLIC_*`.
 
 ## 4. Backend (Node.js + Express)
 ### 4.1 Inicializacao
@@ -190,7 +186,7 @@ Persistencia: PostgreSQL (Supabase) + SQLite (dashboard.db) + arquivos (`data/`,
 - WebSocket: broadcast de eventos (novos projetos, sessoes, insights).
 - Scripts CLI: `setup.js`, `db-setup.js`, `vault-setup.js`, `create-test-user.js`, `test-stack.js`, `vault-sync`.
 - Tests disponiveis mas nao automatizados (`vitest`, `jest` para backend, `playwright` para E2E).
-- Build pipeline: `npm run build` (Vite + artefatos `dist/`), `npm run server` para iniciar backend isolado.
+- Build pipeline: `npm run build` (Next.js gera `.next/`), `npm run start` para servir o frontend em produção; backend pode ser iniciado isoladamente via `npm run server`.
 
 ## 9. Fluxos Criticos
 1. **Login**  
@@ -222,11 +218,11 @@ Persistencia: PostgreSQL (Supabase) + SQLite (dashboard.db) + arquivos (`data/`,
 - Backend: `NODE_ENV`, `PORT`, `DATABASE_URL` ou `DB_*`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `SESSION_SECRET`, `ENCRYPTION_KEY`, `GOOGLE_CLIENT_ID/SECRET`, `FRONTEND_URL`, `REDIS_URL`.
 - Brain Cloud: `VITE_BRAINCLOUD_BASE_URL`, `VITE_BRAINCLOUD_API_TOKEN`, `BRAINCLOUD_WRITE_DIR`, `BRAINCLOUD_TENANT_ID/PLAN`, `BRAINCLOUD_INBOX_DIR`.
 - Cognito/IA: `COGNITO_API_URL`, `COGNITO_API_KEY`, `OPENROUTER_APP_NAME`, `TAVILY_API_KEY`, `OPENAI/ANTHROPIC` chaves.
-- Frontend: `VITE_API_BASE_URL`, `VITE_ENABLE_MCP_FEATURES`, `VITE_WEBSOCKET_URL`, `VITE_LOG_LEVEL`.
+- Frontend: `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_VERSION`, variáveis legadas `VITE_*` (Brain Cloud/MCP), `VITE_WEBSOCKET_URL`, `VITE_LOG_LEVEL`.
 - Vault git: `OBSIDIAN_VAULT_PATH`, `OBSIDIAN_VAULT_GIT_REPO`.
 
 ### 10.2 Scripts NPM relevantes
-- `npm run dev`: Vite + Nodemon (`server/index.js`).
+- `npm run dev`: Next.js (porta 3000) + Nodemon (`server/index.js`) via `concurrently`.
 - `npm run server`: backend isolado (Node).
 - `npm run db:setup`: cria banco, roda migrations, testa conexao.
 - `npm run migrate:*`: `node-pg-migrate`.
@@ -235,7 +231,7 @@ Persistencia: PostgreSQL (Supabase) + SQLite (dashboard.db) + arquivos (`data/`,
 
 ### 10.3 Implantacao
 - Backend pode rodar em Node >=18, preferir `PORT=3001`.
-- Frontend `npm run build` gera `dist/`; em producao `server/index.js` serve `../../client/dist`.
+- Frontend `npm run build` gera `.next/`; em produção use `npm run start` (Next) atrás de um reverse proxy ou sirva via `next start`.
 - Health endpoints suportam probes; logs em arquivo para shipper (e.g., Fluentd).
 - Configurar Redis externo e `ENCRYPTION_KEY` seguro em producao.
 - Brain Cloud requer token valido e configuracao do vault (scripts `vault-setup`).
@@ -264,4 +260,4 @@ Persistencia: PostgreSQL (Supabase) + SQLite (dashboard.db) + arquivos (`data/`,
 
 ---
 
-**Resumo**: O CEO Dashboard combina React/Vite no frontend, Express no backend, PostgreSQL (Supabase) como fonte de verdade multi-tenant, SQLite para modulos locais, Brain Cloud (REST/MCP) como repositrio cognitivo, e integraes com mltiplos provedores de IA. Pontos criticos atuais incluem a rota MCP ausente, desalinhamento do refresh token e migrao de dados prototipo para PostgreSQL. Este documento serve como mapa abrangente para estabilizar, evoluir e operar a plataforma.
+**Resumo**: O CEO Dashboard combina Next.js (App Router) no frontend, Express no backend, PostgreSQL (Supabase) como fonte de verdade multi-tenant, SQLite para módulos locais, Brain Cloud (REST/MCP) como repositório cognitivo e integrações com múltiplos provedores de IA. Pontos críticos atuais incluem a rota MCP ausente, desalinhamento do refresh token e migração de dados protótipo para PostgreSQL. Este documento serve como mapa abrangente para estabilizar, evoluir e operar a plataforma.
