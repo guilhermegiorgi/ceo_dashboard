@@ -12,21 +12,27 @@ O CEO Dashboard é a plataforma executiva da GG.AI Labs que conecta dados operac
 | Módulos MCP / Agents legados | ⚠️ Em reconstrução | Componentes antigos foram substituídos por placeholders informativos (detalhes abaixo). |
 | Lint e revisão de código | ✅ | `npm run lint` finaliza sem warnings. |
 
-### Componentes ainda em placeholder
+### ✅ Componentes recentemente implementados
 
-Para evitar warnings e manter a UX razoável durante a migração, alguns módulos continuam exibindo mensagens informativas:
+Os seguintes componentes foram totalmente implementados e estão funcionais:
 
-- `AIAgentOrchestrator`
-- `FeedbackLoopTracker`
-- `MCPIntegration`
-- `MarketIntelligenceEngine`
-- `ProjectOverview`
-- `ProactiveSynergyPanel`
-- `UserProfileModal`
+- **`FeedbackLoopTracker`** (642 linhas) — Sistema completo de tracking de loops de feedback com métricas, filtros e timeline
+- **`ProjectOverview`** (362 linhas) — Visão executiva de projetos com filtros, progresso e métricas de risco
+- **`UserProfileModal`** (310 linhas) — Modal de perfil do usuário com informações de sessão e logout
+- **`SettingsModal`** (54KB) — Modal de configurações completo com múltiplas seções
+- **`StrategicSessionPlanner`** — Planejador de sessões estratégicas
+- **`StrategicInsights`** — Insights estratégicos gerados por IA
 
-✅ `SettingsModal`, `StrategicSessionPlanner` e `StrategicInsights` foram implementados na fase atual e já consomem as respectivas APIs. Os placeholders `AgentManager` e `PredictiveAnalytics` foram removidos (fluxos cobertos por `AgentsPage` e roadmap futuro).
+### ⚠️ Componentes ainda em placeholder
 
-Os restantes serão reimplementados conforme cada fluxo entrar no Sprint dedicado.
+Para evitar warnings e manter a UX razoável durante a migração, **4 módulos** continuam exibindo mensagens informativas:
+
+- **`AIAgentOrchestrator`** — Orquestração de múltiplos agentes AI (prioridade alta)
+- **`MCPIntegration`** — Interface de gerenciamento e debug de conexões MCP (prioridade alta)
+- **`MarketIntelligenceEngine`** — Engine de inteligência de mercado e análise de tendências
+- **`ProactiveSynergyPanel`** — Painel de detecção proativa de sinergias entre projetos
+
+Os restantes serão reimplementados conforme cada fluxo entrar no Sprint dedicado. Veja `PLANO_DE_ACAO.md` para detalhes de implementação.
 
 ---
 
@@ -49,11 +55,17 @@ npm run dev     # inicia Next (porta 3000) + backend Express (porta 3001)
 
 ### Variáveis de ambiente
 
-1. Copie o exemplo de variáveis para o backend:
+1. Copie o arquivo de exemplo:
    ```bash
-   cp server/.env.example server/.env
+   cp .env.example .env
    ```
-2. Ajuste credenciais de Supabase, Brain Cloud e OAuth conforme sua stack.
+2. **IMPORTANTE:** Configure as variáveis críticas para MCP/Obsidian:
+   - `BRAINCLOUD_BASE_URL` — URL do Brain Cloud MCP (já preenchido)
+   - `BRAINCLOUD_API_TOKEN` — Token de autenticação (já preenchido)
+   - `DATABASE_URL` — String de conexão PostgreSQL/Supabase
+   - `JWT_SECRET` e `JWT_REFRESH_SECRET` — Secrets para autenticação
+
+   **Nota:** As variáveis `BRAINCLOUD_*` já estão configuradas no `.env.example` com valores de desenvolvimento válidos.
 
 ### Credenciais de desenvolvimento
 
@@ -131,6 +143,7 @@ migrations/             # Migrations node-pg-migrate (ASCII)
 
 ## 📚 Documentação relacionada
 
+- **`PLANO_DE_ACAO.md`** — Plano completo de correções e próximos passos (LEIA PRIMEIRO!)
 - `docs/APP_ROUTER_MIGRATION_NOTES.md` — status detalhado da migração
 - `docs/INTEGRACAO_COMPLETA.md` — visão geral da integração Brain Cloud
 - `docs/mcp_reference.md` — referência do protocolo MCP
