@@ -588,6 +588,67 @@ export interface RequestOptions {
   cache?: RequestCache; // 'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached'
 }
 
+// MCP Integration Types
+export interface MCPStatus {
+  status: 'healthy' | 'unhealthy' | 'error';
+  connected: boolean;
+  message: string;
+  details?: {
+    sessionId?: string;
+    toolsAvailable?: number;
+    baseUrl?: string;
+    baseUrl?: boolean;
+    token?: boolean;
+  };
+  error?: string;
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  parameters: Record<string, any>;
+  category: string;
+}
+
+export interface MCPToolsResponse {
+  tools: MCPTool[];
+  count: number;
+  sessionId?: string;
+  error?: string;
+}
+
+export interface MCPToolTestRequest {
+  toolName: string;
+  arguments?: Record<string, any>;
+}
+
+export interface MCPToolTestResponse {
+  success: boolean;
+  toolName: string;
+  arguments?: Record<string, any>;
+  result?: any;
+  executedAt?: string;
+  sessionId?: string;
+  error?: string;
+  message?: string;
+}
+
+export interface MCPSession {
+  key: string;
+  sessionId: string;
+  toolCount: number;
+  expiresAt: string;
+  isExpired: boolean;
+}
+
+export interface MCPSessionsResponse {
+  sessions: MCPSession[];
+  count: number;
+  activeCount: number;
+  error?: string;
+  message?: string;
+}
+
 export class APIClient {
   private baseUrl: string;
   private readonly aiConfigCacheTtlMs = 5 * 60 * 1000;
@@ -2252,6 +2313,47 @@ export class APIClient {
     this.clearAIConfigCache();
     await this.request<{ success?: boolean }>("/api/auth/logout", {
       method: "POST",
+    });
+  }
+
+  // ========================================
+  // MCP Integration Methods
+  // ========================================
+
+  /**
+   * Get MCP connection status
+   */
+  public async getMCPStatus(): Promise<MCPStatus> {
+    return this.request<MCPStatus>("/api/mcp/status", {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Get all available MCP tools
+   */
+  public async getMCPTools(): Promise<MCPToolsResponse> {
+    return this.request<MCPToolsResponse>("/api/mcp/tools", {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Test execution of a specific MCP tool
+   */
+  public async testMCPTool(request: MCPToolTestRequest): Promise<MCPToolTestResponse> {
+    return this.request<MCPToolTestResponse>("/api/mcp/tools/test", {
+      method: "POST",
+      body: request,
+    });
+  }
+
+  /**
+   * Get all active MCP sessions
+   */
+  public async getMCPSessions(): Promise<MCPSessionsResponse> {
+    return this.request<MCPSessionsResponse>("/api/mcp/sessions", {
+      method: "GET",
     });
   }
 }

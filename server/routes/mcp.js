@@ -10,6 +10,196 @@ import { getModelConfigForUser } from "../services/aiConfigService.js";
 
 const router = Router();
 
+// ========================================
+// MCP Management Endpoints
+// ========================================
+
+/**
+ * GET /api/mcp/status
+ * Check MCP connection status and credentials
+ */
+router.get("/status", async (req, res) => {
+  try {
+    const hasCredentials = mcpSessionManager.hasCredentials();
+
+    if (!hasCredentials) {
+      return res.status(503).json({
+        status: "unhealthy",
+        connected: false,
+        message: "MCP credentials not configured",
+        details: {
+          baseUrl: !!process.env.BRAINCLOUD_BASE_URL,
+          token: !!process.env.BRAINCLOUD_API_TOKEN,
+        }
+      });
+    }
+
+    // Try to create a test session
+    try {
+      const testSession = await mcpSessionManager.createSession(["status-check"]);
+      const toolCount = testSession.llmTools?.length || 0;
+
+      // Clean up test session
+      await mcpSessionManager.closeSession(testSession.sessionId).catch(() => {});
+
+      return res.json({
+        status: "healthy",
+        connected: true,
+        message: "MCP connection is operational",
+        details: {
+          sessionId: testSession.sessionId,
+          toolsAvailable: toolCount,
+          baseUrl: mcpSessionManager.baseUrl,
+        }
+      });
+    } catch (sessionError) {
+      logger.error("[MCP Status] Session test failed:", sessionError);
+      return res.status(503).json({
+        status: "unhealthy",
+        connected: false,
+        message: "Failed to establish MCP session",
+        error: sessionError.message,
+      });
+    }
+  } catch (error) {
+    logger.error("[MCP Status] Error:", error);
+    return res.status(500).json({
+      status: "error",
+      connected: false,
+      message: "Internal error checking MCP status",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/mcp/tools
+ * List all available MCP tools
+ */
+router.get("/tools", async (req, res) => {
+  try {
+    if (!mcpSessionManager.hasCredentials()) {
+      return res.status(503).json({
+        error: "MCP credentials not configured",
+        tools: [],
+      });
+    }
+
+    // Create temporary session to fetch tools
+    const session = await mcpSessionManager.createSession(["tools-list"]);
+
+    const tools = (session.rawTools || []).map((tool) => ({
+      name: tool.name,
+      description: tool.description || "No description available",
+      parameters: tool.parameters || tool.inputSchema || {},
+      category: tool.category || "general",
+    }));
+
+    // Clean up session
+    await mcpSessionManager.closeSession(session.sessionId).catch(() => {});
+
+    return res.json({
+      tools,
+      count: tools.length,
+      sessionId: session.sessionId,
+    });
+  } catch (error) {
+    logger.error("[MCP Tools] Error fetching tools:", error);
+    return res.status(500).json({
+      error: "Failed to fetch MCP tools",
+      message: error.message,
+      tools: [],
+    });
+  }
+});
+
+/**
+ * POST /api/mcp/tools/test
+ * Test execution of a specific tool
+ */
+router.post("/tools/test", async (req, res) => {
+  try {
+    const { toolName, arguments: toolArgs = {} } = req.body;
+
+    if (!toolName) {
+      return res.status(400).json({
+        error: "toolName is required",
+      });
+    }
+
+    if (!mcpSessionManager.hasCredentials()) {
+      return res.status(503).json({
+        error: "MCP credentials not configured",
+      });
+    }
+
+    // Create session for tool execution
+    const session = await mcpSessionManager.createSession(["tool-test", toolName]);
+
+    logger.info(`[MCP Test] Executing tool: ${toolName}`, { args: toolArgs });
+
+    // Execute the tool
+    const result = await session.callTool(toolName, toolArgs);
+
+    // Clean up session
+    await mcpSessionManager.closeSession(session.sessionId).catch(() => {});
+
+    return res.json({
+      success: true,
+      toolName,
+      arguments: toolArgs,
+      result: result.output || result,
+      executedAt: new Date().toISOString(),
+      sessionId: session.sessionId,
+    });
+  } catch (error) {
+    logger.error("[MCP Test] Tool execution failed:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Tool execution failed",
+      message: error.message,
+      toolName: req.body?.toolName,
+    });
+  }
+});
+
+/**
+ * GET /api/mcp/sessions
+ * List active MCP sessions
+ */
+router.get("/sessions", async (req, res) => {
+  try {
+    const sessions = [];
+
+    for (const [key, session] of mcpSessionManager.sessions.entries()) {
+      sessions.push({
+        key,
+        sessionId: session.sessionId,
+        toolCount: session.llmTools?.length || 0,
+        expiresAt: new Date(session.expiresAt).toISOString(),
+        isExpired: session.isExpired(),
+      });
+    }
+
+    return res.json({
+      sessions,
+      count: sessions.length,
+      activeCount: sessions.filter(s => !s.isExpired).length,
+    });
+  } catch (error) {
+    logger.error("[MCP Sessions] Error listing sessions:", error);
+    return res.status(500).json({
+      error: "Failed to list sessions",
+      message: error.message,
+      sessions: [],
+    });
+  }
+});
+
+// ========================================
+// Chat Endpoints (existing)
+// ========================================
+
 const extractStructuredPayload = (output) => {
   if (!output) return null;
 
