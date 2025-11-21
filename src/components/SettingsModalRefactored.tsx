@@ -323,7 +323,12 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
       const cached = modelCacheRef.current[provider];
       const now = Date.now();
-      if (!force && cached && now - cached.fetchedAt < MODEL_CACHE_TTL) {
+
+      // If force refresh, clear the cache first to ensure stale models are removed
+      if (force) {
+        delete modelCacheRef.current[provider];
+        setModelCache({ ...modelCacheRef.current });
+      } else if (cached && now - cached.fetchedAt < MODEL_CACHE_TTL) {
         return cached.models;
       }
 
@@ -331,7 +336,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
       setModelErrors((prev) => ({ ...prev, [provider]: null }));
 
       try {
-        const models = await api.getProviderModels(provider);
+        const models = await api.getProviderModels(provider, force);
         modelCacheRef.current = {
           ...modelCacheRef.current,
           [provider]: { models: models as ProviderModelInfo[], fetchedAt: now },
@@ -711,9 +716,9 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
         [context]: result.connected
           ? { status: "success", message: "Conexão estabelecida" }
           : {
-              status: "error",
-              message: result.error || "Falha ao conectar ao provedor",
-            },
+            status: "error",
+            message: result.error || "Falha ao conectar ao provedor",
+          },
       }));
     } catch (error) {
       const message =
@@ -776,9 +781,9 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
         fallback: result.connected
           ? { status: "success", message: "Fallback conectado com sucesso" }
           : {
-              status: "error",
-              message: result.error || "Falha ao validar fallback",
-            },
+            status: "error",
+            message: result.error || "Falha ao validar fallback",
+          },
       }));
     } catch (error) {
       const message =
@@ -919,8 +924,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
     // Debug logging
     console.log(
-      `[renderContextCard] ${context}: provider=${provider}, models=${
-        providerModels.length
+      `[renderContextCard] ${context}: provider=${provider}, models=${providerModels.length
       }, modelCache keys=${Object.keys(modelCache).join(
         ","
       )}, selection.model=${selection.model}`
@@ -1156,11 +1160,10 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    activeTab === tab.id
-                      ? "bg-zinc-800 text-zinc-100 shadow-sm border-l-2 border-zinc-400"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === tab.id
+                    ? "bg-zinc-800 text-zinc-100 shadow-sm border-l-2 border-zinc-400"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                    }`}
                 >
                   <Icon className="h-4 w-4" strokeWidth={1.5} />
                   <span>{tab.label}</span>
@@ -1308,7 +1311,7 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                                       {summaryModel
                                         ? getModelDisplayName(summaryModel)
                                         : selection.model ||
-                                          "Modelo não definido"}
+                                        "Modelo não definido"}
                                     </p>
                                   </div>
                                 </div>
@@ -1389,13 +1392,13 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
                                   onClick={handleTestFallback}
                                   disabled={
                                     contextTestStatus.fallback.status ===
-                                      "loading" ||
+                                    "loading" ||
                                     availableProviders.length === 0
                                   }
                                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {contextTestStatus.fallback.status ===
-                                  "loading" ? (
+                                    "loading" ? (
                                     <Loader2
                                       className="h-4 w-4 animate-spin"
                                       strokeWidth={2}
@@ -1411,21 +1414,21 @@ export function SettingsModalRefactored({ open, onClose }: Props) {
 
                                 {contextTestStatus.fallback.status ===
                                   "success" && (
-                                  <span className="flex items-center gap-1 text-xs text-emerald-400">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    {contextTestStatus.fallback.message ??
-                                      "Fallback conectado"}
-                                  </span>
-                                )}
+                                    <span className="flex items-center gap-1 text-xs text-emerald-400">
+                                      <CheckCircle2 className="h-4 w-4" />
+                                      {contextTestStatus.fallback.message ??
+                                        "Fallback conectado"}
+                                    </span>
+                                  )}
 
                                 {contextTestStatus.fallback.status ===
                                   "error" && (
-                                  <span className="flex items-center gap-1 text-xs text-rose-400">
-                                    <XCircle className="h-4 w-4" />
-                                    {contextTestStatus.fallback.message ??
-                                      "Falha ao testar o fallback"}
-                                  </span>
-                                )}
+                                    <span className="flex items-center gap-1 text-xs text-rose-400">
+                                      <XCircle className="h-4 w-4" />
+                                      {contextTestStatus.fallback.message ??
+                                        "Falha ao testar o fallback"}
+                                    </span>
+                                  )}
                               </div>
                             </div>
                           </div>

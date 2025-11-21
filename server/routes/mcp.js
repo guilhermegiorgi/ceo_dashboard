@@ -10,6 +10,56 @@ import { getModelConfigForUser } from "../services/aiConfigService.js";
 
 const router = Router();
 
+// Status endpoint for MCP diagnostics
+router.get("/status", async (req, res) => {
+  try {
+    const status = {
+      timestamp: new Date().toISOString(),
+      configured: mcpSessionManager.hasCredentials(),
+      baseUrl: mcpSessionManager.baseUrl || null,
+      hasToken: !!mcpSessionManager.token,
+      connection: null,
+      tools: [],
+      error: null,
+    };
+
+    if (!status.configured) {
+      status.error = "MCP not configured. Missing BRAINCLOUD_BASE_URL or BRAINCLOUD_API_TOKEN.";
+      return res.status(200).json(status);
+    }
+
+    // Attempt to create a session and list tools
+    try {
+      const testSession = await mcpSessionManager.createSession(["status-check", Date.now()]);
+      status.connection = "success";
+      status.sessionId = testSession.sessionId;
+      status.tools = testSession.llmTools.map((tool) => ({
+        name: tool.function.name,
+        description: tool.function.description,
+      }));
+      
+      logger.info("[MCP Status] Connection test successful", {
+        sessionId: testSession.sessionId,
+        toolCount: status.tools.length,
+      });
+    } catch (connectionError) {
+      status.connection = "failed";
+      status.error = connectionError.message;
+      logger.error("[MCP Status] Connection test failed", connectionError);
+    }
+
+    return res.status(200).json(status);
+  } catch (error) {
+    logger.error("[MCP Status] Status check error:", error);
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      configured: false,
+      connection: "error",
+      error: error.message,
+    });
+  }
+});
+
 const extractStructuredPayload = (output) => {
   if (!output) return null;
 

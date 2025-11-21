@@ -135,15 +135,25 @@ export class WorkflowManager extends EventEmitter {
 
     logger.info("[WorkflowManager] Starting...");
 
-    await this.initializeDatabase();
-    await this.registerEventListeners();
-    await this.updateWorkflowMetrics();
+    try {
+      await this.initializeDatabase();
+      await this.registerEventListeners();
+      await this.updateWorkflowMetrics();
 
-    this.running = true;
-    this.startTime = Date.now();
-    this.emit("started");
+      this.running = true;
+      this.startTime = Date.now();
+      this.emit("started");
 
-    logger.info("[WorkflowManager] Started successfully");
+      logger.info("[WorkflowManager] Started successfully");
+    } catch (error) {
+      logger.error("[WorkflowManager] Failed to start:", error);
+      logger.warn("[WorkflowManager] Starting in degraded mode without database");
+
+      // Start anyway in degraded mode
+      this.running = true;
+      this.startTime = Date.now();
+      this.emit("started");
+    }
   }
 
   async stop(): Promise<void> {
@@ -319,8 +329,7 @@ export class WorkflowManager extends EventEmitter {
     params.push(id);
 
     await pgQuery(
-      `UPDATE workflows SET ${assignments.join(", ")} WHERE id = $${
-        params.length
+      `UPDATE workflows SET ${assignments.join(", ")} WHERE id = $${params.length
       }`,
       params
     );
@@ -557,13 +566,13 @@ export class WorkflowManager extends EventEmitter {
 
     const aggregates = result.rows[0] as
       | {
-          total: number;
-          success: number;
-          failed: number;
-          avg_duration: number | null;
-          last_status: string | null;
-          last_executed_at: string | null;
-        }
+        total: number;
+        success: number;
+        failed: number;
+        avg_duration: number | null;
+        last_status: string | null;
+        last_executed_at: string | null;
+      }
       | undefined;
 
     return {
@@ -593,62 +602,74 @@ export class WorkflowManager extends EventEmitter {
   }
 
   private async initializeDatabase(): Promise<void> {
-    // Drop existing tables and types to fix schema incompatibility (UUID -> TEXT)
-    await pgQuery(`DROP TABLE IF EXISTS workflow_executions CASCADE`);
-    await pgQuery(`DROP TABLE IF EXISTS workflows CASCADE`);
-    await pgQuery(`DROP TYPE IF EXISTS workflows CASCADE`);
-    await pgQuery(`DROP TYPE IF EXISTS workflow_executions CASCADE`);
+    try {
+      // Drop existing tables and types to fix schema incompatibility (UUID -> TEXT)
+      await pgQuery(`DROP TABLE IF EXISTS workflow_executions CASCADE`);
+      await pgQuery(`DROP TABLE IF EXISTS workflows CASCADE`);
+      await pgQuery(`DROP TYPE IF EXISTS workflows CASCADE`);
+      await pgQuery(`DROP TYPE IF EXISTS workflow_executions CASCADE`);
 
-    await pgQuery(`
-      CREATE TABLE workflows (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        trigger JSONB NOT NULL,
-        actions JSONB NOT NULL,
-        settings JSONB,
-        source TEXT NOT NULL DEFAULT 'ui',
-        created_by TEXT,
-        created_at TIMESTAMPTZ NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL
-      )
-    `);
+      await pgQuery(`
+        CREATE TABLE workflows (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          trigger JSONB NOT NULL,
+          actions JSONB NOT NULL,
+          settings JSONB,
+          source TEXT NOT NULL DEFAULT 'ui',
+          created_by TEXT,
+          created_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL
+        )
+      `);
 
-    await pgQuery(`
-      CREATE TABLE workflow_executions (
-        id TEXT PRIMARY KEY,
-        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-        workflow_name TEXT NOT NULL,
-        status TEXT NOT NULL,
-        started_at TIMESTAMPTZ NOT NULL,
-        completed_at TIMESTAMPTZ,
-        duration INTEGER,
-        context JSONB,
-        result JSONB,
-        error TEXT,
-        retries INTEGER NOT NULL DEFAULT 0,
-        created_at TIMESTAMPTZ NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL
-      )
-    `);
+      await pgQuery(`
+        CREATE TABLE workflow_executions (
+          id TEXT PRIMARY KEY,
+          workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+          workflow_name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at TIMESTAMPTZ NOT NULL,
+          completed_at TIMESTAMPTZ,
+          duration INTEGER,
+          context JSONB,
+          result JSONB,
+          error TEXT,
+          retries INTEGER NOT NULL DEFAULT 0,
+          created_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL
+        )
+      `);
 
-    logger.info("[WorkflowManager] Database schema ready");
+      logger.info("[WorkflowManager] Database schema ready");
+    } catch (error) {
+      logger.error("[WorkflowManager] Failed to initialize database schema:", error);
+      logger.warn("[WorkflowManager] Continuing without workflow database - workflows will be disabled");
+      // Don't throw - allow server to start without workflows
+    }
   }
 
   private async registerEventListeners(): Promise<void> {
-    const workflows = await this.listWorkflows({
-      enabled: true,
-      triggerType: "event",
-    });
+    try {
+      const workflows = await this.listWorkflows({
+        enabled: true,
+        triggerType: "event",
+      });
 
-    workflows.forEach((workflow) => {
-      this.registerWorkflowEventListener(workflow.id, workflow);
-    });
+      workflows.forEach((workflow) => {
+        this.registerWorkflowEventListener(workflow.id, workflow);
+      });
 
-    logger.info(
-      `[WorkflowManager] Registered ${this.eventListeners.size} workflow listeners`
-    );
+      logger.info(
+        `[WorkflowManager] Registered ${this.eventListeners.size} workflow listeners`
+      );
+    } catch (error) {
+      logger.error("[WorkflowManager] Failed to register event listeners:", error);
+      logger.warn("[WorkflowManager] Continuing without workflow event listeners");
+      // Don't throw - allow server to start without workflow listeners
+    }
   }
 
   private unregisterEventListeners(): void {
@@ -840,20 +861,26 @@ export class WorkflowManager extends EventEmitter {
   }
 
   private async updateWorkflowMetrics(): Promise<void> {
-    const result = await pgQuery(
-      `SELECT
+    try {
+      const result = await pgQuery(
+        `SELECT
           COUNT(*)::int AS total,
           SUM(CASE WHEN enabled THEN 1 ELSE 0 END)::int AS enabled
         FROM workflows`
-    );
+      );
 
-    const row = result.rows[0] as
-      | { total: number; enabled: number }
-      | undefined;
-    this.workflowOverview = {
-      total: row?.total ?? 0,
-      enabled: row?.enabled ?? 0,
-    };
+      const row = result.rows[0] as
+        | { total: number; enabled: number }
+        | undefined;
+
+      this.workflowOverview = {
+        total: row?.total ?? 0,
+        enabled: row?.enabled ?? 0,
+      };
+    } catch (error) {
+      logger.error("[WorkflowManager] Failed to update workflow metrics:", error);
+      // Don't throw - metrics are not critical
+    }
   }
 
   private pathMatchesFilter(value: string, pattern: string): boolean {

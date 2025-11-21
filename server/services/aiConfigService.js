@@ -73,6 +73,8 @@ export const MODEL_REGISTRY = {
   ],
   openrouter: [
     "openrouter/auto",
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
     "anthropic/claude-3.5-sonnet:beta",
     "meta-llama/llama-3.1-70b-instruct",
     "google/gemini-flash-1.5",

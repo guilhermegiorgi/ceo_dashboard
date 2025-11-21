@@ -376,8 +376,7 @@ export async function upsertProvider(userId, providerData) {
       if (existing.rows.length > 0) {
         encryptedKey = existing.rows[0].api_key_encrypted;
         logger.info(
-          `[upsertProvider] Preserving existing API key, encrypted length: ${
-            encryptedKey?.length || 0
+          `[upsertProvider] Preserving existing API key, encrypted length: ${encryptedKey?.length || 0
           }`
         );
       } else {
@@ -520,8 +519,7 @@ export async function getProviderApiKey(userId, providerId) {
       `[getProviderApiKey] Provider: ${provider_name} (${providerId})`
     );
     logger.info(
-      `[getProviderApiKey] Encrypted key length: ${
-        api_key_encrypted?.length || 0
+      `[getProviderApiKey] Encrypted key length: ${api_key_encrypted?.length || 0
       }`
     );
 
@@ -549,8 +547,7 @@ export async function getProviderApiKey(userId, providerId) {
     }
 
     logger.info(
-      `[getProviderApiKey] Successfully decrypted API key for ${provider_name}, length: ${
-        decryptedKey?.length || 0
+      `[getProviderApiKey] Successfully decrypted API key for ${provider_name}, length: ${decryptedKey?.length || 0
       }`
     );
 
@@ -983,10 +980,8 @@ async function fetchDeepSeekModels({ apiKey, baseUrl }) {
   });
 
   console.log(
-    `[fetchDeepSeekModels] 📊 Filtered ${
-      validModels.length
-    } valid models (removed ${
-      models.length - validModels.length
+    `[fetchDeepSeekModels] 📊 Filtered ${validModels.length
+    } valid models (removed ${models.length - validModels.length
     } with invalid IDs)`
   );
 
@@ -1042,6 +1037,7 @@ async function fetchOpenRouterModels({ apiKey, baseUrl }) {
         );
         return false;
       }
+
       return true;
     })
     .map((model) => {
