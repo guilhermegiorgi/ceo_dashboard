@@ -374,7 +374,29 @@ router.post("/query-stream", async (req, res) => {
     // Normalize messages to standard format
     const normalizedMessages = normalizeMessages(messages);
 
-    const enhancedMessages = [
+    // 4. Recupera contexto de conversas anteriores
+let conversationContext = [];
+if (mcpSession) {
+  try {
+    const lastUserMessage = messages[messages.length - 1].content;
+    const historyResult = await mcpSession.callTool("search_conversation_history", {
+      query: lastUserMessage,
+      limit: 3, // Limite de 3 conversas anteriores
+    });
+
+    if (historyResult.success && historyResult.data?.results?.length > 0) {
+      conversationContext = historyResult.data.results.map(result => ({
+        role: "system",
+        content: `Contexto de conversa anterior: ${result.content}`,
+      }));
+      logger.info(`[CognitoAgent] Contexto de ${conversationContext.length} conversas anteriores recuperado.`);
+    }
+  } catch (historyError) {
+    logger.warn("[CognitoAgent] Falha ao recuperar histórico de conversas:", historyError);
+  }
+}
+
+const enhancedMessages = [
       {
         role: "system",
         content: buildSystemPrompt({
@@ -391,6 +413,7 @@ router.post("/query-stream", async (req, res) => {
           currentRole: req.user?.role || "user",
         }),
       },
+      ...conversationContext, // Injeta o contexto aqui
       ...normalizedMessages,
     ];
 
@@ -480,219 +503,254 @@ router.post("/query-stream", async (req, res) => {
     });
 
     // 4. Processa streaming com suporte a function calls
-    if (completion && typeof completion[Symbol.asyncIterator] === "function") {
-      let buffer = "";
-      let chunksProcessed = 0;
-      const pendingToolCalls = new Map();
-      const functionCallResults = [];
+    let shouldContinue = true;
+    let iterationCount = 0;
+    const MAX_ITERATIONS = 5;
+    let currentMessages = [...enhancedMessages]; // Mensagens que serão enviadas ao LLM
+
+    while (shouldContinue && iterationCount < MAX_ITERATIONS) {
+      iterationCount++;
+      let assistantResponse = "";
       let toolCallHappened = false;
-      let assistantContentAfterTools = false;
+      const functionCallResults = [];
+      const pendingToolCalls = new Map();
 
-      logger.info(
-        `[CognitoAgent] Starting streaming processing with ${llmTools.length} MCP tools`
-      );
+      logger.info(`[CognitoAgent] Starting iteration ${iterationCount} with ${currentMessages.length} messages`);
 
-      for await (const chunk of completion) {
-        chunksProcessed++;
-        logger.info(`[CognitoAgent] Processing chunk ${chunksProcessed}:`, {
-          hasContent: !!chunk.content,
-          hasFunctionCalls: !!chunk.function_calls,
-          contentLength: chunk.content?.length || 0,
-          chunkKeys: Object.keys(chunk),
-          chunkString: JSON.stringify(chunk).substring(0, 200),
-        });
+      const completion = await generateChatCompletion({
+        providerName: selection.provider,
+        baseUrl: selection.baseUrl,
+        apiKey: selection.apiKey,
+        model: selection.model || "gpt-4",
+        messages: currentMessages,
+        temperature,
+        maxTokens,
+        systemPrompt: currentMessages[0]?.content,
+        tools: llmTools,
+        tool_choice: tools ? "auto" : "none",
+        stream: true,
+        requestId: `cognito-${sessionId}-${Date.now()}-${iterationCount}`,
+      });
 
-        // Executa function calls via MCP
-        if (chunk.function_calls) {
-          for (const functionCall of chunk.function_calls) {
-            const callId =
-              functionCall.id ||
-              functionCall.index ||
-              `chunk-${chunksProcessed}-${Math.random().toString(16).slice(2)}`;
-            const existingCall = pendingToolCalls.get(callId) || {
-              id: functionCall.id,
-              type: functionCall.type,
-              name: functionCall.name || functionCall.function?.name || "",
-              arguments: "",
-            };
+      if (completion && typeof completion[Symbol.asyncIterator] === "function") {
+        let chunksProcessed = 0;
+        let assistantContentAfterTools = false;
 
-            if (functionCall.type && !existingCall.type)
-              existingCall.type = functionCall.type;
-            if (functionCall.name) existingCall.name = functionCall.name;
-            if (functionCall.function?.name)
-              existingCall.name = functionCall.function.name;
-            if (functionCall.function?.arguments)
-              existingCall.arguments += functionCall.function.arguments;
-            if (typeof functionCall.arguments === "string")
-              existingCall.arguments += functionCall.arguments;
+        for await (const chunk of completion) {
+          chunksProcessed++;
 
-            pendingToolCalls.set(callId, existingCall);
+          // Executa function calls via MCP
+          if (chunk.function_calls) {
+            for (const functionCall of chunk.function_calls) {
+              const callId =
+                functionCall.id ||
+                functionCall.index ||
+                `chunk-${chunksProcessed}-${Math.random().toString(16).slice(2)}`;
+              const existingCall = pendingToolCalls.get(callId) || {
+                id: functionCall.id,
+                type: functionCall.type,
+                name: functionCall.name || functionCall.function?.name || "",
+                arguments: "",
+              };
 
-            if (!existingCall.name) {
-              logger.info(
-                `[CognitoAgent] Awaiting tool name for call ${callId}`
-              );
-              continue;
-            }
+              if (functionCall.type && !existingCall.type)
+                existingCall.type = functionCall.type;
+              if (functionCall.name) existingCall.name = functionCall.name;
+              if (functionCall.function?.name)
+                existingCall.name = functionCall.function.name;
+              if (functionCall.function?.arguments)
+                existingCall.arguments += functionCall.function.arguments;
+              if (typeof functionCall.arguments === "string")
+                existingCall.arguments += functionCall.arguments;
 
-            let parsedArguments = {};
-            if (existingCall.arguments) {
+              pendingToolCalls.set(callId, existingCall);
+
+              if (!existingCall.name) continue;
+
+              let parsedArguments = {};
+              if (existingCall.arguments) {
+                try {
+                  parsedArguments = JSON.parse(existingCall.arguments);
+                } catch (parseError) {
+                  continue; // Argumentos incompletos
+                }
+              }
+
+              // Se a chamada de função estiver completa, execute e colete o resultado
               try {
-                parsedArguments = JSON.parse(existingCall.arguments);
-              } catch (parseError) {
-                logger.info(
-                  `[CognitoAgent] Tool arguments for ${existingCall.name} not complete yet (length: ${existingCall.arguments.length})`
+                if (!mcpSession) throw new Error("MCP session not initialized");
+
+                const toolExecution = await mcpSession.callTool(
+                  existingCall.name,
+                  parsedArguments
                 );
-                continue;
+
+                const toolResultPayload = {
+                  name: existingCall.name,
+                  resolvedName: toolExecution.toolName || existingCall.name,
+                  arguments: parsedArguments,
+                  output:
+                    toolExecution.data?.result ?? toolExecution.data ?? null,
+                  error: null,
+                };
+
+                logger.info(
+                  `[CognitoAgent] Tool ${toolResultPayload.resolvedName} executed successfully`
+                );
+
+                // Envia o resultado da ferramenta para o frontend (para visualização)
+                res.write(
+                  `data: ${JSON.stringify({
+                    tool_result: toolResultPayload,
+                  })}\n\n`
+                );
+                res.flush && res.flush();
+
+                functionCallResults.push(toolResultPayload);
+                toolCallHappened = true;
+                pendingToolCalls.delete(callId);
+              } catch (toolError) {
+                logger.error(
+                  `[CognitoAgent] Error executing MCP tool ${existingCall.name}:`,
+                  toolError
+                );
+
+                const errorPayload = {
+                  name: existingCall.name,
+                  resolvedName: existingCall.name,
+                  arguments: parsedArguments,
+                  output: null,
+                  raw: null,
+                  error: toolError.message || "Unknown MCP tool error",
+                };
+
+                res.write(
+                  `data: ${JSON.stringify({ tool_result: errorPayload })}\n\n`
+                );
+                res.flush && res.flush();
+
+                functionCallResults.push(errorPayload);
+                toolCallHappened = true;
+                pendingToolCalls.delete(callId);
               }
             }
+          }
 
-            try {
-              if (!mcpSession) {
-                throw new Error("MCP session not initialized");
-              }
+          // Stream normal - detect and handle thinking mode
+          if (chunk.content) {
+            let processedContent = chunk.content;
+            assistantResponse += processedContent; // Captura o conteúdo para salvar no histórico
 
-              const toolExecution = await mcpSession.callTool(
-                existingCall.name,
-                parsedArguments
-              );
+            // Detect thinking mode indicators
+            const thinkingIndicators = [
+              "🧠 **PROCESSO DE RACIOCÍNIO:**",
+              "Pensando:",
+              "Vou analisar:",
+              "Vou considerar:",
+              "Analisando:",
+              "Processo de raciocínio:",
+            ];
 
-              const toolResultPayload = {
-                name: existingCall.name,
-                resolvedName: toolExecution.toolName || existingCall.name,
-                arguments: parsedArguments,
-                output:
-                  toolExecution.data?.result ?? toolExecution.data ?? null,
-                raw: toolExecution.raw || null,
-                error: null,
-              };
+            const isThinkingContent = thinkingIndicators.some(
+              (indicator) =>
+                processedContent.includes(indicator) ||
+                processedContent.includes("🧠") ||
+                processedContent.includes("ANÁLISE:")
+            );
 
-              logger.info(
-                `[CognitoAgent] Tool ${toolResultPayload.resolvedName} executed successfully`
-              );
-
-              res.write(
-                `data: ${JSON.stringify({
-                  tool_result: toolResultPayload,
-                })}\n\n`
-              );
-              res.flush && res.flush();
-
-              functionCallResults.push(toolResultPayload);
-              toolCallHappened = true;
-
-              pendingToolCalls.delete(callId);
-            } catch (toolError) {
-              logger.error(
-                `[CognitoAgent] Error executing MCP tool ${existingCall.name}:`,
-                toolError
-              );
-
-              const errorPayload = {
-                name: existingCall.name,
-                resolvedName: existingCall.name,
-                arguments: parsedArguments,
-                output: null,
-                raw: null,
-                error: toolError.message || "Unknown MCP tool error",
-              };
-
-              res.write(
-                `data: ${JSON.stringify({ tool_result: errorPayload })}\n\n`
-              );
-              res.flush && res.flush();
-
-              functionCallResults.push(errorPayload);
-              toolCallHappened = true;
-              pendingToolCalls.delete(callId);
+            // Add thinking metadata for frontend detection
+            if (isThinkingContent) {
+              logger.info(`[CognitoAgent] Thinking content detected:`, {
+                contentPreview: processedContent.substring(0, 100) + "...",
+              });
             }
-          }
-        }
 
-        // Stream normal - detect and handle thinking mode
-        if (chunk.content) {
-          let processedContent = chunk.content;
-
-          // Detect thinking mode indicators
-          const thinkingIndicators = [
-            "🧠 **PROCESSO DE RACIOCÍNIO:**",
-            "Pensando:",
-            "Vou analisar:",
-            "Vou considerar:",
-            "Analisando:",
-            "Processo de raciocínio:",
-          ];
-
-          const isThinkingContent = thinkingIndicators.some(
-            (indicator) =>
-              processedContent.includes(indicator) ||
-              processedContent.includes("🧠") ||
-              processedContent.includes("ANÁLISE:")
-          );
-
-          // Add thinking metadata for frontend detection
-          if (isThinkingContent) {
-            // Don't wrap - let content flow naturally for better detection
-            logger.info(`[CognitoAgent] Thinking content detected:`, {
-              contentPreview: processedContent.substring(0, 100) + "...",
-            });
-          }
-
-          const responseData = `data: ${JSON.stringify({
-            choices: [
-              {
-                delta: {
-                  content: processedContent,
-                  thinking: isThinkingContent,
+            const responseData = `data: ${JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    content: processedContent,
+                    thinking: isThinkingContent,
+                  },
+                  function_calls: chunk.function_calls || [],
                 },
-                function_calls: chunk.function_calls || [],
-              },
-            ],
-          })}\n\n`;
+              ],
+            })}\n\n`;
 
-          logger.info(`[CognitoAgent] Writing to stream:`, {
-            contentLength: chunk.content.length,
-            isThinking: isThinkingContent,
-            responseDataLength: responseData.length,
-          });
+            res.write(responseData);
+            res.flush && res.flush(); // Force immediate flush for streaming
 
-          res.write(responseData);
-          res.flush && res.flush(); // Force immediate flush for streaming
-
-          if (toolCallHappened) {
-            assistantContentAfterTools = true;
+            if (toolCallHappened) {
+              assistantContentAfterTools = true;
+            }
           }
         }
-      }
 
-      if (
-        toolCallHappened &&
-        !assistantContentAfterTools &&
-        functionCallResults.length > 0
-      ) {
-        const summaries = functionCallResults
-          .map(summarizeToolResultForFallback)
-          .filter(Boolean);
+        // Fim da iteração de streaming
+        logger.info(
+          `[CognitoAgent] Stream iteration ${iterationCount} completed. Tool call happened: ${toolCallHappened}`
+        );
 
-        if (summaries.length > 0) {
-          res.write(
-            `data: ${JSON.stringify({
-              tool_summary: {
-                summaries,
-                results: functionCallResults,
-              },
-            })}\n\n`
-          );
-          res.flush && res.flush();
+        if (toolCallHappened) {
+          // Se houve chamada de ferramenta, adiciona os resultados ao histórico e continua o loop
+          const toolCallMessage = {
+            role: "assistant",
+            content: null,
+            tool_calls: functionCallResults.map(res => ({
+              id: res.id,
+              function: { name: res.name, arguments: JSON.stringify(res.arguments) }
+            }))
+          };
+
+          const toolResultMessage = {
+            role: "tool",
+            content: JSON.stringify(functionCallResults.map(res => ({
+              tool_call_id: res.id,
+              output: res.output,
+              error: res.error
+            }))),
+          };
+
+          currentMessages.push(toolCallMessage, toolResultMessage);
+          shouldContinue = true; // Continua o loop para a próxima iteração do LLM
+        } else {
+          // Se não houve chamada de ferramenta, a resposta é final
+          shouldContinue = false;
         }
+      } else {
+        // Resposta não-streaming (erro ou resposta final síncrona)
+        shouldContinue = false;
+        assistantResponse = completion.content || completion.choices?.[0]?.message?.content || "❌ Não consegui processar sua mensagem.";
       }
+    } // Fim do loop while (shouldContinue)
 
-      logger.info(
-        `[CognitoAgent] Stream completed: ${chunksProcessed} chunks processed`
-      );
+    // 5. Persiste a conversa no histórico (após o loop)
+    if (mcpSession) {
+      try {
+        const fullConversation = [
+          ...enhancedMessages,
+          {
+            role: "assistant",
+            content: assistantResponse, // A resposta completa do assistente
+          },
+        ];
 
-      res.write("data: [DONE]\n\n");
-      res.end();
+        await mcpSession.callTool("save_conversation_history", {
+          conversation: fullConversation,
+          metadata: {
+            sessionId: mcpSession.sessionId,
+            userId: req.user?.id,
+          },
+        });
+        logger.info("[CognitoAgent] Histórico da conversa salvo com sucesso.");
+      } catch (saveError) {
+        logger.warn("[CognitoAgent] Falha ao salvar histórico da conversa:", saveError);
+      }
+    }
+
+    res.write("data: [DONE]\n\n");
+    res.end();
+
     } else {
       // Non-streaming response
       logger.warn(`[CognitoAgent] Non-streaming response received`);

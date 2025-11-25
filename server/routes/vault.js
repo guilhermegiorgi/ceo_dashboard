@@ -27,6 +27,45 @@ router.get('/stats', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @route   GET /api/vault/graph
+ * @desc    Obtém os dados do grafo (nós e arestas) do vault
+ * @access  Privado
+ */
+router.get('/graph', authenticateToken, async (req, res) => {
+  try {
+    const graphData = await vaultService.getGraphData();
+    res.json({
+      success: true,
+      data: graphData,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Erro ao buscar dados do grafo:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar dados do grafo',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+  try {
+    const stats = await vaultService.getVaultStats();
+    res.json({
+      success: true,
+      data: stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas do vault:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao processar estatísticas do vault',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 // OBC sync + vault status
 router.get('/obc/status', authenticateToken, async (req, res) => {
   try {
@@ -90,14 +129,19 @@ router.post('/sync', authenticateToken, async (req, res) => {
  */
 router.get('/notes', authenticateToken, async (req, res) => {
   try {
-    const { query = '', folder = '', limit = 50, withContent = false } = req.query;
+    const { query = '', folder = '', limit = 50, withContent = false, searchType = 'full-text' } = req.query;
 
     let results;
-    if (withContent === 'true') {
-      results = await vaultService.searchNotesWithContent(query, parseInt(limit));
+    const finalLimit = parseInt(limit);
+
+    if (searchType === 'semantic') {
+      const searchResult = await vaultService.semanticSearch(query, finalLimit);
+      results = searchResult.results;
+    } else if (withContent === 'true') {
+      results = await vaultService.searchNotesWithContent(query, finalLimit);
     } else {
       const searchResult = await vaultService.searchNotes(query, folder);
-      results = searchResult.results.slice(0, parseInt(limit));
+      results = searchResult.results.slice(0, finalLimit);
     }
 
     res.json({

@@ -129,8 +129,47 @@ class VaultService {
     }
 
     /**
+     * Retorna os dados do grafo (nós e arestas) do vault.
+     * @returns {Promise<{nodes: Array<any>, edges: Array<any>}>}
+     */
+    async getGraphData() {
+        try {
+            console.log('[OBC] Buscando dados do grafo.');
+            const resp = await brainCloudClient.getGraphData();
+            // O OBC retorna um objeto com nodes e edges
+            return resp || { nodes: [], edges: [] };
+        } catch (error) {
+            console.error('Erro ao buscar dados do grafo (OBC):', error);
+            return { nodes: [], edges: [] };
+        }
+    }
+
+    /**
      * Busca notas com conteúdo (batch) para análise.
      */
+    /**
+     * Busca notas por similaridade semântica.
+     * @param {string} query - texto para busca semântica
+     * @param {number} limit - limite de resultados
+     * @returns {Promise<{results: Array<{path:string, basename:string, score:number}>}>}
+     */
+    async semanticSearch(query, limit = 20) {
+        try {
+            console.log(`[OBC] Buscando semanticamente: query="${query}" limit=${limit}`);
+            const resp = await brainCloudClient.semanticSearch({ query, limit });
+            const items = (resp?.results || [])
+                .map(it => ({
+                    path: it.path,
+                    basename: path.basename(it.path),
+                    score: it.score,
+                }));
+            return { results: items };
+        } catch (error) {
+            console.error('Erro ao buscar semanticamente (OBC):', error);
+            return { results: [] };
+        }
+    }
+
     async searchNotesWithContent(query, limit = 20) {
         try {
             const { results } = await this.searchNotes(query);

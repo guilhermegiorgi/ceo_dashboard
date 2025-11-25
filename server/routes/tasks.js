@@ -6,6 +6,9 @@ import {
   updateTaskPreferences,
   getCompletedTasks,
   triggerTasksCleanup,
+  createTask,
+  getPendingTasks,
+  getCriticalTasks,
 } from "../services/tasksService.js";
 
 const router = Router();
@@ -60,6 +63,32 @@ router.patch("/preferences", authenticateToken, async (req, res, next) => {
   }
 });
 
+router.get("/critical", authenticateToken, async (req, res, next) => {
+  try {
+    const limitParam = req.query.limit || 10;
+    const tasks = await getCriticalTasks({
+      limit: Number(limitParam),
+    });
+    res.json({ success: true, data: tasks });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/pending", authenticateToken, async (req, res, next) => {
+  try {
+    const windowParam = req.query.window || "all";
+    const limitParam = req.query.limit || 100;
+    const tasks = await getPendingTasks({
+      window: windowParam,
+      limit: Number(limitParam),
+    });
+    res.json({ success: true, data: tasks });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/completed", authenticateToken, async (req, res, next) => {
   try {
     const windowParam = req.query.window || "week";
@@ -71,6 +100,35 @@ router.get("/completed", authenticateToken, async (req, res, next) => {
 });
 
 router.post("/cleanup", authenticateToken, async (req, res, next) => {
+  try {
+    const payload = req.body || {};
+    const result = await triggerTasksCleanup(payload);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/create", authenticateToken, async (req, res, next) => {
+  try {
+    const { title, project, dueDate, priority } = req.body || {};
+
+    const result = await createTask({
+      title,
+      project,
+      dueDate,
+      priority,
+      user: req.user,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
   try {
     const payload = req.body || {};
     const result = await triggerTasksCleanup(payload);

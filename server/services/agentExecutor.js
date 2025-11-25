@@ -160,7 +160,8 @@ QUANDO TERMINAR: Retorne texto livre (não JSON) com seu insight final.`;
         );
         const toolResult = await executeTool(
           requestedTool,
-          responseObject.tool_input
+          responseObject.tool_input,
+          agent.userId // Passa o userId do agente
         );
 
         conversationHistory.push({

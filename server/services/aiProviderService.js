@@ -343,6 +343,24 @@ export async function getProviderByName(userId, providerName) {
 }
 
 /**
+ * Get decrypted API key for a provider
+ */
+export async function getDecryptedApiKey(userId, providerName) {
+  const provider = await getProviderByName(userId, providerName);
+
+  if (!provider || !provider.api_key_encrypted) {
+    return null;
+  }
+
+  try {
+    return decryptApiKey(provider.api_key_encrypted);
+  } catch (error) {
+    logger.error(`Failed to decrypt API key for ${providerName}:`, error);
+    return null;
+  }
+}
+
+/**
  * Create or update a provider
  */
 export async function upsertProvider(userId, providerData) {

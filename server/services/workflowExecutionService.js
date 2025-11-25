@@ -2,6 +2,8 @@
  * workflowExecutionService.js
  * Manages pre-built workflow execution, scheduling, and monitoring
  */
+import brainCloudClient from "./brainCloudClient.js";
+ */
 
 class WorkflowExecutionService {
   static workflows = new Map();
@@ -224,7 +226,12 @@ class WorkflowExecutionService {
 
   static async taskSync(task) {
     // Call sync API
-    return { type: "sync", synced: true, timestamp: new Date().toISOString() };
+    const result = await brainCloudClient.syncVault();
+    if (result.success) {
+        return { type: "sync", synced: true, timestamp: new Date().toISOString(), message: result.message };
+    } else {
+        throw new Error(result.message || "Falha ao sincronizar vault via Brain Cloud.");
+    }
   }
 
   static async taskEmbeddings(task) {
@@ -234,8 +241,13 @@ class WorkflowExecutionService {
 
   static async taskSummary(task) {
     const type = task.params?.type || "daily";
-    // Generate summary
-    return { type: "summary", summaryType: type, content: "" };
+    // Generate summary (usando get_periodic_note para gerar a nota de resumo)
+    const result = await brainCloudClient.getPeriodicNote({ period: type });
+    if (result.success) {
+        return { type: "summary", summaryType: type, content: result.path, message: result.message };
+    } else {
+        throw new Error(result.message || `Falha ao gerar nota periódica ${type} via Brain Cloud.`);
+    }
   }
 
   static async taskEmail(task) {

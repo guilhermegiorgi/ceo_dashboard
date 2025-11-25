@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import apiClient from "../services/apiClient";
+import GraphViewer from "../components/GraphViewer";
 
 interface KnowledgeNode {
   id: string;
@@ -243,105 +244,42 @@ const KnowledgeGraphPage: React.FC = () => {
 
           {/* Graph Canvas */}
           <div className="relative flex-1 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <svg className="h-full w-full">
-                {/* Render edges */}
-                {graphData?.edges.map((edge, idx) => {
-                  const sourceNode = graphData.nodes.find(
-                    (n) => n.id === edge.source
-                  );
-                  const targetNode = graphData.nodes.find(
-                    (n) => n.id === edge.target
-                  );
-                  if (!sourceNode || !targetNode) return null;
-
-                  const sourceX = ((parseInt(sourceNode.id) * 73) % 80) + 10;
-                  const sourceY = ((parseInt(sourceNode.id) * 47) % 70) + 15;
-                  const targetX = ((parseInt(targetNode.id) * 73) % 80) + 10;
-                  const targetY = ((parseInt(targetNode.id) * 47) % 70) + 15;
-
-                  return (
-                    <line
-                      key={`edge-${idx}`}
-                      x1={`${sourceX}%`}
-                      y1={`${sourceY}%`}
-                      x2={`${targetX}%`}
-                      y2={`${targetY}%`}
-                      stroke="rgb(52, 211, 153)"
-                      strokeWidth="1"
-                      strokeOpacity="0.3"
-                      className={isAnimating ? "animate-pulse" : ""}
-                    />
-                  );
-                })}
-
-                {/* Render nodes */}
-                {graphData?.nodes.map((node) => {
-                  const x = ((parseInt(node.id) * 73) % 80) + 10;
-                  const y = ((parseInt(node.id) * 47) % 70) + 15;
-
-                  return (
-                    <g key={node.id}>
-                      <circle
-                        cx={`${x}%`}
-                        cy={`${y}%`}
-                        r="6"
-                        fill="rgb(52, 211, 153)"
-                        className="cursor-pointer transition-opacity hover:opacity-80"
-                        onClick={() =>
-                          setSelectedNode({
-                            id: node.id,
-                            title: node?.label || "Node",
-                            type: "note",
-                            content: "",
-                            connections: [],
-                            tags: [],
-                            lastModified: "",
-                            importance: 0,
-                          })
-                        }
-                      />
-                      <text
-                        x={`${x}%`}
-                        y={`${y + 10}%`}
-                        textAnchor="middle"
-                        className="cursor-pointer fill-zinc-300 text-xs"
-                        onClick={() =>
-                          setSelectedNode({
-                            id: node.id,
-                            title: node?.label || "Node",
-                            type: "note",
-                            content: "",
-                            connections: [],
-                            tags: [],
-                            lastModified: "",
-                            importance: 0,
-                          })
-                        }
-                      >
-                        {node?.label && node.label.length > 15
-                          ? node.label.substring(0, 15) + "..."
-                          : node?.label || "Node"}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
+            {graphData && (
+              <GraphViewer
+                graphData={graphData}
+                isAnimating={isAnimating}
+                onNodeClick={(nodeId) => {
+                  // Simula a busca de detalhes do nó para a sidebar
+                  const node = graphData.nodes.find(n => n.id === nodeId);
+                  if (node) {
+                    setSelectedNode({
+                      id: node.id,
+                      title: node.label || "Node",
+                      type: "note", // Tipo genérico, pode ser melhorado
+                      content: `Conteúdo simulado para ${node.label}.`,
+                      connections: graphData.edges.filter(e => e.source === nodeId || e.target === nodeId).map(e => e.target === nodeId ? e.source : e.target),
+                      tags: [],
+                      lastModified: new Date().toISOString().split('T')[0],
+                      importance: Math.floor(Math.random() * 100),
+                    });
+                  }
+                }}
+              />
+            )}
 
             {/* Graph Controls */}
             <div className="absolute right-4 top-4 flex gap-2">
-              <button
-                onClick={() => setIsAnimating(!isAnimating)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900/80 backdrop-blur transition hover:border-neutral-600"
-                title={isAnimating ? "Pausar animação" : "Reproduzir animação"}
-              >
-                {isAnimating ? (
-                  <Pause className="h-4 w-4 text-zinc-400" />
-                ) : (
-                  <Play className="h-4 w-4 text-zinc-400" />
-                )}
-              </button>
+                      <button
+                        onClick={() => setIsAnimating(!isAnimating)}
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900/80 backdrop-blur transition hover:border-neutral-600"
+                        title={isAnimating ? "Pausar animação" : "Reproduzir animação"}
+                      >
+                        {isAnimating ? (
+                          <Pause className="h-4 w-4 text-zinc-400" />
+                        ) : (
+                          <Play className="h-4 w-4 text-zinc-400" />
+                        )}
+                      </button>
 
               <button
                 onClick={() => setShowSettings(!showSettings)}

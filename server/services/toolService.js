@@ -1,4 +1,5 @@
 import MCPClient from "./mcpClient.js";
+import { getDecryptedApiKey } from "./aiProviderService.js";
 
 // Inicializa cliente MCP
 const mcpClient = new MCPClient({
@@ -13,9 +14,10 @@ const mcpClient = new MCPClient({
  * Ponto de entrada para executar uma ferramenta com base em seu nome.
  * @param {string} toolName - O nome da ferramenta a ser executada.
  * @param {any} toolInput - O input para a ferramenta (ex: termo de busca).
+ * @param {string} userId - O ID do usuário para recuperar a chave de API.
  * @returns {Promise<any>} O resultado da execução da ferramenta.
  */
-export const executeTool = async (toolName, toolInput) => {
+export const executeTool = async (toolName, toolInput, userId) => {
   // Parse input if it's a JSON string
   let parsedInput = toolInput;
   if (typeof toolInput === "string") {
@@ -191,10 +193,37 @@ export const executeTool = async (toolName, toolInput) => {
  * @param {string} query - O termo a ser pesquisado.
  * @returns {Promise<string>} Uma string formatada com os resultados da busca.
  */
-const webSearch = async (query) => {
+const webSearch = async (query, userId) => {Id) => {
   console.log(`Executando busca na web para: "${query}"`);
 
-  // Preferência: Tavily (https://api.tavily.com)
+  // Preferência 1: Perplexity (se configurado)
+  const perplexityKey = await getDecryptedApiKey(userId, "perplexity");
+  if (perplexityKey) {
+    const res = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${perplexityKey}`,
+      },
+      body: JSON.stringify({
+        model: "pplx-70b-online", // Modelo de busca online
+        messages: [{ role: "user", content: `Search the web for: ${query}` }],
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`Perplexity error: ${res.status} ${t}`);
+    }
+    const data = await res.json();
+    const answer = data.choices?.[0]?.message?.content || "Nenhuma resposta encontrada.";
+    
+    // Retorna a resposta sintetizada, que é o forte do Perplexity
+    return JSON.stringify({ source: "Perplexity", answer: answer });
+  }
+
+  // Preferência 2: Tavily (https://api.tavily.com)
   const tavilyKey = process.env.TAVILY_API_KEY;
   if (tavilyKey) {
     const res = await fetch("https://api.tavily.com/search", {

@@ -249,6 +249,49 @@ export async function updateTaskPreferences(preferences = {}) {
   return persistTaskPreferences(preferences);
 }
 
+export async function getCriticalTasks({ limit = 10 } = {}) {
+  try {
+    // Busca todas as tarefas pendentes para que a lógica de filtragem seja feita no backend
+    const allPending = await getPendingTasks({ window: "all", limit: 500 });
+
+    // Filtra as tarefas críticas: atrasadas OU vencendo em 3 dias
+    const criticalTasks = allPending
+      .filter((task) => {
+        if (task.is_overdue) return true;
+        if (task.days_until_due !== null && task.days_until_due <= 3) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        // Prioriza atrasadas, depois as mais próximas do vencimento
+        if (a.is_overdue && !b.is_overdue) return -1;
+        if (!a.is_overdue && b.is_overdue) return 1;
+        return a.days_until_due - b.days_until_due;
+      })
+      .slice(0, limit);
+
+    return criticalTasks;
+  } catch (error) {
+    console.error("[getCriticalTasks] Erro ao buscar tarefas críticas:", error);
+    return [];
+  }
+}
+
+export async function getPendingTasks({ window = "all", limit = 100 } = {}) {
+  try {
+    const response = await brainCloudClient.getDueTasks({
+      window,
+      include_completed: false,
+      status: "pending", // Ou omitir status para pending/overdue
+      limit,
+    });
+    const items = response?.items || response?.data?.items || [];
+    return items;
+  } catch (error) {
+    console.error("[getPendingTasks] Erro ao buscar tarefas pendentes:", error);
+    return [];
+  }
+}
+
 export async function getCompletedTasks({ window = "week" } = {}) {
   try {
     const response = await brainCloudClient.getDueTasks({
@@ -274,10 +317,56 @@ export async function triggerTasksCleanup({ window = "week" } = {}) {
   };
 }
 
+export async function createTask({ title, project, dueDate, priority, user = null }) {
+  if (!title) {
+    throw new Error("O título da tarefa é obrigatório.");
+  }
+
+  // Assumindo que o brainCloudClient expõe a função createNoteFromTemplate
+  // e que existe um template chamado "task"
+  const templateName = "task";
+  const targetPath = "5 - INSIGHTS-IA/Inbox/"; // Local padrão para novas tarefas
+
+  const variables = {
+    title: title,
+    project: project || "N/A",
+    dueDate: dueDate || null,
+    priority: priority || "Média",
+    // Outras variáveis do template
+  };
+
+  try {
+    // Assumindo que o brainCloudClient.createNoteFromTemplate é o wrapper para a ferramenta MCP
+    const result = await brainCloudClient.createNoteFromTemplate({
+      templateName,
+      variables,
+      targetPath,
+      createDirectories: true,
+    });
+
+    if (result.success) {
+      console.log(`[createTask] Tarefa criada com sucesso: ${result.path}`);
+      return {
+        success: true,
+        path: result.path,
+        message: `Tarefa '${title}' criada e salva no vault.`,
+      };
+    } else {
+      throw new Error(result.message || "Falha ao criar a tarefa via Brain Cloud.");
+    }
+  } catch (error) {
+    console.error("[createTask] Erro ao criar tarefa:", error);
+    throw new Error(`Erro ao comunicar com o Brain Cloud para criar tarefa: ${error.message}`);
+  }
+}
+
 export default {
   toggleTaskCompletion,
   getTaskPreferences,
   updateTaskPreferences,
   getCompletedTasks,
   triggerTasksCleanup,
+  createTask,
+  getPendingTasks,
+  getCriticalTasks,
 };
