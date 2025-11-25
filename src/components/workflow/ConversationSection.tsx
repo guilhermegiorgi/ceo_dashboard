@@ -69,10 +69,15 @@ const ToolSummary = ({ event }: { event: ToolEvent }) => {
     }
     const summary = structured?.summary || structured?.result?.summary;
     if (summary) {
+      const isRenderable =
+        typeof summary === "string" || typeof summary === "number";
+      const summaryText = isRenderable
+        ? String(summary)
+        : JSON.stringify(summary, null, 2);
       return (
         <div className="mt-2 text-xs text-zinc-300">
           <p className="font-semibold text-zinc-200">Resumo:</p>
-          <p className="mt-1 leading-relaxed text-zinc-300">{summary}</p>
+          <Response>{summaryText}</Response>
         </div>
       );
     }
@@ -86,6 +91,15 @@ const ToolSummary = ({ event }: { event: ToolEvent }) => {
         <p className="mt-1 leading-relaxed text-zinc-300 whitespace-pre-wrap">
           {output}
         </p>
+      </div>
+    );
+  }
+
+  if (output && typeof output === "object") {
+    return (
+      <div className="mt-2 text-xs text-zinc-300">
+        <p className="font-semibold text-zinc-200">Resultado:</p>
+        <Response>{"```json\n" + JSON.stringify(output, null, 2) + "\n```"}</Response>
       </div>
     );
   }
