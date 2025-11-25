@@ -8,6 +8,7 @@ import {
   useCallback,
   type ChangeEvent,
   type FormEvent,
+  type ComponentType,
 } from "react";
 import {
   AssistantRuntimeProvider,
@@ -16,6 +17,10 @@ import {
   ComposerPrimitive,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -27,6 +32,10 @@ import {
   Loader2,
   Mic,
   FilePlus2,
+  Sparkles,
+  Command,
+  History,
+  CircuitBoard,
 } from "lucide-react";
 import { useAssistantChatRuntime } from "../hooks/useAssistantChatRuntime";
 import type { ModelContext } from "./settings/types";
@@ -42,7 +51,7 @@ interface ChatWidgetProps {
   providerLabel?: string;
 }
 
-const STREAMING_PLACEHOLDER = "⌛️ Processando...";
+export const STREAMING_PLACEHOLDER = "⌛️ Processando...";
 
 const resolveConversationContext = (
   context: ModelContext
@@ -105,35 +114,90 @@ const MinimizedChatBar = ({
   providerLabel?: string;
   messageCount: number;
 }) => (
-  <div className="flex items-center justify-between rounded-t-xl border border-b-0 border-neutral-800/50 bg-neutral-900/90 px-4 py-3 backdrop-blur-sm">
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <MessageSquare className="h-4 w-4 text-emerald-400" />
-        <span className="text-sm font-medium text-zinc-100">
-          Assistente GG.AI
-        </span>
-        <ThreadPrimitive.If running>
-          <div className="ml-1 flex items-center gap-1.5">
-            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-            <span className="text-xs text-emerald-300">Processando...</span>
-          </div>
-        </ThreadPrimitive.If>
-      </div>
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-zinc-500">
-        <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5">
-          {providerLabel || "Assistente IA"}
-        </span>
-        <span>{messageCount} msg</span>
-      </div>
-    </div>
+  <Card className="w-full max-w-[440px] overflow-hidden border-emerald-500/30 bg-gradient-to-r from-neutral-950 via-neutral-900/90 to-emerald-950/30 shadow-[0_20px_60px_-25px_rgba(16,185,129,0.45)] backdrop-blur">
     <button
       onClick={onClick}
-      className="rounded-lg p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-white"
+      className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:bg-white/5"
       aria-label="Expandir chat"
     >
-      <Maximize2 className="h-4 w-4" />
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/30">
+          <MessageSquare className="h-5 w-5" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-zinc-100">
+              Assistente GG.AI
+            </span>
+            <ThreadPrimitive.If running>
+              <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-200 ring-1 ring-emerald-500/30">
+                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+                Processando
+              </div>
+            </ThreadPrimitive.If>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-400">
+            <Badge
+              variant="outline"
+              className="border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+            >
+              {providerLabel || "Assistente IA"}
+            </Badge>
+            <Badge
+              variant="secondary"
+              className="bg-neutral-800 text-zinc-200 ring-1 ring-neutral-700/80"
+            >
+              {messageCount} msg
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 ring-1 ring-emerald-500/30">
+          <Sparkles className="h-3.5 w-3.5" />
+          MCP
+        </div>
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-100 transition group-hover:border-emerald-400/70">
+          <Maximize2 className="h-4 w-4" />
+        </span>
+      </div>
     </button>
-  </div>
+  </Card>
+);
+
+const UtilityToggleButton = ({
+  label,
+  active,
+  onClick,
+  icon: Icon,
+  hotkey,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  icon?: ComponentType<{ className?: string }>;
+  hotkey?: string;
+}) => (
+  <button
+    onClick={onClick}
+    className={cn(
+      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition",
+      active
+        ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-50 shadow-[0_10px_30px_-18px_rgba(52,211,153,0.6)]"
+        : "border-neutral-800 bg-neutral-900/70 text-zinc-400 hover:border-neutral-600 hover:text-zinc-100"
+    )}
+    aria-pressed={active}
+    type="button"
+  >
+    {Icon && <Icon className="h-3.5 w-3.5" />}
+    {label}
+    {hotkey ? (
+      <span className="rounded bg-neutral-800 px-1 py-0.5 text-[10px] font-semibold text-zinc-400">
+        {hotkey}
+      </span>
+    ) : null}
+  </button>
 );
 
 const ExpandedChatView = ({
@@ -169,59 +233,81 @@ const ExpandedChatView = ({
   onComposerChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
   onComposerSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) => (
-  <div className="flex h-[500px] flex-col rounded-t-xl border border-b-0 border-neutral-800/50 bg-neutral-950/90 backdrop-blur-sm">
-    <div className="flex items-center justify-between border-b border-neutral-800/50 px-4 py-3">
-      <div className="flex items-center gap-2">
-        <MessageSquare className="h-4 w-4 text-emerald-400" />
-        <div>
-          <p className="text-sm font-medium text-zinc-100">Chat Inteligente</p>
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-zinc-500">
-            <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5">
+  <Card className="flex h-[580px] w-[440px] flex-col overflow-hidden border-emerald-500/30 bg-gradient-to-b from-neutral-950 via-neutral-950/95 to-emerald-950/35 shadow-[0_30px_80px_-35px_rgba(16,185,129,0.6)] backdrop-blur">
+    <div className="flex items-start justify-between gap-3 border-b border-neutral-800/60 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/40">
+          <MessageSquare className="h-5 w-5" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-zinc-100">Chat Inteligente</p>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-400">
+            <Badge
+              variant="outline"
+              className="border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+            >
               {providerLabel || "Assistente IA"}
-            </span>
-            <span>{messageCount} mensagem{messageCount === 1 ? "" : "s"}</span>
+            </Badge>
+            <Badge
+              variant="secondary"
+              className="bg-neutral-800 text-zinc-200 ring-1 ring-neutral-700/80"
+            >
+              {messageCount} mensagem{messageCount === 1 ? "" : "s"}
+            </Badge>
             {(chatLoading || isThinking) && (
-              <span className="flex items-center gap-1 text-emerald-300">
+              <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200 ring-1 ring-emerald-500/30">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Processando...
+                Processando
               </span>
             )}
           </div>
         </div>
         <ThreadPrimitive.If running>
-          <div className="ml-2 flex items-center gap-1.5">
-            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-            <span className="text-xs text-emerald-300">Processando...</span>
+          <div className="ml-1 flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200 ring-1 ring-emerald-500/30">
+            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+            Em execução
           </div>
         </ThreadPrimitive.If>
       </div>
-      <div className="flex items-center gap-1">
-        <button
+      <div className="flex items-center gap-2">
+        <div className="hidden items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 ring-1 ring-emerald-500/30 sm:flex">
+          <CircuitBoard className="h-3.5 w-3.5" />
+          Ferramentas MCP
+        </div>
+        <Button
           onClick={onMinimize}
-          className="rounded-lg p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-white"
+          variant="ghost"
+          size="icon"
+          className="text-neutral-400 hover:text-white"
           aria-label="Minimizar chat"
         >
           <Minimize2 className="h-4 w-4" />
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={onClose}
-          className="rounded-lg p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-rose-400"
+          variant="ghost"
+          size="icon"
+          className="text-neutral-400 hover:text-rose-400"
           aria-label="Fechar chat"
         >
           <X className="h-4 w-4" />
-        </button>
+        </Button>
       </div>
     </div>
 
-    <ThreadPrimitive.Viewport className="flex-1 space-y-3 overflow-y-auto p-4">
+    <ThreadPrimitive.Viewport className="relative flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.08)_0,_transparent_38%)]" />
       <ThreadPrimitive.Empty>
-        <div className="flex h-full items-center justify-center text-center">
+        <div className="relative flex h-full items-center justify-center text-center">
           <div className="space-y-2">
-            <div className="mx-auto w-fit rounded-full bg-emerald-500/10 p-3">
+            <div className="mx-auto w-fit rounded-full border border-emerald-500/40 bg-emerald-500/10 p-3 shadow-inner shadow-emerald-900/30">
               <MessageSquare className="h-6 w-6 text-emerald-400" />
             </div>
             <p className="text-sm text-zinc-400">
               Inicie uma conversa com seu assistente
+            </p>
+            <p className="text-xs text-zinc-500">
+              Dica: use F1 para atalhos e F2 para acessar o histórico
             </p>
           </div>
         </div>
@@ -235,40 +321,41 @@ const ExpandedChatView = ({
       />
     </ThreadPrimitive.Viewport>
 
-    <div className="flex gap-2 px-3 pb-2">
-      <button
+    <div className="flex flex-wrap items-center gap-2 border-t border-neutral-800/60 bg-neutral-900/70 px-4 py-2">
+      <UtilityToggleButton
+        label="Atalhos"
+        hotkey="F1"
+        icon={Command}
+        active={activeUtility === "shortcuts"}
         onClick={() =>
           setActiveUtility(activeUtility === "shortcuts" ? null : "shortcuts")
         }
-        className={`px-2 py-1 text-xs rounded transition-colors ${
-          activeUtility === "shortcuts"
-            ? "bg-blue-600 text-white"
-            : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-        }`}
-      >
-        F1: Atalhos
-      </button>
-      <button
+      />
+      <UtilityToggleButton
+        label="Histórico"
+        hotkey="F2"
+        icon={History}
+        active={activeUtility === "history"}
         onClick={() =>
           setActiveUtility(activeUtility === "history" ? null : "history")
         }
-        className={`px-2 py-1 text-xs rounded transition-colors ${
-          activeUtility === "history"
-            ? "bg-blue-600 text-white"
-            : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-        }`}
-      >
-        F2: Histórico
-      </button>
+      />
+      <div className="ml-auto flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 ring-1 ring-emerald-500/30">
+        <Sparkles className="h-3.5 w-3.5" />
+        MCP pronto
+      </div>
     </div>
 
     {(activeUtility === "shortcuts" || activeUtility === "history") && (
-      <div className="border-t border-neutral-800/50 px-3 py-2">
+      <div className="border-t border-neutral-800/60 bg-neutral-900/80 px-4 py-3">
         {activeUtility === "shortcuts" && (
-          <div className="mb-2">
-            <h4 className="mb-2 text-xs font-medium text-slate-400">
-              Atalhos Rápidos
-            </h4>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              <span>Atalhos rápidos</span>
+              <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-emerald-200">
+                Usa modelos com MCP
+              </span>
+            </div>
             <UtilityContentRenderer
               type="shortcuts"
               onAction={handleShortcutSelect}
@@ -277,10 +364,13 @@ const ExpandedChatView = ({
         )}
 
         {activeUtility === "history" && (
-          <div className="mb-2">
-            <h4 className="mb-2 text-xs font-medium text-slate-400">
-              Histórico de Conversas
-            </h4>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              <span>Histórico de conversas</span>
+              <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-zinc-300">
+                {conversations.length} conversa{conversations.length === 1 ? "" : "s"}
+              </span>
+            </div>
             <UtilityContentRenderer
               type="history"
               data={conversations}
@@ -292,43 +382,46 @@ const ExpandedChatView = ({
       </div>
     )}
 
-    <div className="border-t border-neutral-800/50 p-3">
+    <div className="border-t border-neutral-800/60 bg-neutral-950/90 p-3">
       <ComposerPrimitive.Root
-        className="flex items-end gap-2 rounded-lg border border-neutral-800/50 bg-neutral-900/50 p-2"
+        className="flex items-end gap-2 rounded-xl border border-neutral-800/60 bg-neutral-900/70 p-3 shadow-inner shadow-black/30"
         onSubmit={onComposerSubmit}
       >
         <ComposerPrimitive.Input
-          className="max-h-24 min-h-[32px] flex-1 resize-none bg-transparent px-2 py-1 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+          className="max-h-32 min-h-[38px] flex-1 resize-none bg-transparent px-2 py-1 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
           placeholder="Digite sua mensagem..."
           rows={1}
           value={composerValue}
           onChange={onComposerChange}
         />
 
-        <button
+        <Button
           type="button"
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900 text-zinc-300 transition hover:border-neutral-600 hover:text-white"
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 border border-neutral-800/80 bg-neutral-900 text-zinc-300 hover:border-neutral-600 hover:text-white"
           aria-label="Atalho de voz"
         >
           <Mic className="h-4 w-4" />
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900 text-zinc-300 transition hover:border-neutral-600 hover:text-white"
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 border border-neutral-800/80 bg-neutral-900 text-zinc-300 hover:border-neutral-600 hover:text-white"
           aria-label="Adicionar arquivo"
         >
           <FilePlus2 className="h-4 w-4" />
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="submit"
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          size="icon"
+          className="h-9 w-9 flex-shrink-0 bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60"
           aria-label="Enviar"
           disabled={
-            chatLoading ||
-            isThinking ||
-            composerValue.trim().length === 0
+            chatLoading || isThinking || composerValue.trim().length === 0
           }
         >
           {chatLoading || isThinking ? (
@@ -336,10 +429,10 @@ const ExpandedChatView = ({
           ) : (
             <ArrowUp className="h-4 w-4" />
           )}
-        </button>
+        </Button>
       </ComposerPrimitive.Root>
     </div>
-  </div>
+  </Card>
 );
 
 const mapToThreadMessages = (
@@ -760,6 +853,16 @@ export default function ChatWidget({
             setThinkingMessage(thinkingBuffer);
             setIsThinking(true);
           }
+          if (event.type === "content") {
+            inThinkingPhase = false;
+            setIsThinking(false);
+            streamedContent += event.content;
+            setStreamingMessage((prev) =>
+              !prev || prev === STREAMING_PLACEHOLDER
+                ? event.content
+                : `${prev}${event.content}`
+            );
+          }
           if (event.type === "tool_summary") {
             const summaries = Array.isArray(event.data)
               ? event.data
@@ -902,11 +1005,11 @@ export default function ChatWidget({
               onMinimize={() => setIsExpanded(false)}
               onClose={() => setIsVisible(false)}
               activeUtility={activeUtility}
-          setActiveUtility={setActiveUtility}
-          handleShortcutSelect={handleShortcutSelect}
-          handleLoadConversation={handleLoadConversation}
-          handleDeleteConversation={handleDeleteConversation}
-          conversations={historyData}
+              setActiveUtility={setActiveUtility}
+              handleShortcutSelect={handleShortcutSelect}
+              handleLoadConversation={handleLoadConversation}
+              handleDeleteConversation={handleDeleteConversation}
+              conversations={historyData}
               providerLabel={providerLabel}
               messageCount={messageCount}
               chatLoading={chatLoading}

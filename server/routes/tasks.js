@@ -43,7 +43,7 @@ router.post("/toggle", authenticateToken, async (req, res, next) => {
 
 router.get("/preferences", authenticateToken, async (req, res, next) => {
   try {
-    const preferences = await getTaskPreferences();
+    const preferences = await getTaskPreferences(req.user);
     res.json({ success: true, data: preferences });
   } catch (error) {
     next(error);
@@ -53,7 +53,7 @@ router.get("/preferences", authenticateToken, async (req, res, next) => {
 router.patch("/preferences", authenticateToken, async (req, res, next) => {
   try {
     const payload = req.body || {};
-    const preferences = await updateTaskPreferences(payload);
+    const preferences = await updateTaskPreferences(payload, req.user);
     res.json({ success: true, data: preferences });
   } catch (error) {
     next(error);

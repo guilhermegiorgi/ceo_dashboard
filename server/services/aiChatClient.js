@@ -235,7 +235,12 @@ async function callOpenAI({
     messages: toOpenAIMessages(messages, systemPrompt),
   };
 
-  if (tools && tools.length > 0 && !body.providers) {
+  // Somente injeta providers quando usando OpenRouter (OpenAI puro rejeita esse campo)
+  const isOpenRouter =
+    typeof baseUrl === "string" &&
+    baseUrl.toLowerCase().includes("openrouter");
+
+  if (isOpenRouter && tools && tools.length > 0 && !body.providers) {
     const providerHint =
       inferOpenRouterProviders(model) || buildFallbackProviderHint(model);
     if (providerHint) {
@@ -776,26 +781,33 @@ async function openAiStreamRequest({ url, apiKey, body, headers = {} }) {
       );
     }
 
-    if (!response.body) {
+    const responseBody = response.body;
+    if (!responseBody) {
       throw new Error("OpenAI Streaming: No response body");
     }
 
-    const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const reader =
+      typeof responseBody.getReader === "function" ? responseBody.getReader() : null;
+    const asyncIterator =
+      !reader && typeof responseBody[Symbol.asyncIterator] === "function"
+        ? responseBody[Symbol.asyncIterator]()
+        : null;
 
     async function* generator() {
       let buffer = "";
 
       // Handle both WebStream reader and Node.js async iterator
       const readChunk = async () => {
-        if (reader.getReader || reader.read) {
+        if (reader && (reader.getReader || reader.read)) {
           // WebStream API
           return await reader.read();
-        } else {
-          // Node.js async iterator
-          const { value, done } = await reader.next();
+        }
+        if (asyncIterator && typeof asyncIterator.next === "function") {
+          const { value, done } = await asyncIterator.next();
           return { done, value };
         }
+        throw new Error("OpenAI Streaming: Body is not readable");
       };
 
       while (true) {
@@ -969,14 +981,16 @@ async function openRouterStreamRequest({ url, apiKey, body, headers = {} }) {
     );
 
     // Handle Node.js PassThrough stream
-    let reader;
-    if (response.body.getReader) {
-      // WebStream API (browser/fetch)
-      reader = response.body.getReader();
-    } else {
-      // Node.js PassThrough stream - need to convert
-      const stream = response.body;
-      reader = stream[Symbol.asyncIterator]();
+    const responseBody = response.body;
+    let reader =
+      responseBody && typeof responseBody.getReader === "function"
+        ? responseBody.getReader()
+        : typeof responseBody?.[Symbol.asyncIterator] === "function"
+        ? responseBody[Symbol.asyncIterator]()
+        : null;
+
+    if (!reader) {
+      throw new Error("OpenRouter Streaming: Body is not readable");
     }
     const decoder = new TextDecoder();
 

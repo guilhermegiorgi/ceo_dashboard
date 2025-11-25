@@ -1,4 +1,4 @@
-import { loadUserSettings } from "./settingsServiceDB.js";
+import { loadSystemSettings, loadUserSettings } from "./settingsServiceDB.js";
 import { logger } from "../src/utils/logger.js";
 
 const DEFAULT_API_KEYS = {
@@ -156,7 +156,10 @@ function sanitizeSelection(selection, fallbackProvider) {
 
 export async function getUserAIConfig(user) {
   try {
-    const settings = await loadUserSettings(user || {});
+    const settings =
+      user?.id && user?.tenantId
+        ? await loadUserSettings(user)
+        : await loadSystemSettings();
     const config = mergeConfig(settings?.aiProvider);
 
     if (settings?.aiKeys) {

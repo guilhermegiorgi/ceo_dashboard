@@ -136,7 +136,8 @@ Persistencia: PostgreSQL (Supabase) + SQLite (dashboard.db) + arquivos (`data/`,
 - Observacao: coexistencia com PostgreSQL gera risco de dados duplicados/divergentes (ver Secao 11).
 
 ### 5.3 Configuracoes e cache
-- `data/settings.json`: gerenciado por `settingsService.js` (braincloud baseUrl/token, taskPreferences, collections).
+- `user_settings` (PostgreSQL): gerenciado por `settingsServiceDB.js` (braincloud baseUrl/token, taskPreferences via `ui_preferences`, coleções).
+- Registro “system” (fallback) carregado por `settingsService.js` quando não há usuário.
 - Cache: Redis recomendado via `REDIS_URL`; fallback Map com TTL manual.
 
 ### 5.4 Brain Cloud Vault

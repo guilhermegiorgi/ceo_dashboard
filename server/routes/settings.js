@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import fetch from 'node-fetch';
-import { getDashboardCollections, updateDashboardCollections } from '../services/settingsService.js';
+import {
+  getDashboardCollections,
+  updateDashboardCollections,
+  loadSettings,
+  saveSettings,
+} from '../services/settingsService.js';
 import { loadUserSettings, saveUserSettings } from '../services/settingsServiceDB.js';
 
 const router = Router();

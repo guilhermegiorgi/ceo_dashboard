@@ -7,6 +7,16 @@
 import { useCallback, useState } from "react";
 import type { ChatMessage, Conversation } from "../services/apiClient";
 
+export type ToolEvent = {
+  id: string;
+  name: string;
+  resolvedName?: string;
+  arguments?: Record<string, unknown>;
+  output?: unknown;
+  error?: string | null;
+  createdAt: number;
+};
+
 export interface TimelineCard {
   id: string;
   type: "message" | "insight" | "note" | "agent";
@@ -44,6 +54,7 @@ export function useTimelineState() {
   const [streamingMessage, setStreamingMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState("");
   const [composerValue, setComposerValue] = useState("");
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
   // ─ Chat composer and utilities ─
   const [selectedChatUtility, setSelectedChatUtility] = useState<
@@ -174,6 +185,8 @@ export function useTimelineState() {
     thinkingMessage,
     setThinkingMessage,
     updateThinkingMessage,
+    toolEvents,
+    setToolEvents,
 
     // Composer
     composerValue,

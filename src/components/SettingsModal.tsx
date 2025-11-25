@@ -680,8 +680,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) => {
                   <AlertCircle className="mt-0.5 h-4 w-4 text-amber-400" />
                   <span>
                     As configurações do Brain Cloud são persistidas no backend
-                    (arquivo <code>data/settings.json</code>). Os valores do
-                    token são protegidos e não ficam acessíveis ao cliente.
+                    (tabela <code>user_settings</code> no PostgreSQL; fallback
+                    de sistema). Os valores do token são protegidos e não ficam
+                    acessíveis ao cliente.
                   </span>
                 </p>
               </section>

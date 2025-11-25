@@ -262,9 +262,6 @@ router.post("/chat/stream", async (req, res) => {
 
     const sessionId = `assistant-${Date.now()}`;
 
-    // Stream de dados usando nosso sistema MCP existente
-    let fullContent = "";
-
     const response = await fetch(
       `${req.protocol}://${req.get("host")}/api/mcp/query-stream`,
       {
@@ -289,64 +286,70 @@ router.post("/chat/stream", async (req, res) => {
       throw new Error("Failed to get response body");
     }
 
-    // Use Node.js stream for reading instead of web ReadableStream
     const decoder = new TextDecoder();
     let buffer = "";
 
-    // Processar stream e converter para formato AI SDK
+    const forwardEvent = (raw) => {
+      if (!raw || raw === "[DONE]") return;
+
+      try {
+        const parsed = JSON.parse(raw);
+
+        if (parsed.tool_result) {
+          res.write(`data: ${JSON.stringify({ tool_result: parsed.tool_result })}\n\n`);
+          if (res.flush) res.flush();
+          return;
+        }
+
+        if (parsed.tool_summary) {
+          res.write(`data: ${JSON.stringify({ tool_summary: parsed.tool_summary })}\n\n`);
+          if (res.flush) res.flush();
+          return;
+        }
+
+        if (parsed.type === "error" && parsed.error) {
+          res.write(`data: ${JSON.stringify({ type: "error", error: parsed.error })}\n\n`);
+          if (res.flush) res.flush();
+          return;
+        }
+
+        const delta = parsed.choices?.[0]?.delta || {};
+        const isThinking = parsed.type === "thinking" || delta.thinking === true;
+        const textDelta = parsed.textDelta ?? delta.content ?? "";
+
+        if (isThinking && textDelta) {
+          res.write(`data: ${JSON.stringify({ type: "thinking", content: textDelta })}\n\n`);
+          if (res.flush) res.flush();
+          return;
+        }
+
+        if (textDelta) {
+          res.write(
+            `data: ${JSON.stringify({
+              type: "text-delta",
+              textDelta,
+            })}\n\n`
+          );
+          if (res.flush) res.flush();
+        }
+      } catch {
+        // Ignorar erros de parsing e continuar streaming
+      }
+    };
+
     for await (const chunk of response.body) {
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop() || ""; // Keep the last incomplete line
+      buffer = lines.pop() || "";
 
       for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(data);
-
-            // Converter para formato AI SDK
-            const deltaContent = parsed.choices?.[0]?.delta?.content || "";
-            if (deltaContent) {
-              fullContent += deltaContent;
-
-              // Enviar para assistant-ui em formato AI SDK
-              res.write(
-                `data: ${JSON.stringify({
-                  type: "text-delta",
-                  textDelta: deltaContent,
-                })}\n\n`
-              );
-            }
-          } catch (e) {
-            // Ignorar erros de parsing
-          }
-        }
+        if (!line.startsWith("data: ")) continue;
+        forwardEvent(line.slice(6));
       }
     }
 
-    // Processar qualquer dado restante no buffer
     if (buffer.startsWith("data: ")) {
-      const data = buffer.slice(6);
-      if (data !== "[DONE]") {
-        try {
-          const parsed = JSON.parse(data);
-          const deltaContent = parsed.choices?.[0]?.delta?.content || "";
-          if (deltaContent) {
-            fullContent += deltaContent;
-            res.write(
-              `data: ${JSON.stringify({
-                type: "text-delta",
-                textDelta: deltaContent,
-              })}\n\n`
-            );
-          }
-        } catch (e) {
-          // Ignorar erros de parsing
-        }
-      }
+      forwardEvent(buffer.slice(6));
     }
 
     // Finalizar stream

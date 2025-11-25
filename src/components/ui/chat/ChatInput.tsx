@@ -1,4 +1,4 @@
-import React, { useState, useRef, KeyboardEvent } from "react";
+import React, { useState, useRef, KeyboardEvent, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +9,10 @@ interface ChatInputProps {
     disabled?: boolean;
     placeholder?: string;
     className?: string;
+    value?: string;
+    onChange?: (value: string) => void;
+    inputRef?: React.RefObject<HTMLTextAreaElement>;
+    autoFocus?: boolean;
 }
 
 export function ChatInput({
@@ -16,9 +20,24 @@ export function ChatInput({
     disabled = false,
     placeholder = "Type your message...",
     className,
+    value: controlledValue,
+    onChange,
+    inputRef,
+    autoFocus = false,
 }: ChatInputProps) {
-    const [value, setValue] = useState("");
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [internalValue, setInternalValue] = useState("");
+    const fallbackRef = useRef<HTMLTextAreaElement>(null);
+    const textareaRef = inputRef || fallbackRef;
+
+    const isControlled = controlledValue !== undefined;
+    const value = isControlled ? controlledValue : internalValue;
+
+    const setValue = (newValue: string) => {
+        if (!isControlled) {
+            setInternalValue(newValue);
+        }
+        onChange?.(newValue);
+    };
 
     const handleSend = () => {
         if (value.trim() && !disabled) {
@@ -46,8 +65,19 @@ export function ChatInput({
         }
     };
 
+    useEffect(() => {
+        if (autoFocus && textareaRef.current) {
+            textareaRef.current.focus();
+        }
+    }, [autoFocus, textareaRef]);
+
     return (
-        <div className={cn("border-t bg-background p-4", className)}>
+        <div
+            className={cn(
+                "border-t border-neutral-800 bg-neutral-950/90 p-4",
+                className
+            )}
+        >
             <div className="flex gap-2 items-end">
                 <Textarea
                     ref={textareaRef}
@@ -56,7 +86,11 @@ export function ChatInput({
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}
                     disabled={disabled}
-                    className="min-h-[60px] max-h-[200px] resize-none"
+                    className={cn(
+                        "min-h-[60px] max-h-[200px] resize-none",
+                        "bg-neutral-900 text-zinc-100 placeholder-zinc-500",
+                        "border border-neutral-800 focus:border-neutral-600 focus:ring-0"
+                    )}
                     rows={1}
                 />
                 <Button

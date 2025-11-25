@@ -1037,6 +1037,7 @@ export class APIClient {
     onEvent?: (
       event:
         | { type: "thinking"; content: string }
+        | { type: "content"; content: string }
         | { type: "tool_result"; data: any }
         | { type: "tool_summary"; data: any }
     ) => void
@@ -1103,113 +1104,135 @@ export class APIClient {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Failed to get response reader");
+      const body = response.body as any;
+      if (!body) {
+        throw new Error("Failed to get response body");
       }
 
       const decoder = new TextDecoder();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log("[chatStream] Stream done");
-          break;
-        }
-        const chunk = decoder.decode(value);
-        console.log(
-          "[chatStream] Raw chunk:",
-          JSON.stringify(chunk.substring(0, 300))
-        );
+      const processChunk = (chunk: Uint8Array | string) => {
+        const text =
+          typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
 
-        // Process Server-Sent Events
-        const lines = chunk.split("\n");
+        console.log("[chatStream] Raw chunk:", JSON.stringify(text.substring(0, 300)));
+
+        const lines = text.split("\n");
         console.log("[chatStream] Split into", lines.length, "lines");
+
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6);
+          if (data === "[DONE]") continue;
 
-            console.log("[chatStream] Received event:", data.substring(0, 200));
+          console.log("[chatStream] Received event:", data.substring(0, 200));
 
-            try {
-              const parsed = JSON.parse(data);
-              console.log("[chatStream] Parsed event type:", {
-                hasToolResult: !!parsed.tool_result,
-                hasToolSummary: !!parsed.tool_summary,
-                type: parsed.type,
-                hasChoices: !!parsed.choices,
+          try {
+            const parsed = JSON.parse(data);
+            console.log("[chatStream] Parsed event type:", {
+              hasToolResult: !!parsed.tool_result,
+              hasToolSummary: !!parsed.tool_summary,
+              type: parsed.type,
+              hasChoices: !!parsed.choices,
+            });
+
+            if (parsed.tool_result) {
+              onEvent?.({
+                type: "tool_result",
+                data: parsed.tool_result,
               });
+              continue;
+            }
 
-              if (parsed.tool_result) {
-                onEvent?.({
-                  type: "tool_result",
-                  data: parsed.tool_result,
-                });
-                continue;
-              }
+            if (parsed.tool_summary) {
+              onEvent?.({
+                type: "tool_summary",
+                data: parsed.tool_summary,
+              });
+              continue;
+            }
 
-              if (parsed.tool_summary) {
-                onEvent?.({
-                  type: "tool_summary",
-                  data: parsed.tool_summary,
-                });
-                continue;
+            if (parsed.type === "text-delta") {
+              if (parsed.textDelta !== undefined) {
+                const textDelta =
+                  typeof parsed.textDelta === "string"
+                    ? parsed.textDelta
+                    : JSON.stringify(parsed.textDelta, null, 2);
+                console.log("[chatStream] Text delta:", textDelta.substring(0, 100));
+                onEvent?.({ type: "thinking", content: textDelta });
               }
+              continue;
+            }
 
-              if (parsed.type === "text-delta") {
-                if (parsed.textDelta) {
-                  console.log(
-                    "[chatStream] Text delta:",
-                    parsed.textDelta.substring(0, 100)
-                  );
-                  onChunk(parsed.textDelta);
-                }
-                continue;
-              }
-
-              if (parsed.type === "thinking" && parsed.content) {
-                console.log(
-                  "[chatStream] Thinking content:",
-                  parsed.content.substring(0, 100)
-                );
-                onEvent?.({ type: "thinking", content: parsed.content });
-                continue;
-              }
-
-              if (parsed.type === "error" && parsed.error) {
-                throw new Error(parsed.error);
-              }
-
-              const delta = parsed.choices?.[0]?.delta;
-              if (delta?.content) {
-                console.log(
-                  "[chatStream] Delta content:",
-                  delta.content.substring(0, 100)
-                );
-                if (delta.thinking) {
-                  onEvent?.({
-                    type: "thinking",
-                    content: delta.content,
-                  });
-                } else {
-                  onChunk(delta.content);
-                }
-              }
-            } catch (error) {
-              console.error(
-                "[chatStream] Parse error:",
-                error,
-                "Data:",
-                data.substring(0, 200)
+            if (parsed.type === "thinking" && parsed.content) {
+              const thinkingText =
+                typeof parsed.content === "string"
+                  ? parsed.content
+                  : JSON.stringify(parsed.content, null, 2);
+              console.log(
+                "[chatStream] Thinking content:",
+                thinkingText.substring(0, 100)
               );
-              // Trying to parse as plain text
-              if (data && data.trim()) {
-                onChunk(data);
+              onEvent?.({ type: "thinking", content: thinkingText });
+              continue;
+            }
+
+            if (parsed.type === "error" && parsed.error) {
+              throw new Error(parsed.error);
+            }
+
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta) {
+              // DeepSeek Reasoner: reasoning_content
+              if (delta.reasoning_content !== undefined) {
+                const reasoningText =
+                  typeof delta.reasoning_content === "string"
+                    ? delta.reasoning_content
+                    : JSON.stringify(delta.reasoning_content, null, 2);
+                onEvent?.({
+                  type: "thinking",
+                  content: reasoningText,
+                });
               }
+
+              if (delta.content !== undefined) {
+                const contentText =
+                  typeof delta.content === "string"
+                    ? delta.content
+                    : JSON.stringify(delta.content, null, 2);
+                console.log("[chatStream] Delta content:", contentText.substring(0, 100));
+                onEvent?.({
+                  type: "content",
+                  content: contentText,
+                });
+              }
+            }
+          } catch (error) {
+            console.error("[chatStream] Parse error:", error, "Data:", data.substring(0, 200));
+            if (data && data.trim()) {
+              onChunk(data);
             }
           }
         }
+      };
+
+      if (typeof body.getReader === "function") {
+        const reader = body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            console.log("[chatStream] Stream done");
+            break;
+          }
+          if (value) processChunk(value);
+        }
+      } else if (typeof body[Symbol.asyncIterator] === "function") {
+        for await (const chunk of body) {
+          if (chunk) processChunk(chunk);
+        }
+        console.log("[chatStream] Stream done");
+      } else {
+        throw new Error("Response body is not a readable stream");
       }
 
       onComplete();

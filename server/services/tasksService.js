@@ -47,7 +47,7 @@ export async function toggleTaskCompletion({
   console.log('[toggleTaskCompletion] Input:', { filePath, lineNumber, title: title?.substring(0, 50), completed, hasUser: !!user });
 
   // Check if file is in writable area (5 - INSIGHTS-IA/) unless allowEditAllDirectories is enabled
-  // Use loadUserSettings if user context is available, otherwise fallback to loadSettings
+  // Use loadUserSettings if user context is available, otherwise fallback to system settings
   const settings = user ? await loadUserSettings(user) : await loadSettings();
   const allowEditAllDirectories = settings.system?.allowEditAllDirectories || false;
   
@@ -241,12 +241,12 @@ status: ${completed ? 'concluída' : 'em_andamento'}
   };
 }
 
-export async function getTaskPreferences() {
-  return loadTaskPreferences();
+export async function getTaskPreferences(user = null) {
+  return loadTaskPreferences(user);
 }
 
-export async function updateTaskPreferences(preferences = {}) {
-  return persistTaskPreferences(preferences);
+export async function updateTaskPreferences(preferences = {}, user = null) {
+  return persistTaskPreferences(preferences, user);
 }
 
 export async function getCompletedTasks({ window = "week" } = {}) {

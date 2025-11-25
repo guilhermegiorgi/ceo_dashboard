@@ -295,6 +295,8 @@ const BusinessIntelligenceHub: React.FC = () => {
   const timelineSetChatMode = timeline.setChatMode;
   const timelineSetIsTimelineCollapsed = timeline.setIsTimelineCollapsed;
   const timelineSetComposerValue = timeline.setComposerValue;
+  const timelineToolEvents = timeline.toolEvents;
+  const timelineSetToolEvents = timeline.setToolEvents;
 
   const inboxSetInboxNotes = inbox.setInboxNotes;
   const inboxSetInboxLoading = inbox.setInboxLoading;
@@ -763,7 +765,7 @@ const BusinessIntelligenceHub: React.FC = () => {
     timelineSetActiveConversation(conversation);
     timelineSetChatMessages([]);
     timelineSetStreamingMessage("");
-    timelineSetThinkingMessage("");
+    timelineSetToolEvents([]);
     timelineSetChatMode("conversation");
     timelineSetIsTimelineCollapsed(false);
 
@@ -792,7 +794,6 @@ const BusinessIntelligenceHub: React.FC = () => {
           Array.isArray(conversation.messages) ? conversation.messages : []
         );
         timelineSetStreamingMessage("");
-        timelineSetThinkingMessage("");
         timelineSetChatMode("conversation");
         timelineSetIsTimelineCollapsed(false);
       } catch (error) {
@@ -915,6 +916,9 @@ const BusinessIntelligenceHub: React.FC = () => {
       const trimmedContent = content.trim();
       if (!trimmedContent) return;
 
+      // Ensure UI switches to conversation mode when user starts chatting
+      timelineSetChatMode("conversation");
+
       if (!activeSelection?.provider || !activeSelection?.model) {
         toast.error(
           "Configure um provedor e modelo de IA nas configurações antes de usar o chat."
@@ -940,13 +944,150 @@ const BusinessIntelligenceHub: React.FC = () => {
       let conversation = timeline.activeConversation;
       let conversationReady = Boolean(conversation);
 
+      // streaming state locals (acessíveis no finally)
+      let streamedContent = "";
+      let thinkingContent = "";
+      let isInThinkingPhase = true; // inicia como true para exibir placeholder
+      const localToolEvents: typeof timelineToolEvents = [];
+      let responsePersisted = false;
+
+      const shouldAppendAssistant = (list: ChatMessage[], content: string) => {
+        const lastAssistant = [...list].reverse().find((m) => m.role === "assistant");
+        return !lastAssistant || lastAssistant.content !== content;
+      };
+
+      const buildFocusSummary = (tools: typeof timelineToolEvents) => {
+        for (const tool of tools) {
+          const out = tool.output as any;
+          const focus =
+            out?.structuredContent?.result?.focus ||
+            out?.structuredContent?.focus ||
+            out?.result?.focus;
+          if (!focus) continue;
+
+          const daily = Array.isArray(focus.daily_notes) ? focus.daily_notes : [];
+          const weekly = focus.weekly_focus;
+          const parts: string[] = [];
+
+          if (daily.length > 0) {
+            parts.push("### 📅 Foco diário");
+            daily.slice(0, 3).forEach((note: any) => {
+              parts.push(
+                `- **${note.title || note.path}** — ${note.excerpt ? note.excerpt.slice(0, 160) + "..." : ""}`
+              );
+            });
+          }
+
+          if (weekly) {
+            parts.push("### 🔥 Foco semanal");
+            parts.push(
+              `- **${weekly.title || weekly.path || "Sem título"}** — ${weekly.excerpt ? weekly.excerpt.slice(0, 200) + "..." : ""}`
+            );
+          }
+
+          if (parts.length > 0) {
+            return ["## Seu foco atual", ...parts].join("\n");
+          }
+        }
+        return "";
+      };
+
+      const buildProjectsSummary = (tools: typeof timelineToolEvents) => {
+        for (const tool of tools) {
+          const name = (tool.resolvedName || tool.name || "").toLowerCase();
+          if (!name.includes("vault") && !name.includes("project") && !name.includes("list"))
+            continue;
+          const out = tool.output as any;
+          const files =
+            out?.structuredContent?.result?.files ||
+            out?.structuredContent?.files ||
+            out?.result?.files ||
+            out?.files;
+          if (!Array.isArray(files) || files.length === 0) continue;
+          const dirs = files.filter((f: any) => f.is_directory);
+          const list = (dirs.length > 0 ? dirs : files).slice(0, 10);
+          const items = list.map(
+            (f: any) => `- **${f.name || f.path}** (${f.modified ? String(f.modified).slice(0, 10) : "sem data"})`
+          );
+          if (items.length > 0) {
+            return ["## Projetos encontrados", ...items].join("\n");
+          }
+        }
+        return "";
+      };
+
+      const buildTasksSummary = (tools: typeof timelineToolEvents) => {
+        for (const tool of tools) {
+          const out = tool.output as any;
+          const tasks =
+            out?.structuredContent?.result?.tasks ||
+            out?.structuredContent?.tasks ||
+            out?.result?.tasks ||
+            out?.tasks;
+          if (!Array.isArray(tasks) || tasks.length === 0) continue;
+          const top = tasks.slice(0, 10);
+          const items = top.map((t: any) => {
+            const title = t.title || t.path || t.name || "Tarefa";
+            const status = t.status ? ` — ${t.status}` : "";
+            const due = t.dueDate || t.due || t.date;
+            const dueStr = due ? ` (prazo: ${String(due).slice(0, 10)})` : "";
+            return `- **${title}**${status}${dueStr}`;
+          });
+          if (items.length > 0) {
+            return ["## Tarefas encontradas", ...items].join("\n");
+          }
+        }
+        return "";
+      };
+
+      const buildGenericSummary = (tools: typeof timelineToolEvents) => {
+        const parts: string[] = [];
+        tools.forEach((tool) => {
+          const name = tool.resolvedName || tool.name || "Tool";
+          if (tool.error) {
+            parts.push(`- ${name}: erro (${tool.error})`);
+            return;
+          }
+          const out = tool.output;
+          if (typeof out === "string") {
+            parts.push(`- ${name}: ${out.slice(0, 240)}${out.length > 240 ? "..." : ""}`);
+          } else if (out && typeof out === "object") {
+            const keys = Object.keys(out as any).slice(0, 5).join(", ");
+            parts.push(`- ${name}: dados recebidos (${keys || "sem campos"})`);
+          } else {
+            parts.push(`- ${name}: executada.`);
+          }
+        });
+        if (parts.length === 0) return "";
+        return ["## Resumo das ferramentas", ...parts].join("\n");
+      };
+
+      const buildSynthesis = (
+        tools: typeof timelineToolEvents,
+        question: string
+      ): string => {
+        const focus = buildFocusSummary(tools);
+        if (focus) return `${focus}\n\n> Pergunta: ${question}`;
+        const projects = buildProjectsSummary(tools);
+        if (projects) return `${projects}\n\n> Pergunta: ${question}`;
+        const tasks = buildTasksSummary(tools);
+        if (tasks) return `${tasks}\n\n> Pergunta: ${question}`;
+        const generic = buildGenericSummary(tools);
+        if (generic) return `${generic}\n\n> Pergunta: ${question}`;
+        return "";
+      };
+
       try {
         setChatLoading(true);
+        // Marca estado de "pensando" sem placeholder visível; conteúdo chega via eventos
+        timelineSetThinkingMessage("");
+        setIsThinking(true);
+        timelineSetStreamingMessage("");
 
-        if (!conversation) {
-          conversation = await createConversationWithContext();
-          conversationReady = Boolean(conversation);
-        }
+      if (!conversation) {
+        conversation = await createConversationWithContext();
+        conversationReady = Boolean(conversation);
+      }
 
         if (!conversation) {
           throw new Error("Não foi possível preparar a conversa");
@@ -957,9 +1098,6 @@ const BusinessIntelligenceHub: React.FC = () => {
         const conversationProjectName = conversation.projectName;
         const conversationNotePath = conversation.contextNotePath;
 
-        timelineSetThinkingMessage("");
-        setIsThinking(false);
-
         const baseMessages =
           timeline.activeConversation?.id === conversationId
             ? timeline.chatMessages
@@ -969,10 +1107,10 @@ const BusinessIntelligenceHub: React.FC = () => {
 
         timelineSetChatMessages((prev) => [...prev, tempMessage]);
 
-        const savedMessage = await api.addMessage(conversationId, {
-          role: "user",
-          content: trimmedContent,
-        });
+    const savedMessage = await api.addMessage(conversationId, {
+      role: "user",
+      content: trimmedContent,
+    });
 
         messageHistoryForPersistence = [
           ...messageHistoryForPersistence,
@@ -986,17 +1124,22 @@ const BusinessIntelligenceHub: React.FC = () => {
         );
 
         timelineSetStreamingMessage(STREAMING_PLACEHOLDER);
-
-        let streamedContent = "";
-        let thinkingContent = "";
-        let isInThinkingPhase = false;
+        timelineSetToolEvents([]);
 
         await api.chatStream(
           [
             {
               role: "system",
-              content:
-                "Você é um assistente IA com acesso às ferramentas MCP. Sempre use as ferramentas quando disponíveis para ajudar o usuário. Quando estiver pensando, compartilhe seu processo de raciocínio para que o usuário possa acompanhar seu desenvolvimento.",
+              content: [
+                "Você é uma assistente IA (Sophia) dentro do CEO Dashboard com acesso às ferramentas MCP.",
+                "Siga SEMPRE este fluxo (formato shadcn/ai):",
+                "1) Raciocine em voz alta, escolhendo quais ferramentas usar (e explique a estratégia).",
+                "2) Execute as ferramentas necessárias para responder à pergunta do usuário (projetos, tarefas, notas, foco, etc.). Use quantas precisar.",
+                "3) Apresente a resposta final: liste resultados relevantes, destaque prioridades e insira insights concisos. Nunca devolva apenas JSON.",
+                "4) Se não houver dados, diga isso e ofereça próximos passos.",
+                "Formato do raciocínio: bloco curto de passos/decisões; depois um bloco final com a resposta em texto claro.",
+                "Nunca retorne [object Object]; formate qualquer objeto como texto ou resumo.",
+              ].join("\n"),
             },
             ...baseMessages.map((msg) => ({
               role: msg.role,
@@ -1005,16 +1148,8 @@ const BusinessIntelligenceHub: React.FC = () => {
             { role: "user", content: trimmedContent },
           ],
           conversationId,
-          (chunk) => {
-            if (!chunk) return;
-            if (isInThinkingPhase) {
-              isInThinkingPhase = false;
-              setIsThinking(false);
-            }
-            streamedContent += chunk;
-            timelineSetStreamingMessage((prev) =>
-              !prev || prev === STREAMING_PLACEHOLDER ? chunk : prev + chunk
-            );
+          (_chunk) => {
+            // deltas agora chegam via onEvent (thinking). Não acrescentar aqui.
           },
           (error) => {
             console.error("Streaming error:", error);
@@ -1029,7 +1164,6 @@ const BusinessIntelligenceHub: React.FC = () => {
               : `Erro ao processar a resposta da IA: ${message}`;
             showErrorToast(friendlyMessage);
             setIsThinking(false);
-            timelineSetThinkingMessage("");
             timelineSetStreamingMessage(
               isToolSupportError
                 ? "⚠️ O modelo selecionado não suporta uso de ferramentas MCP. Ajuste o provedor/modelo nas configurações."
@@ -1037,23 +1171,6 @@ const BusinessIntelligenceHub: React.FC = () => {
             );
           },
           async () => {
-            if (thinkingContent.trim()) {
-              try {
-                const savedThinking = await api.addMessage(conversationId, {
-                  role: "assistant",
-                  content: thinkingContent.trim(),
-                });
-
-                timelineSetChatMessages((prev) => [...prev, savedThinking]);
-                messageHistoryForPersistence = [
-                  ...messageHistoryForPersistence,
-                  savedThinking,
-                ];
-              } catch (saveError) {
-                console.error("Error saving thinking to history:", saveError);
-              }
-            }
-
             if (isInThinkingPhase) {
               setIsThinking(false);
             }
@@ -1072,11 +1189,16 @@ const BusinessIntelligenceHub: React.FC = () => {
                   content: streamedContent,
                 });
 
-                timelineSetChatMessages((prev) => [...prev, savedResponse]);
+                timelineSetChatMessages((prev) =>
+                  shouldAppendAssistant(prev, streamedContent)
+                    ? [...prev, savedResponse]
+                    : prev
+                );
                 messageHistoryForPersistence = [
                   ...messageHistoryForPersistence,
                   savedResponse,
                 ];
+                responsePersisted = true;
 
                 const totalMessages = messageHistoryForPersistence.length;
                 const shouldPersist =
@@ -1103,7 +1225,12 @@ const BusinessIntelligenceHub: React.FC = () => {
                 }
               } catch (saveError) {
                 console.error("Error saving streaming response:", saveError);
-                timelineSetChatMessages((prev) => [...prev, assistantMessage]);
+                timelineSetChatMessages((prev) =>
+                  shouldAppendAssistant(prev, streamedContent)
+                    ? [...prev, assistantMessage]
+                    : prev
+                );
+                responsePersisted = true;
               }
             } else {
               console.log("Skipping save - empty streaming response");
@@ -1122,44 +1249,67 @@ const BusinessIntelligenceHub: React.FC = () => {
             contextType: conversationContext,
           },
           (event) => {
-            if (!event) return;
-            if (event.type === "thinking") {
-              if (!isInThinkingPhase) {
-                isInThinkingPhase = true;
-                thinkingContent = "";
-              }
+          if (!event) return;
+          if (event.type === "thinking") {
+            thinkingContent += event.content;
+            timelineSetThinkingMessage(thinkingContent);
+            setIsThinking(true);
+            return;
+          }
+          if (event.type === "content") {
+            // Antes de executar ferramenta, trate deltas como raciocínio; após ferramentas, como resposta
+            if (localToolEvents.length === 0 && isInThinkingPhase) {
               thinkingContent += event.content;
               timelineSetThinkingMessage(thinkingContent);
               setIsThinking(true);
-            }
-            if (event.type === "tool_summary") {
-              const summaries = Array.isArray(event.data)
-                ? event.data
-                : [event.data].filter(Boolean);
-              if (summaries.length > 0) {
-                const summaryText = summaries.join("\n");
-                streamedContent += `\n${summaryText}`;
-                timelineSetStreamingMessage((prev) =>
-                  !prev || prev === STREAMING_PLACEHOLDER
-                    ? summaryText
-                    : `${prev}\n${summaryText}`
-                );
-              }
-            }
-            if (event.type === "tool_result") {
-              const resultText =
-                typeof event.data === "string"
-                  ? event.data
-                  : JSON.stringify(event.data, null, 2);
-              streamedContent += `\n${resultText}`;
+            } else {
+              isInThinkingPhase = false;
+              setIsThinking(false);
+              streamedContent += event.content;
               timelineSetStreamingMessage((prev) =>
                 !prev || prev === STREAMING_PLACEHOLDER
-                  ? resultText
-                  : `${prev}\n${resultText}`
+                  ? event.content
+                  : `${prev}${event.content}`
               );
             }
+            return;
           }
-        );
+          if (event.type === "tool_summary") {
+            // Não misturar resumo de ferramenta no texto final; renderizamos nos cards
+            return;
+          }
+          if (event.type === "tool_result") {
+            isInThinkingPhase = false;
+            setIsThinking(false);
+            const payload = event.data || {};
+            const toolId = `tool-${Date.now()}-${Math.random()
+              .toString(16)
+              .slice(2)}`;
+            localToolEvents.push({
+              id: toolId,
+              name: payload.name || payload.resolvedName || "tool",
+              resolvedName: payload.resolvedName || payload.name,
+              arguments: payload.arguments,
+              output: payload.output ?? payload.raw ?? null,
+              error: payload.error || null,
+              createdAt: Date.now(),
+            });
+            timelineSetToolEvents((prev) => [
+              ...prev,
+              {
+                id: toolId,
+                name: payload.name || payload.resolvedName || "tool",
+                resolvedName: payload.resolvedName || payload.name,
+                arguments: payload.arguments,
+                output: payload.output ?? payload.raw ?? null,
+                error: payload.error || null,
+                createdAt: Date.now(),
+              },
+            ]);
+            return;
+          }
+        }
+      );
       } catch (error) {
         console.error("Error sending message:", error);
         const message =
@@ -1168,30 +1318,50 @@ const BusinessIntelligenceHub: React.FC = () => {
         const toolSupportError = normalizedCatchMessage.includes(
           "no endpoints found that support tool use"
         );
-        const friendlyCatchMessage = toolSupportError
-          ? "O modelo selecionado não suporta uso de ferramentas MCP. Escolha um provedor/modelo com suporte a ferramentas nas configurações de IA."
-          : conversationReady
-          ? `Erro ao processar a resposta da IA: ${message}`
-          : `Erro ao iniciar conversa: ${message}`;
-        showErrorToast(friendlyCatchMessage);
-        const assistantContent = toolSupportError
-          ? "⚠️ O modelo selecionado não suporta uso de ferramentas MCP. Escolha um provedor/modelo com suporte a ferramentas nas configurações de IA."
-          : `⚠️ Não foi possível concluir esta solicitação.\n\n${message}`;
+          const friendlyCatchMessage = toolSupportError
+            ? "O modelo selecionado não suporta uso de ferramentas MCP. Escolha um provedor/modelo com suporte a ferramentas nas configurações de IA."
+            : conversationReady
+            ? `Erro ao processar a resposta da IA: ${message}`
+            : `Erro ao iniciar conversa: ${message}`;
+          showErrorToast(friendlyCatchMessage);
+          const assistantContent = toolSupportError
+            ? "⚠️ O modelo selecionado não suporta uso de ferramentas MCP. Escolha um provedor/modelo com suporte a ferramentas nas configurações de IA."
+            : `⚠️ Não foi possível concluir esta solicitação.\n\n${message}`;
 
-        const assistantErrorMessage: ChatMessage = {
-          id: `assistant-error-${Date.now()}`,
-          role: "assistant",
-          content: assistantContent,
-          createdAt: new Date().toISOString(),
-        };
-        timelineSetChatMessages((prev) => [...prev, assistantErrorMessage]);
-        timelineSetStreamingMessage("");
-        timelineSetThinkingMessage("");
-        setIsThinking(false);
-      } finally {
-        setChatLoading(false);
-      }
-    },
+          const assistantErrorMessage: ChatMessage = {
+            id: `assistant-error-${Date.now()}`,
+            role: "assistant",
+            content: assistantContent,
+            createdAt: new Date().toISOString(),
+          };
+          timelineSetChatMessages((prev) => [...prev, assistantErrorMessage]);
+          timelineSetStreamingMessage("");
+          setIsThinking(false);
+          responsePersisted = true;
+        } finally {
+          setChatLoading(false);
+          timelineSetStreamingMessage("");
+          setIsThinking(false);
+
+          // Sempre gera uma resposta final com base nas ferramentas, se houver
+          if (!responsePersisted && localToolEvents.length > 0) {
+            const synthesis = buildSynthesis(localToolEvents, trimmedContent);
+              if (synthesis) {
+                const assistantMessage: ChatMessage = {
+                  id: `assistant-${Date.now()}`,
+                  role: "assistant",
+                  content: synthesis,
+                  createdAt: new Date().toISOString(),
+                };
+                timelineSetChatMessages((prev) =>
+                  shouldAppendAssistant(prev, synthesis) ? [...prev, assistantMessage] : prev
+                );
+                responsePersisted = true;
+                return;
+              }
+            }
+          }
+        },
     [
       activeSelection,
       api,
@@ -3379,6 +3549,10 @@ const BusinessIntelligenceHub: React.FC = () => {
               runtime={assistantRuntime}
               messageCount={timeline.chatMessages.length}
               providerLabel={providerLabel}
+              chatMessages={timeline.chatMessages}
+              streamingMessage={timeline.streamingMessage}
+              thinkingMessage={timeline.thinkingMessage}
+              toolEvents={timelineToolEvents}
             />
           </section>
 

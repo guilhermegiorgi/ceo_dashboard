@@ -118,19 +118,36 @@ class MCPClientImproved extends EventEmitter {
       throw new Error(`Stream failed: ${response.status}`);
     }
 
-    const reader = response.body.getReader();
+    const body = response.body;
+    if (!body) {
+      throw new Error("Stream failed: empty body");
+    }
+
     const decoder = new TextDecoder();
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    const processChunk = (chunk) => {
+      const text =
+        typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+      onChunk(text);
+    };
 
-        const chunk = decoder.decode(value);
-        onChunk(chunk);
+    if (typeof body.getReader === "function") {
+      const reader = body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) processChunk(value);
+        }
+      } finally {
+        reader.releaseLock?.();
       }
-    } finally {
-      reader.releaseLock();
+    } else if (typeof body[Symbol.asyncIterator] === "function") {
+      for await (const chunk of body) {
+        if (chunk) processChunk(chunk);
+      }
+    } else {
+      throw new Error("Stream failed: body is not readable");
     }
   }
 

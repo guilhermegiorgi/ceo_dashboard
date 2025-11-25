@@ -1,19 +1,22 @@
 {
   "braincloud": {
-    "connectionMode": "auto",
-    "mcpEnabled": true,
-    "restEnabled": true,
-    "mcpServerUrl": "wss://obsidian-mcp.ggailabs.com/mcp",
-    "restApiUrl": "https://obsidian-mcp.ggailabs.com/api/v1",
-    "restApiKey": "",
-    "baseUrl": "https://obsidian-mcp.ggailabs.com/api/v1",
+    "baseUrl": "",
     "apiToken": "",
-    "enableMcp": true,
+    "tenantId": "",
+    "tenantPlan": "",
+    "mcpWs": "",
+    "mcpHttp": "",
+    "mcpServerUrl": "",
+    "restApiUrl": "",
+    "restApiKey": "",
+    "connectionMode": "auto",
     "enableRest": true,
-    "mcpWs": "wss://obsidian-mcp.ggailabs.com/mcp"
+    "enableMcp": true,
+    "restEnabled": true,
+    "mcpEnabled": true
   },
   "interface": {
-    "theme": "dark",
+    "theme": "auto",
     "language": "pt-BR",
     "enableSounds": true,
     "enableAnimations": true,
@@ -39,20 +42,20 @@
     },
     "modelSelection": {
       "chat": {
-        "provider": "openrouter",
-        "model": "minimax/minimax-m2:free",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
         "temperature": 0.7,
         "maxTokens": 2048
       },
       "insights": {
-        "provider": "openrouter",
-        "model": "minimax/minimax-m2:free",
+        "provider": "anthropic",
+        "model": "claude-3-haiku",
         "temperature": 0.4,
         "maxTokens": 1536
       },
       "global": {
-        "provider": "openrouter",
-        "model": "minimax/minimax-m2:free",
+        "provider": "google",
+        "model": "gemini-1.5-flash",
         "temperature": 0.5,
         "maxTokens": 2048
       }
@@ -61,10 +64,27 @@
     "fallbackProvider": "openai"
   },
   "system": {
-    "allowEditAllDirectories": true,
+    "allowEditAllDirectories": false,
     "adminApiToken": "",
     "pathOverrideTTL": 600,
     "autoSaveInterval": 30,
-    "enableDebugMode": true
+    "enableDebugMode": false
+  },
+  "dashboard": {
+    "collections": [],
+    "taskPreferences": {
+      "viewMode": "list",
+      "sortBy": "natural",
+      "pinnedTaskIds": [],
+      "priorityMap": {},
+      "boardOrder": {},
+      "lastContextId": null,
+      "contextTemplate": {
+        "workDescription": "",
+        "shortTermFocus": "",
+        "longTermGoals": "",
+        "otherContext": ""
+      }
+    }
   }
 }

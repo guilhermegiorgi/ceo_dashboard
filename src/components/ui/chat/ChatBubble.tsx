@@ -4,12 +4,13 @@ import { User, Bot } from "lucide-react";
 
 interface ChatBubbleProps {
     role: "user" | "assistant";
-    content: string;
+    content?: string;
     isThinking?: boolean;
     className?: string;
+    children?: React.ReactNode;
 }
 
-export function ChatBubble({ role, content, isThinking = false, className }: ChatBubbleProps) {
+export function ChatBubble({ role, content, isThinking = false, className, children }: ChatBubbleProps) {
     const isUser = role === "user";
 
     return (
@@ -36,7 +37,7 @@ export function ChatBubble({ role, content, isThinking = false, className }: Cha
                             : "bg-muted text-foreground"
                 )}
             >
-                <div className="whitespace-pre-wrap break-words">{content}</div>
+                {children ? children : <div className="whitespace-pre-wrap break-words">{content}</div>}
             </div>
 
             {isUser && (

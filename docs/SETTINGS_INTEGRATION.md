@@ -35,8 +35,9 @@ Este documento explica como as configurações do Settings Modal afetam o compor
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  4. Salvar em data/settings.json                            │
-│     • settingsService.js → saveSettings()                    │
+│  4. Persistência no PostgreSQL (user_settings)              │
+│     • settingsServiceDB → INSERT/UPSERT                      │
+│     • ui_preferences guarda taskPreferences/coleções         │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
@@ -48,7 +49,7 @@ Este documento explica como as configurações do Settings Modal afetam o compor
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  6. Backend lê Settings (brainCloudClient.js)               │
-│     • getRuntimeConfig() → loadSettings()                    │
+│     • getRuntimeConfig() → loadSystemSettings/loadUserSettings │
 │     • Usa baseUrl, apiToken, enableRest, enableMcp          │
 │     • Cache de 60s (CONFIG_CACHE_TTL)                        │
 └──────────────────────┬──────────────────────────────────────┘
@@ -91,7 +92,8 @@ server/
 ├── routes/
 │   └── settings.js                     # API endpoints + mapeamento
 ├── services/
-│   ├── settingsService.js              # Load/save data/settings.json
+│   ├── settingsService.js              # Delegação para DB (registro system)
+│   ├── settingsServiceDB.js            # Load/save em user_settings (PostgreSQL)
 │   ├── brainCloudClient.js             # REST client (LÊ SETTINGS!)
 │   └── brainCloud/
 │       ├── BrainCloudService.ts        # Serviço unificado
@@ -194,25 +196,11 @@ Mapeamento inverso para exibir valores corretos na UI.
 
 ## ⚙️ **Configuração Padrão**
 
-### **Fallback para ENV vars**
-
-Se `data/settings.json` não existir ou estiver vazio:
-
-```javascript
-// brainCloudClient.js
-const DEFAULT_BASE_URL = process.env.BRAINCLOUD_BASE_URL || 
-                         process.env.OBSIDIAN_API_URL || 
-                         'http://localhost:8000';
-                         
-const DEFAULT_API_TOKEN = process.env.BRAINCLOUD_API_TOKEN || 
-                          process.env.OBSIDIAN_API_KEY || '';
-```
-
 ### **Prioridade de Configuração**
 
 ```
-1. Settings UI (data/settings.json)  ← MAIOR PRIORIDADE
-2. Environment variables (.env)
+1. Registro em PostgreSQL (user_settings) — por usuário/tenant; registro “system” para fluxos sem usuário
+2. Variáveis de ambiente (.env) lidas pelo brainCloudClient (BRAINCLOUD_*/OBSIDIAN_API_*)
 3. Defaults hardcoded
 ```
 
@@ -254,7 +242,8 @@ const DEFAULT_API_TOKEN = process.env.BRAINCLOUD_API_TOKEN ||
 ## 📚 **Referências**
 
 - `server/services/brainCloudClient.js` - Cliente REST que lê settings
-- `server/services/settingsService.js` - Gerencia `data/settings.json`
+- `server/services/settingsService.js` - Proxy para registro “system” em user_settings
+- `server/services/settingsServiceDB.js` - CRUD de settings por usuário/tenant (PostgreSQL)
 - `server/routes/settings.js` - API endpoints + mapeamento
 - `src/components/settings/hooks/useSettingsPersistence.ts` - Frontend persistence
 

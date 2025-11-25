@@ -1,9 +1,11 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import { randomUUID } from 'crypto';
 import { query, transaction } from '../database/pg-pool.js';
-
-const SETTINGS_FILE = path.resolve(process.cwd(), 'data', 'settings.json');
+import {
+  loadSystemSettings,
+  loadUserSettings,
+  saveSystemSettings,
+  saveUserSettings,
+} from './settingsServiceDB.js';
 
 const defaultSettings = {
   braincloud: {
@@ -112,69 +114,12 @@ function mapDashboardCollection(row) {
   };
 }
 
-async function ensureSettingsFile() {
-  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
-  try {
-    await fs.access(SETTINGS_FILE);
-  } catch (error) {
-    await fs.writeFile(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2));
-  }
-}
-
 export async function loadSettings() {
-  await ensureSettingsFile();
-  const raw = await fs.readFile(SETTINGS_FILE, 'utf-8');
-  const parsed = JSON.parse(raw || '{}');
-  return {
-    braincloud: {
-      ...defaultSettings.braincloud,
-      ...(parsed.braincloud || {})
-    },
-    interface: {
-      ...defaultSettings.interface,
-      ...(parsed.interface || {})
-    },
-    aiKeys: {
-      ...defaultSettings.aiKeys,
-      ...(parsed.aiKeys || {})
-    },
-    system: {
-      ...defaultSettings.system,
-      ...(parsed.system || {})
-    },
-    dashboard: {
-      ...defaultSettings.dashboard,
-      ...(parsed.dashboard || {})
-    }
-  };
+  return loadSystemSettings();
 }
 
 export async function saveSettings(settings) {
-  const current = await loadSettings();
-  const merged = {
-    braincloud: {
-      ...current.braincloud,
-      ...(settings.braincloud || {})
-    },
-    interface: {
-      ...current.interface,
-      ...(settings.interface || {})
-    },
-    aiKeys: {
-      ...current.aiKeys,
-      ...(settings.aiKeys || {})
-    },
-    system: {
-      ...current.system,
-      ...(settings.system || {})
-    },
-    dashboard: {
-      ...current.dashboard,
-      ...(settings.dashboard || {})
-    }
-  };
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(merged, null, 2));
-  return merged;
+  return saveSystemSettings(settings);
 }
 
 export async function getDashboardCollections(context) {
@@ -244,14 +189,25 @@ export async function updateDashboardCollections(collections = [], context) {
   return getDashboardCollections(ctx);
 }
 
-export async function getTaskPreferences() {
-  const settings = await loadSettings();
-  return settings.dashboard?.taskPreferences || { ...defaultSettings.dashboard.taskPreferences };
+export async function getTaskPreferences(user) {
+  const settings = user
+    ? await loadUserSettings(user)
+    : await loadSystemSettings();
+  return (
+    settings.dashboard?.taskPreferences || {
+      ...defaultSettings.dashboard.taskPreferences,
+    }
+  );
 }
 
-export async function updateTaskPreferences(patch = {}) {
-  const current = await loadSettings();
-  const existing = current.dashboard?.taskPreferences || { ...defaultSettings.dashboard.taskPreferences };
+export async function updateTaskPreferences(patch = {}, user) {
+  const settings = user
+    ? await loadUserSettings(user)
+    : await loadSystemSettings();
+  const existing =
+    settings.dashboard?.taskPreferences || {
+      ...defaultSettings.dashboard.taskPreferences,
+    };
 
   const mergedPriorityMap = { ...existing.priorityMap };
   if (patch.priorityMap && typeof patch.priorityMap === 'object') {
@@ -289,8 +245,24 @@ export async function updateTaskPreferences(patch = {}) {
     boardOrder: mergedBoardOrder,
     contextTemplate: mergedContextTemplate,
   };
-  const saved = await saveSettings({
-    dashboard: { taskPreferences: merged },
-  });
-  return saved.dashboard.taskPreferences;
+
+  const saved = user
+    ? await saveUserSettings(user, {
+        ...settings,
+        uiPreferences: {
+          ...(settings.uiPreferences || {}),
+          taskPreferences: merged,
+        },
+        dashboard: { taskPreferences: merged },
+      })
+    : await saveSystemSettings({
+        ...settings,
+        uiPreferences: {
+          ...(settings.uiPreferences || {}),
+          taskPreferences: merged,
+        },
+        dashboard: { taskPreferences: merged },
+      });
+
+  return saved.dashboard?.taskPreferences || merged;
 }
