@@ -1137,7 +1137,7 @@ const BusinessIntelligenceHub: React.FC = () => {
                 "2) Execute as ferramentas necessárias para responder à pergunta do usuário (projetos, tarefas, notas, foco, etc.). Use quantas precisar.",
                 "3) Apresente a resposta final: liste resultados relevantes, destaque prioridades e insira insights concisos. Nunca devolva apenas JSON.",
                 "4) Se não houver dados, diga isso e ofereça próximos passos.",
-                "IMPORTANTE para criar/editar notas: use sempre write_file com todos os campos obrigatórios (filepath e content). Para notas rápidas, salve em '5 - INSIGHTS-IA/Inbox/<slug>.md' (slug simples do pedido + timestamp) e inclua um título Markdown na primeira linha. Se precisar criar pastas, use createParents=true.",
+                "IMPORTANTE para criar/editar notas: use sempre write_file com todos os campos obrigatórios (filepath e content). Para notas rápidas, salve em '5 - INSIGHTS-IA/Inbox/<slug>.md' (slug simples do pedido + timestamp) e inclua um título Markdown na primeira linha. Exemplo: filepath='5 - INSIGHTS-IA/Inbox/nota-teste-2025-11-25.md', content='# Nota de teste\\nDetalhes...'. Se precisar criar pastas, use createParents=true. Nunca chame write_file sem preencher filepath e content – infira-os do pedido do usuário.",
                 "Formato do raciocínio: bloco curto de passos/decisões; depois um bloco final com a resposta em texto claro.",
                 "Nunca retorne [object Object]; formate qualquer objeto como texto ou resumo.",
               ].join("\n"),
